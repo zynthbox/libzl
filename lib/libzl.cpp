@@ -17,25 +17,12 @@
 
 using namespace std;
 
-ZynthiLoopsComponent* zlComponent;
+juce::ScopedJuceInitialiser_GUI platform;
 
-void playWav() {
-  zlComponent->play();
-  cout << "Play \n";
+ZynthiLoopsComponent* ZynthiLoopsComponent_new() {
+  return new ZynthiLoopsComponent();
 }
 
-void stopWav() {
-  zlComponent->stop();
-  cout << "Stop \n";
-}
+void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c) { c->play(); }
 
-void init() {
-  cout << "Init \n";
-
-  juce::ScopedJuceInitialiser_GUI platform;
-
-  juce::AudioDeviceManager deviceManager;
-  deviceManager.initialiseWithDefaultDevices(2, 2);
-
-  zlComponent = new ZynthiLoopsComponent();
-}
+void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c) { c->stop(); }

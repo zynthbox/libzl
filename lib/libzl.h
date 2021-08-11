@@ -13,13 +13,7 @@
 #include "ZynthiLoopsComponent.h"
 
 extern "C" {
-void playWav();
-void stopWav();
-void init();
-
-ZynthiLoopsComponent* ZynthiLoopsComponent_new() {
-  return new ZynthiLoopsComponent();
-}
-void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c) { c->play(); }
-void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c) { c->stop(); }
+ZynthiLoopsComponent* ZynthiLoopsComponent_new();
+void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c);
+void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c);
 }

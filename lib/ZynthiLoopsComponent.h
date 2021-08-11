@@ -11,135 +11,162 @@
 #pragma once
 
 #include <iostream>
+
 #include "JUCEHeaders.h"
 
 using namespace std;
 
 //==============================================================================
-class ZynthiLoopsComponent : public juce::AudioAppComponent {
+class ZynthiLoopsComponent : public juce::AudioAppComponent,
+                             private juce::Thread {
  public:
-  ZynthiLoopsComponent() {
-    deviceManager.initialiseWithDefaultDevices(2, 2);
-    dumpDeviceInfo();
+  class ReferenceCountedBuffer : public juce::ReferenceCountedObject {
+   public:
+    typedef juce::ReferenceCountedObjectPtr<ReferenceCountedBuffer> Ptr;
 
+    ReferenceCountedBuffer(const juce::String& nameToUse, int numChannels,
+                           int numSamples)
+        : name(nameToUse), buffer(numChannels, numSamples) {
+      cout << juce::String("Buffer named '") + name +
+                  "' constructed. numChannels = " + juce::String(numChannels) +
+                  ", numSamples = " + juce::String(numSamples)
+           << "\n";
+    }
+
+    ~ReferenceCountedBuffer() {
+      cout << juce::String("Buffer named '") + name + "' destroyed"
+           << "\n";
+    }
+
+    juce::AudioSampleBuffer* getAudioSampleBuffer() { return &buffer; }
+
+    int position = 0;
+
+   private:
+    juce::String name;
+    juce::AudioSampleBuffer buffer;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ReferenceCountedBuffer)
+  };
+
+  ZynthiLoopsComponent() : Thread("Background Thread") {
+    deviceManager.initialiseWithDefaultDevices(2, 2);
     formatManager.registerBasicFormats();
+    setAudioChannels(0, 2);
+
+    startThread();
   }
 
-  ~ZynthiLoopsComponent() override { shutdownAudio(); }
+  ~ZynthiLoopsComponent() override {
+    stopThread(4000);
+    shutdownAudio();
+  }
 
   void prepareToPlay(int, double) override {}
 
   void getNextAudioBlock(
       const juce::AudioSourceChannelInfo& bufferToFill) override {
-    auto numInputChannels = fileBuffer.getNumChannels();
+    ReferenceCountedBuffer::Ptr retainedCurrentBuffer(currentBuffer);
+
+    if (retainedCurrentBuffer == nullptr) {
+      bufferToFill.clearActiveBufferRegion();
+      return;
+    }
+
+    auto* currentAudioSampleBuffer =
+        retainedCurrentBuffer->getAudioSampleBuffer();
+    auto position = retainedCurrentBuffer->position;
+
+    auto numInputChannels = currentAudioSampleBuffer->getNumChannels();
     auto numOutputChannels = bufferToFill.buffer->getNumChannels();
 
-    auto outputSamplesRemaining = bufferToFill.numSamples;  // [8]
-    auto outputSamplesOffset = bufferToFill.startSample;    // [9]
+    auto outputSamplesRemaining = bufferToFill.numSamples;
+    auto outputSamplesOffset = 0;
 
     while (outputSamplesRemaining > 0) {
       auto bufferSamplesRemaining =
-          fileBuffer.getNumSamples() - position;  // [10]
+          currentAudioSampleBuffer->getNumSamples() - position;
       auto samplesThisTime =
-          juce::jmin(outputSamplesRemaining, bufferSamplesRemaining);  // [11]
+          juce::jmin(outputSamplesRemaining, bufferSamplesRemaining);
 
       for (auto channel = 0; channel < numOutputChannels; ++channel) {
-        bufferToFill.buffer->copyFrom(channel,                     // [12]
-                                      outputSamplesOffset,         //  [12.1]
-                                      fileBuffer,                  //  [12.2]
-                                      channel % numInputChannels,  //  [12.3]
-                                      position,                    //  [12.4]
-                                      samplesThisTime);            //  [12.5]
+        bufferToFill.buffer->copyFrom(
+            channel, bufferToFill.startSample + outputSamplesOffset,
+            *currentAudioSampleBuffer, channel % numInputChannels, position,
+            samplesThisTime);
       }
 
-      outputSamplesRemaining -= samplesThisTime;  // [13]
-      outputSamplesOffset += samplesThisTime;     // [14]
-      position += samplesThisTime;                // [15]
+      outputSamplesRemaining -= samplesThisTime;
+      outputSamplesOffset += samplesThisTime;
+      position += samplesThisTime;
 
-      if (position == fileBuffer.getNumSamples()) position = 0;  // [16]
+      if (position == currentAudioSampleBuffer->getNumSamples()) position = 0;
     }
+
+    retainedCurrentBuffer->position = position;
   }
 
-  void releaseResources() override { fileBuffer.setSize(0, 0); }
+  void releaseResources() override { currentBuffer = nullptr; }
 
   void resized() override {}
 
   void play() {
-    shutdownAudio();
-    std::unique_ptr<juce::AudioFormatReader> reader(
-        formatManager.createReaderFor(
-            juce::File("/zynthian/zynthian-my-data/capture/c4.wav")));  // [2]
+    auto file = juce::File("/zynthian/zynthian-my-data/capture/c4.wav");
+    auto path = file.getFullPathName();
+    chosenPath.swapWith(path);
+    notify();
+  }
 
-    if (reader.get() != nullptr) {
-      auto duration =
-          (float)reader->lengthInSamples / reader->sampleRate;  // [3]
+  void stop() { currentBuffer = nullptr; }
 
-      fileBuffer.setSize((int)reader->numChannels,
-                         (int)reader->lengthInSamples);  // [4]
-      reader->read(&fileBuffer,                          // [5]
-                   0,                                    //  [5.1]
-                   (int)reader->lengthInSamples,         //  [5.2]
-                   0,                                    //  [5.3]
-                   true,                                 //  [5.4]
-                   true);                                //  [5.5]
-      position = 0;                                      // [6]
-      setAudioChannels(0, (int)reader->numChannels);     // [7]
+ private:
+  void run() override {
+    while (!threadShouldExit()) {
+      checkForPathToOpen();
+      checkForBuffersToFree();
+      wait(500);
     }
   }
 
-  void stop() { shutdownAudio(); }
+  void checkForBuffersToFree() {
+    for (auto i = buffers.size(); --i >= 0;) {
+      ReferenceCountedBuffer::Ptr buffer(buffers.getUnchecked(i));
 
-  void dumpDeviceInfo() {
-    cout << "--------------------------------------"
-         << "\n";
-    cout << "Current audio device type: " +
-                (deviceManager.getCurrentDeviceTypeObject() != nullptr
-                     ? deviceManager.getCurrentDeviceTypeObject()->getTypeName()
-                     : "<none>")
-         << "\n";
-
-    if (auto* device = deviceManager.getCurrentAudioDevice()) {
-      cout << "Current audio device: " + device->getName().quoted() << "\n";
-      cout << "Sample rate: " + juce::String(device->getCurrentSampleRate()) +
-                  " Hz"
-           << "\n";
-      cout << "Block size: " +
-                  juce::String(device->getCurrentBufferSizeSamples()) +
-                  " samples"
-           << "\n";
-      cout << "Bit depth: " + juce::String(device->getCurrentBitDepth())
-           << "\n";
-      cout << "Input channel names: " +
-                  device->getInputChannelNames().joinIntoString(", ")
-           << "\n";
-      cout << "Active input channels: " +
-                  getListOfActiveBits(device->getActiveInputChannels())
-           << "\n";
-      cout << "Output channel names: " +
-                  device->getOutputChannelNames().joinIntoString(", ")
-           << "\n";
-      cout << "Active output channels: " +
-                  getListOfActiveBits(device->getActiveOutputChannels())
-           << "\n";
-    } else {
-      cout << "No audio device open"
-           << "\n";
+      if (buffer->getReferenceCount() == 2) buffers.remove(i);
     }
   }
 
-  static juce::String getListOfActiveBits(const juce::BigInteger& b) {
-    juce::StringArray bits;
+  void checkForPathToOpen() {
+    juce::String pathToOpen;
+    pathToOpen.swapWith(chosenPath);
 
-    for (auto i = 0; i <= b.getHighestBit(); ++i)
-      if (b[i]) bits.add(juce::String(i));
+    if (pathToOpen.isNotEmpty()) {
+      juce::File file(pathToOpen);
+      std::unique_ptr<juce::AudioFormatReader> reader(
+          formatManager.createReaderFor(file));
 
-    return bits.joinIntoString(", ");
+      if (reader.get() != nullptr) {
+        auto duration = (float)reader->lengthInSamples / reader->sampleRate;
+
+        ReferenceCountedBuffer::Ptr newBuffer = new ReferenceCountedBuffer(
+            file.getFileName(), (int)reader->numChannels,
+            (int)reader->lengthInSamples);
+
+        reader->read(newBuffer->getAudioSampleBuffer(), 0,
+                     (int)reader->lengthInSamples, 0, true, true);
+        currentBuffer = newBuffer;
+        buffers.add(newBuffer);
+      }
+    }
   }
 
   //==========================================================================
+
   juce::AudioFormatManager formatManager;
-  juce::AudioSampleBuffer fileBuffer;
-  int position;
+  juce::ReferenceCountedArray<ReferenceCountedBuffer> buffers;
+
+  ReferenceCountedBuffer::Ptr currentBuffer;
+  juce::String chosenPath;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZynthiLoopsComponent)
 };
