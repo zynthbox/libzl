@@ -17,7 +17,7 @@
 
 using namespace std;
 
-ZynthiLoopsComponent *zlComponent;
+ZynthiLoopsComponent* zlComponent;
 
 void playWav() {
   zlComponent->play();
