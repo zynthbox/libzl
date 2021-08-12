@@ -51,14 +51,14 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ReferenceCountedBuffer)
   };
 
-  ZynthiLoopsComponent() : Thread("Background Thread") {
+  ZynthiLoopsComponent(const char* filepath) : Thread("Background Thread") {
     deviceManager.initialiseWithDefaultDevices(2, 2);
     formatManager.registerBasicFormats();
     setAudioChannels(0, 2);
 
     startThread();
 
-    chosenPath = "/zynthian/zynthian-my-data/capture/c4.wav";
+    chosenPath = filepath;
     notify();
   }
 

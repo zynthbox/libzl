@@ -13,7 +13,7 @@
 #include "ZynthiLoopsComponent.h"
 
 extern "C" {
-ZynthiLoopsComponent* ZynthiLoopsComponent_new();
+ZynthiLoopsComponent* ZynthiLoopsComponent_new(const char* filepath);
 void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c);
 void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c);
 float ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c);

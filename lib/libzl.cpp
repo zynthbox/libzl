@@ -19,8 +19,8 @@ using namespace std;
 
 juce::ScopedJuceInitialiser_GUI platform;
 
-ZynthiLoopsComponent* ZynthiLoopsComponent_new() {
-  return new ZynthiLoopsComponent();
+ZynthiLoopsComponent* ZynthiLoopsComponent_new(const char* filepath) {
+  return new ZynthiLoopsComponent(filepath);
 }
 
 void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c) { c->play(); }
