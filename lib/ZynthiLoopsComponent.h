@@ -15,6 +15,7 @@
 #include "JUCEHeaders.h"
 
 using namespace std;
+using namespace juce;
 
 //==============================================================================
 class ZynthiLoopsComponent : public juce::AudioAppComponent,
@@ -119,6 +120,8 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
   void stop() { currentBuffer = nullptr; }
 
+  int getDuration() { return duration; }
+
  private:
   void run() override {
     while (!threadShouldExit()) {
@@ -146,7 +149,13 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
           formatManager.createReaderFor(file));
 
       if (reader.get() != nullptr) {
-        auto duration = (float)reader->lengthInSamples / reader->sampleRate;
+        for (String key : reader->metadataValues.getAllKeys()) {
+          cout << "Key: " + key + ", Value: " +
+                      reader->metadataValues.getValue(key, "unknown")
+               << "\n";
+        }
+
+        duration = (float)reader->lengthInSamples / reader->sampleRate;
 
         ReferenceCountedBuffer::Ptr newBuffer = new ReferenceCountedBuffer(
             file.getFileName(), (int)reader->numChannels,
@@ -167,6 +176,7 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
   ReferenceCountedBuffer::Ptr currentBuffer;
   juce::String chosenPath;
+  int duration = -1;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZynthiLoopsComponent)
 };

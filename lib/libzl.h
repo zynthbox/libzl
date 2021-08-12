@@ -16,4 +16,5 @@ extern "C" {
 ZynthiLoopsComponent* ZynthiLoopsComponent_new();
 void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c);
 void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c);
+int ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c);
 }

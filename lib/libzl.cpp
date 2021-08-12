@@ -26,3 +26,7 @@ ZynthiLoopsComponent* ZynthiLoopsComponent_new() {
 void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c) { c->play(); }
 
 void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c) { c->stop(); }
+
+int ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c) {
+  return c->getDuration();
+}
