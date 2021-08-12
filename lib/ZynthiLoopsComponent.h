@@ -57,9 +57,7 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
     startThread();
 
-    auto file = juce::File("/zynthian/zynthian-my-data/capture/c4.wav");
-    auto path = file.getFullPathName();
-    chosenPath.swapWith(path);
+    chosenPath = "/zynthian/zynthian-my-data/capture/c4.wav";
     notify();
   }
 
@@ -120,7 +118,11 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
   void stop() { currentBuffer = nullptr; }
 
-  int getDuration() { return duration; }
+  float getDuration() { return duration; }
+
+  const char* getFileName() {
+    return static_cast<const char*>(fileName.toUTF8());
+  }
 
  private:
   void run() override {
@@ -147,6 +149,7 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
         }
 
         duration = (float)reader->lengthInSamples / reader->sampleRate;
+        fileName = file.getFileName();
 
         buffer = new ReferenceCountedBuffer(file.getFileName(),
                                             (int)reader->numChannels,
@@ -165,7 +168,8 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
   ReferenceCountedBuffer::Ptr currentBuffer;
   juce::String chosenPath;
-  int duration = -1;
+  float duration = -1;
+  juce::String fileName;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZynthiLoopsComponent)
 };

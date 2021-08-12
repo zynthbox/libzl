@@ -27,6 +27,10 @@ void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c) { c->play(); }
 
 void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c) { c->stop(); }
 
-int ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c) {
+float ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c) {
   return c->getDuration();
+}
+
+const char* ZynthiLoopsComponent_getFileName(ZynthiLoopsComponent* c) {
+  return c->getFileName();
 }
