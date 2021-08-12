@@ -132,6 +132,8 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
     if (startPositionInSecondsChanged) {
       buffer->startPosition = sampleRate * startPositionInSeconds;
       buffer->position = buffer->startPosition;
+
+      startPositionInSecondsChanged = false;
     }
 
     currentBuffer = buffer;
