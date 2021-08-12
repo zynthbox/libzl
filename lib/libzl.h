@@ -20,4 +20,6 @@ float ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c);
 const char* ZynthiLoopsComponent_getFileName(ZynthiLoopsComponent* c);
 void ZynthiLoopsComponent_setStartPosition(ZynthiLoopsComponent* c,
                                            float startPositionInSeconds);
+void ZynthiLoopsComponent_setLength(ZynthiLoopsComponent* c,
+                                    float lengthInSeconds);
 }

@@ -39,3 +39,8 @@ void ZynthiLoopsComponent_setStartPosition(ZynthiLoopsComponent* c,
                                            float startPositionInSeconds) {
   c->setStartPosition(startPositionInSeconds);
 }
+
+void ZynthiLoopsComponent_setLength(ZynthiLoopsComponent* c,
+                                    float lengthInSeconds) {
+  c->setLength(lengthInSeconds);
+}

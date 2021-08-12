@@ -42,6 +42,7 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
     juce::AudioSampleBuffer* getAudioSampleBuffer() { return &buffer; }
 
     int startPosition = 0;
+    int endPosition = -1;
     int position = startPosition;
 
    private:
@@ -72,6 +73,11 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
     this->startPositionInSecondsChanged = true;
   }
 
+  void setLength(float lengthInSeconds) {
+    this->lengthInSeconds = lengthInSeconds;
+    this->lengthInSecondsChanged = true;
+  }
+
   void prepareToPlay(int, double) override {}
 
   void getNextAudioBlock(
@@ -87,6 +93,15 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
       retainedCurrentBuffer->startPosition =
           sampleRate * startPositionInSeconds;
       startPositionInSecondsChanged = false;
+    }
+
+    if (lengthInSecondsChanged) {
+      if (lengthInSeconds == -1) {
+        retainedCurrentBuffer->endPosition = totalLengthInSamples;
+      } else {
+        retainedCurrentBuffer->endPosition =
+            retainedCurrentBuffer->startPosition + sampleRate * lengthInSeconds;
+      }
     }
 
     auto* currentAudioSampleBuffer =
@@ -116,7 +131,14 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
       outputSamplesOffset += samplesThisTime;
       position += samplesThisTime;
 
-      if (position == currentAudioSampleBuffer->getNumSamples()) {
+      int endPosition;
+
+      if (retainedCurrentBuffer->endPosition == -1)
+        endPosition = currentAudioSampleBuffer->getNumSamples();
+      else
+        endPosition = retainedCurrentBuffer->endPosition;
+
+      if (position >= endPosition) {
         position = retainedCurrentBuffer->startPosition;
       }
     }
@@ -135,6 +157,19 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
       startPositionInSecondsChanged = false;
     }
+
+    if (lengthInSecondsChanged) {
+      if (lengthInSeconds == -1) {
+        buffer->endPosition = totalLengthInSamples;
+      } else {
+        buffer->endPosition =
+            buffer->startPosition + sampleRate * lengthInSeconds;
+      }
+    }
+
+    cerr << "Total : " << totalLengthInSamples
+         << ", Start : " << buffer->startPosition
+         << ", End : " << buffer->endPosition << endl;
 
     currentBuffer = buffer;
   }
@@ -166,13 +201,14 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
       if (reader.get() != nullptr) {
         for (String key : reader->metadataValues.getAllKeys()) {
-          cout << "Key: " + key + ", Value: " +
+          cerr << "Key: " + key + ", Value: " +
                       reader->metadataValues.getValue(key, "unknown")
                << "\n";
         }
 
         sampleRate = reader->sampleRate;
         duration = (float)reader->lengthInSamples / reader->sampleRate;
+        totalLengthInSamples = (int)reader->lengthInSamples;
         fileName = file.getFileName();
 
         buffer = new ReferenceCountedBuffer(file.getFileName(),
@@ -181,6 +217,13 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
         buffer->startPosition = sampleRate * startPositionInSeconds;
         buffer->position = buffer->startPosition;
+
+        if (lengthInSeconds == -1) {
+          buffer->endPosition = totalLengthInSamples;
+        } else {
+          buffer->endPosition =
+              buffer->startPosition + sampleRate * lengthInSeconds;
+        }
 
         reader->read(buffer->getAudioSampleBuffer(), 0,
                      (int)reader->lengthInSamples, 0, true, true);
@@ -195,11 +238,17 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
   ReferenceCountedBuffer::Ptr currentBuffer;
   juce::String chosenPath;
+
   float duration = -1;
+  int totalLengthInSamples;
   double sampleRate;
   juce::String fileName;
+
   float startPositionInSeconds = 0;
   bool startPositionInSecondsChanged = true;
+
+  float lengthInSeconds = -1;
+  bool lengthInSecondsChanged = false;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZynthiLoopsComponent)
 };
