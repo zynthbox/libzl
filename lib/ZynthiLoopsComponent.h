@@ -174,7 +174,10 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
     currentBuffer = buffer;
   }
 
-  void stop() { currentBuffer = nullptr; }
+  void stop() {
+    currentBuffer = nullptr;
+    buffer->position = buffer->startPosition;
+  }
 
   float getDuration() { return duration; }
 
