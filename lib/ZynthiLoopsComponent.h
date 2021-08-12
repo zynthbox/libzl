@@ -56,6 +56,11 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
     setAudioChannels(0, 2);
 
     startThread();
+
+    auto file = juce::File("/zynthian/zynthian-my-data/capture/c4.wav");
+    auto path = file.getFullPathName();
+    chosenPath.swapWith(path);
+    notify();
   }
 
   ~ZynthiLoopsComponent() override {
@@ -111,12 +116,7 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
   void resized() override {}
 
-  void play() {
-    auto file = juce::File("/zynthian/zynthian-my-data/capture/c4.wav");
-    auto path = file.getFullPathName();
-    chosenPath.swapWith(path);
-    notify();
-  }
+  void play() { currentBuffer = buffer; }
 
   void stop() { currentBuffer = nullptr; }
 
@@ -126,16 +126,7 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
   void run() override {
     while (!threadShouldExit()) {
       checkForPathToOpen();
-      checkForBuffersToFree();
       wait(500);
-    }
-  }
-
-  void checkForBuffersToFree() {
-    for (auto i = buffers.size(); --i >= 0;) {
-      ReferenceCountedBuffer::Ptr buffer(buffers.getUnchecked(i));
-
-      if (buffer->getReferenceCount() == 2) buffers.remove(i);
     }
   }
 
@@ -157,14 +148,12 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
         duration = (float)reader->lengthInSamples / reader->sampleRate;
 
-        ReferenceCountedBuffer::Ptr newBuffer = new ReferenceCountedBuffer(
-            file.getFileName(), (int)reader->numChannels,
-            (int)reader->lengthInSamples);
+        buffer = new ReferenceCountedBuffer(file.getFileName(),
+                                            (int)reader->numChannels,
+                                            (int)reader->lengthInSamples);
 
-        reader->read(newBuffer->getAudioSampleBuffer(), 0,
+        reader->read(buffer->getAudioSampleBuffer(), 0,
                      (int)reader->lengthInSamples, 0, true, true);
-        currentBuffer = newBuffer;
-        buffers.add(newBuffer);
       }
     }
   }
@@ -172,7 +161,7 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
   //==========================================================================
 
   juce::AudioFormatManager formatManager;
-  juce::ReferenceCountedArray<ReferenceCountedBuffer> buffers;
+  ReferenceCountedBuffer::Ptr buffer;
 
   ReferenceCountedBuffer::Ptr currentBuffer;
   juce::String chosenPath;
