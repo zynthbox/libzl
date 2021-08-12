@@ -34,3 +34,8 @@ float ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c) {
 const char* ZynthiLoopsComponent_getFileName(ZynthiLoopsComponent* c) {
   return c->getFileName();
 }
+
+void ZynthiLoopsComponent_setStartPosition(ZynthiLoopsComponent* c,
+                                           float startPositionInSeconds) {
+  c->setStartPosition(startPositionInSeconds);
+}
