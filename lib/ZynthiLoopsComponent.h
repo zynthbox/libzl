@@ -141,11 +141,11 @@ class ZynthiLoopsComponent : public juce::AudioSource, private juce::Thread {
 
       if (position >= endPosition) {
         // Looping logic
-        // position = retainedCurrentBuffer->startPosition;
+        position = retainedCurrentBuffer->startPosition;
 
         // Stop at end logic
-        position = retainedCurrentBuffer->endPosition;
-        break;
+        //        position = retainedCurrentBuffer->endPosition;
+        //        break;
       }
     }
 
