@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-set(CMAKE_BUILD_TYPE Debug)
-
 project(libzl VERSION 0.1.0)
-
-# TODO : Check if works without the following flags as it is already defined in JUCE MODULE STATIC LIBRARY
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DJUCE_ALSA=0 -DJUCE_JACK=1")
 
 add_subdirectory(JUCE)
 
@@ -19,14 +14,8 @@ target_link_libraries(juce_plugin_modules
         juce::juce_audio_basics
         juce::juce_audio_devices
         juce::juce_audio_formats
-        juce::juce_audio_processors
-        juce::juce_audio_utils  
         juce::juce_core
-        juce::juce_data_structures
         juce::juce_events
-        juce::juce_graphics
-        juce::juce_gui_basics
-        juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
