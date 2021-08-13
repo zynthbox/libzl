@@ -24,7 +24,7 @@ void ZynthiLoopsComponent_setLength(ZynthiLoopsComponent* c,
                                     float lengthInSeconds);
 void testLoop();
 
-void startTimer();
+void startTimer(int interval);
 void stopTimer();
 void registerTimerCallback(void (*functionPtr)());
 }

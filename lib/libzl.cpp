@@ -62,6 +62,6 @@ void registerTimerCallback(void (*functionPtr)()) {
   syncTimer.setCallback(functionPtr);
 }
 
-void startTimer() { syncTimer.startTimer(2000); }
+void startTimer(int interval) { syncTimer.startTimer(interval); }
 
 void stopTimer() { syncTimer.stopTimer(); }
