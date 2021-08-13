@@ -12,5 +12,5 @@ except Exception as e:
 print("Library Object :")
 print(libzl)
 
-print("Creating Clip Object :")
-clip = libzl.ZynthiLoopsComponent_new()
+print("Testing Loop :")
+clip = libzl.testLoop

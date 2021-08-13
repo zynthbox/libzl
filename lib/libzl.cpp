@@ -13,11 +13,12 @@
 #include <iostream>
 
 #include "JUCEHeaders.h"
+#include "SyncTimer.h"
 #include "ZynthiLoopsComponent.h"
 
 using namespace std;
 
-juce::ScopedJuceInitialiser_GUI platform;
+SyncTimer syncTimer(120);
 
 ZynthiLoopsComponent* ZynthiLoopsComponent_new(const char* filepath) {
   return new ZynthiLoopsComponent(filepath);
@@ -44,3 +45,23 @@ void ZynthiLoopsComponent_setLength(ZynthiLoopsComponent* c,
                                     float lengthInSeconds) {
   c->setLength(lengthInSeconds);
 }
+
+void testLoop() {
+  ZynthiLoopsComponent* clip1 =
+      new ZynthiLoopsComponent("/zynthian/zynthian-my-data/capture/main.wav");
+  clip1->setLength(6);
+
+  ZynthiLoopsComponent* clip2 =
+      new ZynthiLoopsComponent("/zynthian/zynthian-my-data/capture/drums.wav");
+
+  clip1->play();
+  clip2->play();
+}
+
+void registerTimerCallback(void (*functionPtr)()) {
+  syncTimer.setCallback(functionPtr);
+}
+
+void startTimer() { syncTimer.startTimer(2000); }
+
+void stopTimer() { syncTimer.stopTimer(); }

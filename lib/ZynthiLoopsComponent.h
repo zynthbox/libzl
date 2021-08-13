@@ -18,8 +18,7 @@ using namespace std;
 using namespace juce;
 
 //==============================================================================
-class ZynthiLoopsComponent : public juce::AudioAppComponent,
-                             private juce::Thread {
+class ZynthiLoopsComponent : public juce::AudioSource, private juce::Thread {
  public:
   class ReferenceCountedBuffer : public juce::ReferenceCountedObject {
    public:
@@ -61,6 +60,8 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
     chosenPath = filepath;
     notify();
+
+    cerr << "Component thread started for file: " << filepath;
   }
 
   ~ZynthiLoopsComponent() override {
@@ -139,7 +140,12 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
         endPosition = retainedCurrentBuffer->endPosition;
 
       if (position >= endPosition) {
-        position = retainedCurrentBuffer->startPosition;
+        // Looping logic
+        // position = retainedCurrentBuffer->startPosition;
+
+        // Stop at end logic
+        position = retainedCurrentBuffer->endPosition;
+        break;
       }
     }
 
@@ -148,9 +154,9 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
 
   void releaseResources() override { currentBuffer = nullptr; }
 
-  void resized() override {}
-
   void play() {
+    cerr << buffer;
+
     if (startPositionInSecondsChanged) {
       buffer->startPosition = sampleRate * startPositionInSeconds;
       buffer->position = buffer->startPosition;
@@ -184,6 +190,32 @@ class ZynthiLoopsComponent : public juce::AudioAppComponent,
   const char* getFileName() {
     return static_cast<const char*>(fileName.toUTF8());
   }
+
+  //////////////
+
+  void setAudioChannels(int numInputChannels, int numOutputChannels,
+                        const XmlElement* const xml = nullptr) {
+    String audioError;
+
+    audioError = deviceManager.initialise(numInputChannels, numOutputChannels,
+                                          xml, true);
+
+    jassert(audioError.isEmpty());
+
+    deviceManager.addAudioCallback(&audioSourcePlayer);
+    audioSourcePlayer.setSource(this);
+  }
+
+  void shutdownAudio() {
+    audioSourcePlayer.setSource(nullptr);
+    deviceManager.removeAudioCallback(&audioSourcePlayer);
+
+    deviceManager.closeAudioDevice();
+  }
+
+  AudioDeviceManager deviceManager;
+  AudioSourcePlayer audioSourcePlayer;
+  //////////////
 
  private:
   void run() override {

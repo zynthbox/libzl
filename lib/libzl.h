@@ -22,4 +22,9 @@ void ZynthiLoopsComponent_setStartPosition(ZynthiLoopsComponent* c,
                                            float startPositionInSeconds);
 void ZynthiLoopsComponent_setLength(ZynthiLoopsComponent* c,
                                     float lengthInSeconds);
+void testLoop();
+
+void startTimer();
+void stopTimer();
+void registerTimerCallback(void (*functionPtr)());
 }
