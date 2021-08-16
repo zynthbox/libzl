@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.15)
 
 project(libzl VERSION 0.1.0)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mcpu=native")
 
-add_subdirectory(JUCE)
+add_subdirectory(tracktion_engine/modules/juce)
+add_subdirectory(tracktion_engine/modules)
 
 ################################
 #  JUCE MODULE STATIC LIBRARY  #
@@ -11,11 +15,15 @@ add_library(juce_plugin_modules STATIC)
 
 target_link_libraries(juce_plugin_modules
     PRIVATE
+        juce::juce_core
+        juce::juce_events
         juce::juce_audio_basics
         juce::juce_audio_devices
         juce::juce_audio_formats
-        juce::juce_core
-        juce::juce_events
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        tracktion::tracktion_engine
+        tracktion::tracktion_graph
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

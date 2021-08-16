@@ -12,5 +12,9 @@ except Exception as e:
 print("Library Object :")
 print(libzl)
 
-print("Testing Loop :")
-clip = libzl.testLoop
+libzl.ClipAudioSource_new.restype = ctypes.c_void_p
+libzl.ClipAudioSource_new.argtypes = [ctypes.c_char_p]
+
+clip = libzl.ClipAudioSource_new(b"/zynthian/zynthian-my-data/capture/je-kota-din_steinway.ogg")
+
+libzl.ClipAudioSource_play(clip)
