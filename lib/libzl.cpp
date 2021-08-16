@@ -18,7 +18,6 @@
 
 using namespace std;
 
-juce::ScopedJuceInitialiser_GUI platform;
 SyncTimer syncTimer(120);
 
 //////////////
