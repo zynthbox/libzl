@@ -1,16 +1,16 @@
 /*
   ==============================================================================
 
-    ZynthiLoopsComponent.cpp
+    ClipAudioSource.cpp
     Created: 9 Aug 2021 7:44:30pm
     Author:  root
 
   ==============================================================================
 */
 
-#include "ZynthiLoopsComponent.h"
+#include "ClipAudioSource.h"
 
-ZynthiLoopsComponent::ZynthiLoopsComponent(const char* filepath)
+ClipAudioSource::ClipAudioSource(const char* filepath)
     : Thread("Background Thread") {
   deviceManager.initialiseWithDefaultDevices(2, 2);
   formatManager.registerBasicFormats();
@@ -24,24 +24,24 @@ ZynthiLoopsComponent::ZynthiLoopsComponent(const char* filepath)
   cerr << "Component thread started for file: " << filepath;
 }
 
-ZynthiLoopsComponent::~ZynthiLoopsComponent() {
+ClipAudioSource::~ClipAudioSource() {
   stopThread(4000);
   shutdownAudio();
 }
 
-void ZynthiLoopsComponent::setStartPosition(float startPositionInSeconds) {
+void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   this->startPositionInSeconds = startPositionInSeconds;
   this->startPositionInSecondsChanged = true;
 }
 
-void ZynthiLoopsComponent::setLength(float lengthInSeconds) {
+void ClipAudioSource::setLength(float lengthInSeconds) {
   this->lengthInSeconds = lengthInSeconds;
   this->lengthInSecondsChanged = true;
 }
 
-void ZynthiLoopsComponent::prepareToPlay(int, double) {}
+void ClipAudioSource::prepareToPlay(int, double) {}
 
-void ZynthiLoopsComponent::getNextAudioBlock(
+void ClipAudioSource::getNextAudioBlock(
     const AudioSourceChannelInfo& bufferToFill) {
   ReferenceCountedBuffer::Ptr retainedCurrentBuffer(currentBuffer);
 
@@ -111,9 +111,9 @@ void ZynthiLoopsComponent::getNextAudioBlock(
   retainedCurrentBuffer->position = position;
 }
 
-void ZynthiLoopsComponent::releaseResources() { currentBuffer = nullptr; }
+void ClipAudioSource::releaseResources() { currentBuffer = nullptr; }
 
-void ZynthiLoopsComponent::play() {
+void ClipAudioSource::play() {
   cerr << buffer;
 
   if (startPositionInSecondsChanged) {
@@ -139,20 +139,20 @@ void ZynthiLoopsComponent::play() {
   currentBuffer = buffer;
 }
 
-void ZynthiLoopsComponent::stop() {
+void ClipAudioSource::stop() {
   currentBuffer = nullptr;
   buffer->position = buffer->startPosition;
 }
 
-float ZynthiLoopsComponent::getDuration() { return duration; }
+float ClipAudioSource::getDuration() { return duration; }
 
-const char* ZynthiLoopsComponent::getFileName() {
+const char* ClipAudioSource::getFileName() {
   return static_cast<const char*>(fileName.toUTF8());
 }
 
-void ZynthiLoopsComponent::setAudioChannels(int numInputChannels,
-                                            int numOutputChannels,
-                                            const XmlElement* const xml) {
+void ClipAudioSource::setAudioChannels(int numInputChannels,
+                                       int numOutputChannels,
+                                       const XmlElement* const xml) {
   String audioError;
 
   audioError =
@@ -164,21 +164,21 @@ void ZynthiLoopsComponent::setAudioChannels(int numInputChannels,
   audioSourcePlayer.setSource(this);
 }
 
-void ZynthiLoopsComponent::shutdownAudio() {
+void ClipAudioSource::shutdownAudio() {
   audioSourcePlayer.setSource(nullptr);
   deviceManager.removeAudioCallback(&audioSourcePlayer);
 
   deviceManager.closeAudioDevice();
 }
 
-void ZynthiLoopsComponent::run() {
+void ClipAudioSource::run() {
   while (!threadShouldExit()) {
     checkForPathToOpen();
     wait(500);
   }
 }
 
-void ZynthiLoopsComponent::checkForPathToOpen() {
+void ClipAudioSource::checkForPathToOpen() {
   juce::String pathToOpen;
   pathToOpen.swapWith(chosenPath);
 
@@ -219,7 +219,7 @@ void ZynthiLoopsComponent::checkForPathToOpen() {
   }
 }
 
-ZynthiLoopsComponent::ReferenceCountedBuffer::ReferenceCountedBuffer(
+ClipAudioSource::ReferenceCountedBuffer::ReferenceCountedBuffer(
     const String& nameToUse, int numChannels, int numSamples)
     : name(nameToUse), buffer(numChannels, numSamples) {
   cout << juce::String("Buffer named '") + name +
@@ -228,12 +228,12 @@ ZynthiLoopsComponent::ReferenceCountedBuffer::ReferenceCountedBuffer(
        << "\n";
 }
 
-ZynthiLoopsComponent::ReferenceCountedBuffer::~ReferenceCountedBuffer() {
+ClipAudioSource::ReferenceCountedBuffer::~ReferenceCountedBuffer() {
   cout << juce::String("Buffer named '") + name + "' destroyed"
        << "\n";
 }
 
 AudioSampleBuffer*
-ZynthiLoopsComponent::ReferenceCountedBuffer::getAudioSampleBuffer() {
+ClipAudioSource::ReferenceCountedBuffer::getAudioSampleBuffer() {
   return &buffer;
 }

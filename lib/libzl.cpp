@@ -12,51 +12,44 @@
 
 #include <iostream>
 
+#include "ClipAudioSource.h"
 #include "JUCEHeaders.h"
 #include "SyncTimer.h"
-#include "ZynthiLoopsComponent.h"
 
 using namespace std;
 
 SyncTimer syncTimer(120);
 
-ZynthiLoopsComponent* ZynthiLoopsComponent_new(const char* filepath) {
-  return new ZynthiLoopsComponent(filepath);
+//////////////
+/// ClipAudioSource API Bridge
+//////////////
+ClipAudioSource* ClipAudioSource_new(const char* filepath) {
+  return new ClipAudioSource(filepath);
 }
 
-void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c) { c->play(); }
+void ClipAudioSource_play(ClipAudioSource* c) { c->play(); }
 
-void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c) { c->stop(); }
+void ClipAudioSource_stop(ClipAudioSource* c) { c->stop(); }
 
-float ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c) {
+float ClipAudioSource_getDuration(ClipAudioSource* c) {
   return c->getDuration();
 }
 
-const char* ZynthiLoopsComponent_getFileName(ZynthiLoopsComponent* c) {
+const char* ClipAudioSource_getFileName(ClipAudioSource* c) {
   return c->getFileName();
 }
 
-void ZynthiLoopsComponent_setStartPosition(ZynthiLoopsComponent* c,
-                                           float startPositionInSeconds) {
+void ClipAudioSource_setStartPosition(ClipAudioSource* c,
+                                      float startPositionInSeconds) {
   c->setStartPosition(startPositionInSeconds);
 }
 
-void ZynthiLoopsComponent_setLength(ZynthiLoopsComponent* c,
-                                    float lengthInSeconds) {
+void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
   c->setLength(lengthInSeconds);
 }
-
-void testLoop() {
-  ZynthiLoopsComponent* clip1 =
-      new ZynthiLoopsComponent("/zynthian/zynthian-my-data/capture/main.wav");
-  clip1->setLength(6);
-
-  ZynthiLoopsComponent* clip2 =
-      new ZynthiLoopsComponent("/zynthian/zynthian-my-data/capture/drums.wav");
-
-  clip1->play();
-  clip2->play();
-}
+//////////////
+/// END ClipAudioSource API Bridge
+//////////////
 
 void registerTimerCallback(void (*functionPtr)()) {
   syncTimer.setCallback(functionPtr);

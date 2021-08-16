@@ -10,19 +10,24 @@
 
 #pragma once
 
-#include "ZynthiLoopsComponent.h"
+#include "ClipAudioSource.h"
 
 extern "C" {
-ZynthiLoopsComponent* ZynthiLoopsComponent_new(const char* filepath);
-void ZynthiLoopsComponent_play(ZynthiLoopsComponent* c);
-void ZynthiLoopsComponent_stop(ZynthiLoopsComponent* c);
-float ZynthiLoopsComponent_getDuration(ZynthiLoopsComponent* c);
-const char* ZynthiLoopsComponent_getFileName(ZynthiLoopsComponent* c);
-void ZynthiLoopsComponent_setStartPosition(ZynthiLoopsComponent* c,
-                                           float startPositionInSeconds);
-void ZynthiLoopsComponent_setLength(ZynthiLoopsComponent* c,
-                                    float lengthInSeconds);
-void testLoop();
+
+//////////////
+/// ClipAudioSource API Bridge
+//////////////
+ClipAudioSource* ClipAudioSource_new(const char* filepath);
+void ClipAudioSource_play(ClipAudioSource* c);
+void ClipAudioSource_stop(ClipAudioSource* c);
+float ClipAudioSource_getDuration(ClipAudioSource* c);
+const char* ClipAudioSource_getFileName(ClipAudioSource* c);
+void ClipAudioSource_setStartPosition(ClipAudioSource* c,
+                                      float startPositionInSeconds);
+void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds);
+//////////////
+/// END ClipAudioSource API Bridge
+//////////////
 
 void startTimer(int interval);
 void stopTimer();

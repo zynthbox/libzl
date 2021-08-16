@@ -57,7 +57,7 @@ set_target_properties(libzl PROPERTIES PREFIX "")
 target_sources(libzl
     PRIVATE
         lib/libzl.cpp
-        lib/ZynthiLoopsComponent.cpp
+        lib/ClipAudioSource.cpp
         lib/SyncTimer.cpp)
 
 target_link_libraries(libzl

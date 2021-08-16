@@ -1,7 +1,7 @@
 #pragma once
 
 #include "JUCEHeaders.h"
-#include "ZynthiLoopsComponent.h"
+#include "ClipAudioSource.h"
 
 using namespace std;
 using namespace juce;

@@ -1,7 +1,7 @@
 /*
   ==============================================================================
 
-    ZynthiLoopsComponent.h
+    ClipAudioSource.h
     Created: 9 Aug 2021 6:25:01pm
     Author:  Anupam Basak <anupam.basak27@gmail.com>
 
@@ -18,7 +18,7 @@ using namespace std;
 using namespace juce;
 
 //==============================================================================
-class ZynthiLoopsComponent : public juce::AudioSource, private juce::Thread {
+class ClipAudioSource : public juce::AudioSource, private juce::Thread {
  public:
   class ReferenceCountedBuffer : public juce::ReferenceCountedObject {
    public:
@@ -41,8 +41,8 @@ class ZynthiLoopsComponent : public juce::AudioSource, private juce::Thread {
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ReferenceCountedBuffer)
   };
 
-  ZynthiLoopsComponent(const char* filepath);
-  ~ZynthiLoopsComponent() override;
+  ClipAudioSource(const char* filepath);
+  ~ClipAudioSource() override;
 
   void setStartPosition(float startPositionInSeconds);
   void setLength(float lengthInSeconds);
@@ -86,5 +86,5 @@ class ZynthiLoopsComponent : public juce::AudioSource, private juce::Thread {
   float lengthInSeconds = -1;
   bool lengthInSecondsChanged = false;
 
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZynthiLoopsComponent)
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ClipAudioSource)
 };
