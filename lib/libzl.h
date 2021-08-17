@@ -25,6 +25,7 @@ const char* ClipAudioSource_getFileName(ClipAudioSource* c);
 void ClipAudioSource_setStartPosition(ClipAudioSource* c,
                                       float startPositionInSeconds);
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds);
+void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange);
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////

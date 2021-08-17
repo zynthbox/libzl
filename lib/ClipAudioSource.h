@@ -32,16 +32,24 @@ class ClipAudioSource {
   void stop();
   float getDuration();
   const char* getFileName();
+  void setPitch(float pitchChange);
 
  private:
   te::Engine engine{"libzl"};
-  std::unique_ptr<te::Edit> edit;
+  te::Edit edit{engine, te::createEmptyEdit(engine), te::Edit::forEditing,
+                nullptr, 0};
+  te::TransportControl& transport{edit.getTransport()};
+  juce::File wavFile;
 
   juce::String chosenPath;
   juce::String fileName;
 
   float startPositionInSeconds = 0;
   float lengthInSeconds = -1;
+  double pitchChange = 120.0;
+
+  te::WaveAudioClip::Ptr getClip();
+  void updateTempoAndPitch();
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ClipAudioSource)
 };

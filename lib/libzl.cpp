@@ -47,6 +47,10 @@ void ClipAudioSource_setStartPosition(ClipAudioSource* c,
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
   c->setLength(lengthInSeconds);
 }
+
+void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
+  c->setPitch(pitchChange);
+}
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////

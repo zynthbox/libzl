@@ -20,19 +20,28 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
 
   cerr << "Opening file : " << filepath << endl;
 
-  juce::File file(filepath);
+  wavFile = File(filepath);
   const File editFile("/tmp/editfile");
 
-  edit = te::createEmptyEdit(engine, editFile);
-  auto clip = EngineHelpers::loadAudioFileAsClip(*edit, file);
-  auto& transport = edit->getTransport();
+  auto clip = EngineHelpers::loadAudioFileAsClip(edit, wavFile);
+  //  auto& transport = edit.getTransport();
 
-  this->fileName = file.getFileName();
-  this->lengthInSeconds = edit->getLength();
+  clip->setAutoTempo(false);
+  clip->setAutoPitch(false);
+  clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
 
-  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-      startPositionInSeconds, lengthInSeconds));
-  transport.looping = true;
+  this->fileName = wavFile.getFileName();
+  this->lengthInSeconds = edit.getLength();
+
+  //  clip->setSpeedRatio(2.0);
+
+  EngineHelpers::loopAroundClip(*clip);
+
+  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+  //      startPositionInSeconds, lengthInSeconds));
+  //  transport.looping = true;
+
+  //  updateTempoAndPitch();
 }
 
 ClipAudioSource::~ClipAudioSource() {}
@@ -40,35 +49,87 @@ ClipAudioSource::~ClipAudioSource() {}
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   this->startPositionInSeconds = startPositionInSeconds;
 
-  auto& transport = edit->getTransport();
-  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-      startPositionInSeconds, lengthInSeconds));
+  //  auto& transport = edit->getTransport();
+  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+  //      startPositionInSeconds, lengthInSeconds));
 
-  if (transport.isPlaying()) {
-    stop();
-    play();
-  }
+  //  if (transport.isPlaying()) {
+  //    stop();
+  //    play();
+  //  }
 }
 
 void ClipAudioSource::setLength(float lengthInSeconds) {
   this->lengthInSeconds = lengthInSeconds;
 
-  auto& transport = edit->getTransport();
-  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-      startPositionInSeconds, lengthInSeconds));
+  //  auto& transport = edit->getTransport();
+  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+  //      startPositionInSeconds, lengthInSeconds));
 
-  if (transport.isPlaying()) {
-    stop();
-    play();
-  }
+  //  if (transport.isPlaying()) {
+  //    stop();
+  //    play();
+  //  }
 }
 
-float ClipAudioSource::getDuration() { return edit->getLength(); }
+float ClipAudioSource::getDuration() { return edit.getLength(); }
 
 const char* ClipAudioSource::getFileName() {
   return static_cast<const char*>(fileName.toUTF8());
 }
 
-void ClipAudioSource::play() { edit->getTransport().play(false); }
+void ClipAudioSource::setPitch(float pitchChange) {
+  this->pitchChange = pitchChange;
+  updateTempoAndPitch();
+}
 
-void ClipAudioSource::stop() { edit->getTransport().stop(false, false); }
+te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
+  if (auto track = EngineHelpers::getOrInsertAudioTrackAt(edit, 0))
+    if (auto clip = dynamic_cast<te::WaveAudioClip*>(track->getClips()[0]))
+      return *clip;
+
+  return {};
+}
+
+void ClipAudioSource::updateTempoAndPitch() {
+  if (auto clip = getClip()) {
+    const auto audioFileInfo = te::AudioFile(engine, wavFile).getInfo();
+    const double baseTempo = 120.0;
+
+    // First update the tempo based on the ratio between the root tempo and
+    // tempo slider value
+    if (baseTempo > 0.0) {
+      cerr << "Setting tempo" << endl;
+
+      const double ratio = (double)pitchChange / baseTempo;
+
+      clip->setSpeedRatio(1.8);
+      clip->setLength(
+          audioFileInfo.getLengthInSeconds() / clip->getSpeedRatio(), true);
+
+      cerr << "Speed ratio : " << ratio << endl;
+      cerr << "Length : "
+           << audioFileInfo.getLengthInSeconds() / clip->getSpeedRatio()
+           << endl;
+    }
+
+    //    cerr << "Setting Pitch : " << pitchChange << endl;
+    //    clip->setPitchChange(12);
+
+    EngineHelpers::loopAroundClip(*clip);
+
+    //    auto& transport = edit->getTransport();
+
+    //    if (transport.isPlaying()) {
+    //      transport.stop(false, false);
+    //      transport.play(false);
+    //    }
+  }
+}
+
+void ClipAudioSource::play() {
+  updateTempoAndPitch();
+  //  edit->getTransport().play(false);
+}
+
+void ClipAudioSource::stop() { edit.getTransport().stop(false, false); }

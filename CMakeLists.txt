@@ -13,10 +13,15 @@ add_subdirectory(tracktion_engine/modules)
 ################################
 add_library(juce_plugin_modules STATIC)
 
+target_compile_features(juce_plugin_modules PRIVATE cxx_std_17)
+
 target_link_libraries(juce_plugin_modules
     PRIVATE
         juce::juce_core
         juce::juce_events
+        juce::juce_data_structures
+        juce::juce_dsp
+        juce::juce_osc
         juce::juce_audio_basics
         juce::juce_audio_devices
         juce::juce_audio_formats
@@ -24,17 +29,26 @@ target_link_libraries(juce_plugin_modules
         juce::juce_audio_utils
         tracktion::tracktion_engine
         tracktion::tracktion_graph
+        "-latomic"
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
 target_compile_definitions(juce_plugin_modules
-    PUBLIC
-        JUCE_WEB_BROWSER=0
+    PUBLIC    
+        JUCE_PLUGINHOST_AU=1
+        JUCE_PLUGINHOST_LADSPA=1
+        JUCE_PLUGINHOST_VST3=1
         JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        JUCER_ENABLE_GPL_MODE=1
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_STRICT_REFCOUNTEDPOINTER=1
         JUCE_JACK=1
         JUCE_ALSA=0
+        TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1
     INTERFACE
         $<TARGET_PROPERTY:juce_plugin_modules,COMPILE_DEFINITIONS>)
 
@@ -70,8 +84,24 @@ target_sources(libzl
 
 target_link_libraries(libzl
     PRIVATE      
-    juce_plugin_modules)
+        juce_plugin_modules
+        "-latomic")
   
+target_compile_definitions(libzl
+    PUBLIC
+        JUCE_PLUGINHOST_AU=1
+        JUCE_PLUGINHOST_LADSPA=1
+        JUCE_PLUGINHOST_VST3=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        JUCER_ENABLE_GPL_MODE=1
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_STRICT_REFCOUNTEDPOINTER=1
+        JUCE_JACK=1
+        JUCE_ALSA=0
+        TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1)
+
 target_include_directories(libzl
     INTERFACE
         $<TARGET_PROPERTY:libzl,INCLUDE_DIRECTORIES>)
