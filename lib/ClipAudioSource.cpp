@@ -10,10 +10,40 @@
 
 #include "ClipAudioSource.h"
 
-#include "../tracktion_engine/examples/common/Utilities.h"
+//#include "../tracktion_engine/examples/common/Utilities.h"
 #include "../tracktion_engine/modules/tracktion_engine/tracktion_engine.h"
 
 namespace te = tracktion_engine;
+namespace EngineHelpers {
+te::Project::Ptr createTempProject(te::Engine& engine);
+
+void removeAllClips(te::AudioTrack& track);
+
+te::AudioTrack* getOrInsertAudioTrackAt(te::Edit& edit, int index);
+
+te::WaveAudioClip::Ptr loadAudioFileAsClip(te::Edit& edit, const File& file);
+
+template <typename ClipType>
+typename ClipType::Ptr loopAroundClip(ClipType& clip);
+
+void togglePlay(te::Edit& edit);
+
+void toggleRecord(te::Edit& edit);
+
+void armTrack(te::AudioTrack& t, bool arm, int position = 0);
+
+bool isTrackArmed(te::AudioTrack& t, int position = 0);
+
+bool isInputMonitoringEnabled(te::AudioTrack& t, int position = 0);
+
+void enableInputMonitoring(te::AudioTrack& t, bool im, int position = 0);
+
+bool trackHasInput(te::AudioTrack& t, int position = 0);
+
+inline std::unique_ptr<juce::KnownPluginList::PluginTree> createPluginTree(
+    te::Engine& engine);
+
+}  // namespace EngineHelpers
 
 ClipAudioSource::ClipAudioSource(const char* filepath) {
   engine.getDeviceManager().initialise(0, 2);
@@ -101,20 +131,21 @@ void ClipAudioSource::updateTempoAndPitch() {
     if (baseTempo > 0.0) {
       cerr << "Setting tempo" << endl;
 
-      const double ratio = (double)pitchChange / baseTempo;
+      //      const double ratio = (double)pitchChange / baseTempo;
 
-      clip->setSpeedRatio(1.8);
-      clip->setLength(
-          audioFileInfo.getLengthInSeconds() / clip->getSpeedRatio(), true);
+      //      clip->setSpeedRatio(1.8);
+      //      clip->setLength(
+      //          audioFileInfo.getLengthInSeconds() / clip->getSpeedRatio(),
+      //          true);
 
-      cerr << "Speed ratio : " << ratio << endl;
-      cerr << "Length : "
-           << audioFileInfo.getLengthInSeconds() / clip->getSpeedRatio()
-           << endl;
+      //      cerr << "Speed ratio : " << ratio << endl;
+      //      cerr << "Length : "
+      //           << audioFileInfo.getLengthInSeconds() / clip->getSpeedRatio()
+      //           << endl;
     }
 
-    //    cerr << "Setting Pitch : " << pitchChange << endl;
-    //    clip->setPitchChange(12);
+    cerr << "Setting Pitch : " << pitchChange << endl;
+    clip->setPitchChange(pitchChange);
 
     EngineHelpers::loopAroundClip(*clip);
 

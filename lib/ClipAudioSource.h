@@ -46,7 +46,7 @@ class ClipAudioSource {
 
   float startPositionInSeconds = 0;
   float lengthInSeconds = -1;
-  double pitchChange = 120.0;
+  double pitchChange = 0;
 
   te::WaveAudioClip::Ptr getClip();
   void updateTempoAndPitch();

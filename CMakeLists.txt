@@ -5,23 +5,33 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mcpu=native")
 
+set(CMAKE_BUILD_TYPE Debug)
+
 add_subdirectory(tracktion_engine/modules/juce)
 add_subdirectory(tracktion_engine/modules)
 
 ################################
 #  JUCE MODULE STATIC LIBRARY  #
 ################################
-add_library(juce_plugin_modules STATIC)
+#add_library(juce_plugin_modules STATIC)
+#juce_add_gui_app(juce_plugin_modules)
 
-target_compile_features(juce_plugin_modules PRIVATE cxx_std_17)
+juce_add_plugin(juce_plugin_modules FORMATS Standalone)
+target_sources(juce_plugin_modules
+    PRIVATE
+        lib/MyAudioProcessor.cpp)
+#        lib/ClipAudioSource.cpp
+#        lib/SyncTimer.cpp)
+
+#target_compile_features(juce_plugin_modules PRIVATE cxx_std_17)
 
 target_link_libraries(juce_plugin_modules
     PRIVATE
         juce::juce_core
         juce::juce_events
-        juce::juce_data_structures
-        juce::juce_dsp
-        juce::juce_osc
+#        juce::juce_data_structures
+#        juce::juce_dsp
+#        juce::juce_osc
         juce::juce_audio_basics
         juce::juce_audio_devices
         juce::juce_audio_formats
@@ -36,7 +46,7 @@ target_link_libraries(juce_plugin_modules
         juce::juce_recommended_warning_flags)
 
 target_compile_definitions(juce_plugin_modules
-    PUBLIC    
+    PUBLIC
         JUCE_PLUGINHOST_AU=1
         JUCE_PLUGINHOST_LADSPA=1
         JUCE_PLUGINHOST_VST3=1
@@ -56,11 +66,11 @@ target_include_directories(juce_plugin_modules
     INTERFACE
         $<TARGET_PROPERTY:juce_plugin_modules,INCLUDE_DIRECTORIES>)
 
-set_target_properties(juce_plugin_modules PROPERTIES
-    POSITION_INDEPENDENT_CODE TRUE
-    VISIBILITY_INLINES_HIDDEN TRUE
-    C_VISIBILITY_PRESET hidden
-    CXX_VISIBILITY_PRESET hidden)
+#set_target_properties(juce_plugin_modules PROPERTIES
+#    POSITION_INDEPENDENT_CODE TRUE
+#    VISIBILITY_INLINES_HIDDEN TRUE
+#    C_VISIBILITY_PRESET hidden
+#    CXX_VISIBILITY_PRESET hidden)
 
 ####################################
 #  END JUCE MODULE STATIC LIBRARY  #
@@ -83,8 +93,9 @@ target_sources(libzl
         lib/SyncTimer.cpp)
 
 target_link_libraries(libzl
-    PRIVATE      
-        juce_plugin_modules
+    PRIVATE
+        -Wl,--whole-archive juce_plugin_modules
+        -Wl,--no-whole-archive
         "-latomic")
   
 target_compile_definitions(libzl
