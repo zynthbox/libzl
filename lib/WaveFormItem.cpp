@@ -10,13 +10,18 @@
 
 #include "WaveFormItem.h"
 
+#include <QPainter>
+#include <QDebug>
+
 WaveFormItem::WaveFormItem(QQuickItem *parent)
     : QQuickPaintedItem(parent),
      // m_state (Stopped),
+      m_juceGraphics(m_painterContext),
       m_thumbnailCache (5),
       m_thumbnail (512, m_formatManager, m_thumbnailCache)
-{
 
+{
+    m_formatManager.registerBasicFormats();
 }
 
 QString WaveFormItem::source() const
@@ -45,9 +50,32 @@ void WaveFormItem::setSource(QString &source)
     emit sourceChanged();
 }
 
+QColor WaveFormItem::color() const
+{
+    return m_color;
+}
+
+void WaveFormItem::setColor(const QColor &color)
+{
+    if (color == m_color) {
+        return;
+    }
+
+    m_color = color;
+    m_painterContext.setQBrush(m_color);
+    emit colorChanged();
+}
+
 void WaveFormItem::paint(QPainter *painter)
 {
-
+    m_painterContext.setPainter(painter);
+    juce::Rectangle<int> thumbnailBounds (0, 0, width(), height());
+    m_thumbnail.drawChannel(m_juceGraphics,
+                            thumbnailBounds,
+                            0.0,                                    // start time
+                            m_thumbnail.getTotalLength(),             // end time
+                            0, // channel num
+                            1.0f);
 }
 
 #include "moc_WaveFormItem.cpp"
