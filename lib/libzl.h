@@ -25,11 +25,18 @@ const char* ClipAudioSource_getFileName(ClipAudioSource* c);
 void ClipAudioSource_setStartPosition(ClipAudioSource* c,
                                       float startPositionInSeconds);
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds);
+void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio);
+void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange);
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////
 
+void initJuce();
+void shutdownJuce();
+
 void startTimer(int interval);
 void stopTimer();
 void registerTimerCallback(void (*functionPtr)());
+
+void startLoop();
 }
