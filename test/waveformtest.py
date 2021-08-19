@@ -5,7 +5,7 @@ from os.path import dirname, realpath
 import sys
 
 from PySide2.QtGui import QGuiApplication
-from PySide2.QtQml import QQmlApplicationEngine
+from PySide2.QtQml import QQmlApplicationEngine, qmlRegisterType
 
 libzl = None
 
@@ -22,11 +22,11 @@ def init():
 
 
 if __name__ == "__main__":
-    print(dirname(realpath(__file__)))
     init()
-    print("DDDD")
+
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
+    libzl.registerGraphicTypes()
 
     engine.load(os.fspath(dirname(realpath(__file__)) + "/waveform.qml"))
 

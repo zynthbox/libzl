@@ -15,6 +15,7 @@
 #include "ClipAudioSource.h"
 #include "JUCEHeaders.h"
 #include "SyncTimer.h"
+#include "WaveFormItem.h"
 
 using namespace std;
 
@@ -58,3 +59,8 @@ void registerTimerCallback(void (*functionPtr)()) {
 void startTimer(int interval) { syncTimer.startTimer(interval); }
 
 void stopTimer() { syncTimer.stopTimer(); }
+
+void registerGraphicTypes()
+{
+    qmlRegisterType<WaveFormItem>("JuceGraphics", 1, 0, "WaveFormItem");
+}

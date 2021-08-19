@@ -32,4 +32,5 @@ void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds);
 void startTimer(int interval);
 void stopTimer();
 void registerTimerCallback(void (*functionPtr)());
+void registerGraphicTypes();
 }

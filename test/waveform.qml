@@ -3,6 +3,8 @@ import QtQuick 2.0
 import QtQuick.Layouts 1.3
 import QtQuick.Controls 2.3 as Controls
 
+import JuceGraphics 1.0
+
 Controls.ApplicationWindow {
     width: 300; height: 400
     visible: true
@@ -10,5 +12,9 @@ Controls.ApplicationWindow {
         width: 300; height: 400
         color: "red"
 
+    }
+    WaveFormItem {
+        anchors.fill: parent
+        source: "~/test.wav"
     }
 }
