@@ -38,5 +38,5 @@ void startTimer(int interval);
 void stopTimer();
 void registerTimerCallback(void (*functionPtr)());
 
-void startLoop();
+void startLoop(const char* filepath);
 }

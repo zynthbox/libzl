@@ -69,7 +69,7 @@ void startTimer(int interval) { syncTimer.startTimer(interval); }
 
 void stopTimer() { syncTimer.stopTimer(); }
 
-void startLoop() {
+void startLoop(const char* filepath) {
   ScopedJuceInitialiser_GUI libraryInitialiser;
 
   te::Engine engine{"libzl"};
@@ -77,7 +77,7 @@ void startLoop() {
                 nullptr, 0};
   te::TransportControl& transport{edit.getTransport()};
 
-  auto wavFile = File("/zynthian/zynthian-my-data/capture/c4.wav");
+  auto wavFile = File(filepath);
   const File editFile("/tmp/editfile");
   auto clip = EngineHelpers::loadAudioFileAsClip(edit, wavFile);
 
@@ -109,10 +109,10 @@ void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
 
 void initJuce() {
   initializer = new ScopedJuceInitialiser_GUI();
-  elThread.startThread();
+  // elThread.startThread();
 }
 
 void shutdownJuce() {
-  elThread.stopThread(500);
+  // elThread.stopThread(500);
   initializer = nullptr;
 }
