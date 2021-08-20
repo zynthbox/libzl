@@ -28,12 +28,14 @@ class ClipAudioSource {
 
   void setStartPosition(float startPositionInSeconds);
   void setLength(float lengthInSeconds);
-  void play();
+  void play(bool loop);
   void stop();
   float getDuration();
   const char* getFileName();
 
  private:
+  bool shouldLoop = true;
+
   te::Engine engine{"libzl"};
   std::unique_ptr<te::Edit> edit;
 

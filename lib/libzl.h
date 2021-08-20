@@ -18,13 +18,14 @@ extern "C" {
 /// ClipAudioSource API Bridge
 //////////////
 ClipAudioSource* ClipAudioSource_new(const char* filepath);
-void ClipAudioSource_play(ClipAudioSource* c);
+void ClipAudioSource_play(ClipAudioSource* c, bool loop = true);
 void ClipAudioSource_stop(ClipAudioSource* c);
 float ClipAudioSource_getDuration(ClipAudioSource* c);
 const char* ClipAudioSource_getFileName(ClipAudioSource* c);
 void ClipAudioSource_setStartPosition(ClipAudioSource* c,
                                       float startPositionInSeconds);
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds);
+void test();
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////

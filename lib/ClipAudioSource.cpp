@@ -10,10 +10,13 @@
 
 #include "ClipAudioSource.h"
 
+#include <iostream>
+
 #include "../tracktion_engine/examples/common/Utilities.h"
 #include "../tracktion_engine/modules/tracktion_engine/tracktion_engine.h"
 
 namespace te = tracktion_engine;
+using namespace std;
 
 ClipAudioSource::ClipAudioSource(const char* filepath) {
   engine.getDeviceManager().initialise(0, 2);
@@ -38,6 +41,8 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
 ClipAudioSource::~ClipAudioSource() {}
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
+  cerr << "Setting start position : " << startPositionInSeconds << endl;
+
   this->startPositionInSeconds = startPositionInSeconds;
 
   auto& transport = edit->getTransport();
@@ -46,11 +51,13 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
 
   if (transport.isPlaying()) {
     stop();
-    play();
+    play(shouldLoop);
   }
 }
 
 void ClipAudioSource::setLength(float lengthInSeconds) {
+  cerr << "Setting length : " << lengthInSeconds << endl;
+
   this->lengthInSeconds = lengthInSeconds;
 
   auto& transport = edit->getTransport();
@@ -59,7 +66,7 @@ void ClipAudioSource::setLength(float lengthInSeconds) {
 
   if (transport.isPlaying()) {
     stop();
-    play();
+    play(shouldLoop);
   }
 }
 
@@ -69,6 +76,22 @@ const char* ClipAudioSource::getFileName() {
   return static_cast<const char*>(fileName.toUTF8());
 }
 
-void ClipAudioSource::play() { edit->getTransport().play(false); }
+void ClipAudioSource::play(bool loop) {
+  shouldLoop = loop;
+  auto& transport = edit->getTransport();
+
+  transport.looping = loop;
+
+  if (loop) {
+    cerr << "Looping from " << startPositionInSeconds << " to "
+         << lengthInSeconds;
+    transport.play(false);
+  } else {
+    cerr << "Playing once from " << startPositionInSeconds << " to "
+         << lengthInSeconds;
+    transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(
+        startPositionInSeconds, lengthInSeconds));
+  }
+}
 
 void ClipAudioSource::stop() { edit->getTransport().stop(false, false); }

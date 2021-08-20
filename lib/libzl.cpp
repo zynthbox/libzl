@@ -28,7 +28,7 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   return new ClipAudioSource(filepath);
 }
 
-void ClipAudioSource_play(ClipAudioSource* c) { c->play(); }
+void ClipAudioSource_play(ClipAudioSource* c, bool loop) { c->play(loop); }
 
 void ClipAudioSource_stop(ClipAudioSource* c) { c->stop(); }
 
@@ -47,6 +47,13 @@ void ClipAudioSource_setStartPosition(ClipAudioSource* c,
 
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
   c->setLength(lengthInSeconds);
+}
+
+void test() {
+  auto clip = new ClipAudioSource("/zynthian/zynthian-my-data/capture/c4.wav");
+  clip->setStartPosition(0.8);
+  clip->setLength(1);
+  clip->play(false);
 }
 //////////////
 /// END ClipAudioSource API Bridge
