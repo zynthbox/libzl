@@ -23,6 +23,7 @@ def init():
     try:
 
         libzl = ctypes.cdll.LoadLibrary(dirname(realpath(__file__)) + "/../build/libzl.so")
+        libzl.initJuce()
     except Exception as e:
         libzl = None
         print(f"Can't initialise libzl library: {str(e)}")
@@ -42,14 +43,16 @@ class ClipAudioSource(object):
             libzl.ClipAudioSource_setLength.argtypes = [ctypes.c_void_p, ctypes.c_float]
             libzl.ClipAudioSource_setPitch.argtypes = [ctypes.c_void_p, ctypes.c_float]
             libzl.ClipAudioSource_setSpeedRatio.argtypes = [ctypes.c_void_p, ctypes.c_float]
+            libzl.ClipAudioSource_play.argtypes = [ctypes.c_void_p]
+            libzl.ClipAudioSource_stop.argtypes = [ctypes.c_void_p]
 
             self.obj = libzl.ClipAudioSource_new(filepath)
             self.filepath = filepath
 
     def play(self):
         if libzl:
-            # libzl.ClipAudioSource_play(self.obj)
-            startLoop(self.filepath)
+            libzl.ClipAudioSource_play(self.obj)
+            #startLoop(self.filepath)
 
     def stop(self):
         if libzl:

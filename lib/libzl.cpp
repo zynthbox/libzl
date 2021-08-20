@@ -19,27 +19,63 @@
 
 using namespace std;
 
+ScopedJuceInitialiser_GUI* initializer = nullptr;
+SyncTimer syncTimer(120);
+
+
 class JuceEventLoopThread : public Thread {
  public:
   JuceEventLoopThread() : Thread("Juce EventLoop Thread") {}
 
-  void run() override { MessageManager::getInstance()->runDispatchLoop(); }
+  void run() override {
+      initializer = new ScopedJuceInitialiser_GUI();
+      MessageManager::getInstance()->runDispatchLoop();
+  }
 };
 
-ScopedJuceInitialiser_GUI* initializer = nullptr;
-SyncTimer syncTimer(120);
 JuceEventLoopThread elThread;
+
+template<typename Function>
+    void callFunctionOnMessageThread (Function&& func)
+    {
+        if (MessageManager::getInstance()->isThisTheMessageThread())
+        {
+            func();
+        }
+        else
+        {
+            jassert (! MessageManager::getInstance()->currentThreadHasLockedMessageManager());
+            WaitableEvent finishedSignal;
+            MessageManager::callAsync ([&]
+                                       {
+                                           func();
+                                           finishedSignal.signal();
+                                       });
+            finishedSignal.wait (-1);
+        }
+    }
+
+ClipAudioSource *sClip;
 
 //////////////
 /// ClipAudioSource API Bridge
 //////////////
 ClipAudioSource* ClipAudioSource_new(const char* filepath) {
-  return new ClipAudioSource(filepath);
+    callFunctionOnMessageThread([&](){sClip = new ClipAudioSource(filepath);});
+  return sClip;// new ClipAudioSource(filepath);
 }
 
-void ClipAudioSource_play(ClipAudioSource* c) { c->play(); }
+void ClipAudioSource_play(ClipAudioSource* c) {
+    callFunctionOnMessageThread([&](){sClip->play();});
+   // c->play();
 
-void ClipAudioSource_stop(ClipAudioSource* c) { c->stop(); }
+    }
+
+void ClipAudioSource_stop(ClipAudioSource* c) {
+    callFunctionOnMessageThread([&](){sClip->stop();});
+   // c->stop();
+
+}
 
 float ClipAudioSource_getDuration(ClipAudioSource* c) {
   return c->getDuration();
@@ -108,11 +144,11 @@ void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
 }
 
 void initJuce() {
-  initializer = new ScopedJuceInitialiser_GUI();
-  // elThread.startThread();
+    cout<<"INIT JUCE\n";
+   elThread.startThread();
 }
 
 void shutdownJuce() {
-  // elThread.stopThread(500);
+   elThread.stopThread(500);
   initializer = nullptr;
 }
