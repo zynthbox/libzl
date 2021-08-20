@@ -32,8 +32,11 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
   clip->setAutoTempo(false);
   clip->setAutoPitch(false);
   clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
-
-  // EngineHelpers::loopAroundClip(*clip);
+  
+//   EngineHelpers::loopAroundClip(*clip);
+//   stop();
+//   clip->setPitchChange(12);
+//   EngineHelpers::loopAroundClip(*clip);
 
   this->fileName = file.getFileName();
   this->lengthInSeconds = edit->getLength();
@@ -112,6 +115,8 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
 
 void ClipAudioSource::play() {
   auto clip = getClip();
+  
+  clip->setPitchChange(12);
   EngineHelpers::loopAroundClip(*clip);
 }
 

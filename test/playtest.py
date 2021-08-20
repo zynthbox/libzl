@@ -86,12 +86,13 @@ class ClipAudioSource(object):
 class Bridge(QObject):
     def __init__(self, parent=None):
         super(Bridge, self).__init__(parent)
-        path = "/home/diau/test.wav"
+        path = "/home/anupam/c4.wav"
         self.audioSource = ClipAudioSource(path.encode('utf-8'))
 
     @Slot(None)
     def play(self):
-        self.audioSource.play()
+        #self.audioSource.play()
+        libzl.startLoop(b'/home/anupam/c4.wav')
 
     @Slot(None)
     def stop(self):
@@ -101,6 +102,7 @@ class Bridge(QObject):
 
 if __name__ == "__main__":
     init()
+    libzl.initJuce()
 
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
@@ -111,4 +113,8 @@ if __name__ == "__main__":
 
     if not engine.rootObjects():
         sys.exit(-1)
-    sys.exit(app.exec_())
+        
+    ret_code = app.exec_()
+    libzl.shutdownJuce()
+    
+    sys.exit(ret_code)
