@@ -33,7 +33,7 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
   clip->setAutoPitch(false);
   clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
 
-  EngineHelpers::loopAroundClip(*clip);
+  // EngineHelpers::loopAroundClip(*clip);
 
   this->fileName = file.getFileName();
   this->lengthInSeconds = edit->getLength();

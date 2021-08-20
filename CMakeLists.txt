@@ -97,8 +97,6 @@ target_compile_definitions(libzl
 
 target_link_libraries(libzl
     PRIVATE
-        -rdynamic
-        -Wl,--export-dynamic
         ${W2GTK4_LIBRARIES}
         tracktion::tracktion_engine
         tracktion::tracktion_graph
