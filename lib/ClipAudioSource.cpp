@@ -12,9 +12,9 @@
 
 #include <unistd.h>
 
-#include "../tracktion_engine/modules/tracktion_engine/tracktion_engine.h"
+#include "../tracktion_engine/examples/common/Utilities.h"
+#include "Helper.h"
 
-namespace te = tracktion_engine;
 using namespace std;
 
 ClipAudioSource::ClipAudioSource(const char* filepath) {
@@ -26,60 +26,49 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
   const File editFile("/tmp/editfile");
 
   edit = te::createEmptyEdit(engine, editFile);
-  auto clip = EngineHelpers::loadAudioFileAsClip(*edit, file);
-  //  auto& transport = edit->getTransport();
+  auto clip = Helper::loadAudioFileAsClip(*edit, file);
+  auto& transport = edit->getTransport();
 
   clip->setAutoTempo(false);
   clip->setAutoPitch(false);
   clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
 
-  clip->setPitchChange(12);
-  EngineHelpers::loopAroundClip(*clip);
+  //  EngineHelpers::loopAroundClip(*clip);
+  //  clip->setPitchChange(12);
+  //  EngineHelpers::loopAroundClip(*clip);
 
   this->fileName = file.getFileName();
   this->lengthInSeconds = edit->getLength();
 
-  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-  //      startPositionInSeconds, lengthInSeconds));
-  //  transport.looping = true;
+  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+      startPositionInSeconds, lengthInSeconds));
+  transport.looping = true;
 }
 
 ClipAudioSource::~ClipAudioSource() {}
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
+  cerr << "Setting Start Position to " << startPositionInSeconds << endl;
   this->startPositionInSeconds = startPositionInSeconds;
-
-  //  auto& transport = edit->getTransport();
-  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-  //      startPositionInSeconds, lengthInSeconds));
-
-  //  if (transport.isPlaying()) {
-  //    stop();
-  //    play();
-  //  }
+  updateTempoAndPitch();
 }
 
 void ClipAudioSource::setPitch(float pitchChange) {
+  cerr << "Setting Pitch to " << pitchChange << endl;
   this->pitchChange = pitchChange;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setSpeedRatio(float speedRatio) {
+  cerr << "Setting Speed to " << speedRatio << endl;
   this->speedRatio = speedRatio;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setLength(float lengthInSeconds) {
+  cerr << "Setting Length to " << lengthInSeconds << endl;
   this->lengthInSeconds = lengthInSeconds;
-
-  //  auto& transport = edit->getTransport();
-  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-  //      startPositionInSeconds, lengthInSeconds));
-
-  //  if (transport.isPlaying()) {
-  //    stop();
-  //    play();
-  //  }
+  updateTempoAndPitch();
 }
 
 float ClipAudioSource::getDuration() { return edit->getLength(); }
@@ -90,21 +79,21 @@ const char* ClipAudioSource::getFileName() {
 
 void ClipAudioSource::updateTempoAndPitch() {
   if (auto clip = getClip()) {
-    cerr << "Setting speedRatio and pitch" << endl;
+    auto& transport = clip->edit.getTransport();
+
+    cerr << "Updating speedRatio and pitch" << endl;
 
     clip->setSpeedRatio(this->speedRatio);
     clip->setPitchChange(this->pitchChange);
 
-    auto& transport = edit->getTransport();
-
-    if (transport.isPlaying()) {
-      EngineHelpers::loopAroundClip(*clip);
-    }
+    transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+        startPositionInSeconds, lengthInSeconds));
+    transport.looping = true;
   }
 }
 
 te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
-  if (auto track = EngineHelpers::getOrInsertAudioTrackAt(*edit, 0))
+  if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0))
     if (auto clip = dynamic_cast<te::WaveAudioClip*>(track->getClips()[0]))
       return *clip;
 
@@ -113,7 +102,10 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
 
 void ClipAudioSource::play() {
   auto clip = getClip();
-  EngineHelpers::loopAroundClip(*clip);
+  clip->edit.getTransport().play(false);
+  //  clip->edit.getTransport().playSectionAndReset(
+  //      te::EditTimeRange::withStartAndLength(this->startPositionInSeconds,
+  //                                            this->lengthInSeconds));
 }
 
 void ClipAudioSource::stop() { edit->getTransport().stop(false, false); }

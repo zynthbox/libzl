@@ -12,31 +12,9 @@
 
 #include <iostream>
 
-#include "../tracktion_engine/modules/tracktion_engine/tracktion_engine.h"
 #include "JUCEHeaders.h"
 
 using namespace std;
-using namespace juce;
-namespace te = tracktion_engine;
-
-namespace EngineHelpers {
-te::Project::Ptr createTempProject(te::Engine& engine);
-void removeAllClips(te::AudioTrack& track);
-te::AudioTrack* getOrInsertAudioTrackAt(te::Edit& edit, int index);
-te::WaveAudioClip::Ptr loadAudioFileAsClip(te::Edit& edit, const File& file);
-template <typename ClipType>
-typename ClipType::Ptr loopAroundClip(ClipType& clip);
-void togglePlay(te::Edit& edit);
-void toggleRecord(te::Edit& edit);
-void armTrack(te::AudioTrack& t, bool arm, int position);
-bool isTrackArmed(te::AudioTrack& t, int position);
-bool isInputMonitoringEnabled(te::AudioTrack& t, int position);
-void enableInputMonitoring(te::AudioTrack& t, bool im, int position);
-bool trackHasInput(te::AudioTrack& t, int position);
-
-inline std::unique_ptr<juce::KnownPluginList::PluginTree> createPluginTree(
-    te::Engine& engine);
-}  // namespace EngineHelpers
 
 //==============================================================================
 class ClipAudioSource {

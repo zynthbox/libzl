@@ -72,7 +72,8 @@ target_sources(libzl
     PRIVATE
         lib/libzl.cpp
         lib/ClipAudioSource.cpp
-        lib/SyncTimer.cpp)
+        lib/SyncTimer.cpp
+        lib/Helper.cpp)
 
 #target_link_libraries(libzl
 #    PRIVATE
@@ -97,8 +98,6 @@ target_compile_definitions(libzl
 
 target_link_libraries(libzl
     PRIVATE
-        -rdynamic
-        -Wl,--export-dynamic
         ${W2GTK4_LIBRARIES}
         tracktion::tracktion_engine
         tracktion::tracktion_graph
