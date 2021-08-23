@@ -86,7 +86,7 @@ class ClipAudioSource(object):
 class Bridge(QObject):
     def __init__(self, parent=None):
         super(Bridge, self).__init__(parent)
-        path = "/home/diau/test.wav"
+        path = "/zynthian/zynthian-my-data/capture/c4.wav"
         self.audioSource = ClipAudioSource(path.encode('utf-8'))
 
     @Slot(None)
