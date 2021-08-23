@@ -89,6 +89,7 @@ void WaveFormItem::setStart(qreal start)
 
     m_start = start;
     emit startChanged();
+    update();
 }
 
 qreal WaveFormItem::end() const
@@ -104,6 +105,7 @@ void WaveFormItem::setEnd(qreal end)
 
     m_end = end;
     emit endChanged();
+    update();
 }
 
 void WaveFormItem::paint(QPainter *painter)
