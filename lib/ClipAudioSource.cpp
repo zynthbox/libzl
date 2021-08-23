@@ -23,7 +23,7 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
   cerr << "Opening file : " << filepath << endl;
 
   juce::File file(filepath);
-  const File editFile("/tmp/editfile");
+  const File editFile = File::createTempFile("editFile");
 
   edit = te::createEmptyEdit(engine, editFile);
   auto clip = Helper::loadAudioFileAsClip(*edit, file);
@@ -32,10 +32,6 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
   clip->setAutoTempo(false);
   clip->setAutoPitch(false);
   clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
-
-  //  EngineHelpers::loopAroundClip(*clip);
-  //  clip->setPitchChange(12);
-  //  EngineHelpers::loopAroundClip(*clip);
 
   this->fileName = file.getFileName();
   this->lengthInSeconds = edit->getLength();
@@ -71,7 +67,10 @@ void ClipAudioSource::setLength(float lengthInSeconds) {
   updateTempoAndPitch();
 }
 
-float ClipAudioSource::getDuration() { return edit->getLength(); }
+float ClipAudioSource::getDuration() {
+  cerr << "Getting Duration : " << edit->getLength();
+  return edit->getLength();
+}
 
 const char* ClipAudioSource::getFileName() {
   return static_cast<const char*>(fileName.toUTF8());
@@ -88,7 +87,6 @@ void ClipAudioSource::updateTempoAndPitch() {
 
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
         startPositionInSeconds, lengthInSeconds));
-    transport.looping = true;
   }
 }
 
@@ -100,12 +98,20 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
   return {};
 }
 
-void ClipAudioSource::play() {
-  auto clip = getClip();
-  clip->edit.getTransport().play(false);
-  //  clip->edit.getTransport().playSectionAndReset(
-  //      te::EditTimeRange::withStartAndLength(this->startPositionInSeconds,
-  //                                            this->lengthInSeconds));
+void ClipAudioSource::play(bool shouldLoop) {
+  this->shouldLoop = shouldLoop;
+
+  auto& transport = getClip()->edit.getTransport();
+  transport.looping = shouldLoop;
+
+  if (shouldLoop) {
+    cerr << "### Looping Clip";
+    transport.play(false);
+  } else {
+    cerr << "### Playing Clip Section Once";
+    transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(
+        this->startPositionInSeconds, this->lengthInSeconds));
+  }
 }
 
 void ClipAudioSource::stop() { edit->getTransport().stop(false, false); }

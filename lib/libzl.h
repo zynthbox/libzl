@@ -18,7 +18,7 @@ extern "C" {
 /// ClipAudioSource API Bridge
 //////////////
 ClipAudioSource* ClipAudioSource_new(const char* filepath);
-void ClipAudioSource_play(ClipAudioSource* c);
+void ClipAudioSource_play(ClipAudioSource* c, bool shouldLoop);
 void ClipAudioSource_stop(ClipAudioSource* c);
 float ClipAudioSource_getDuration(ClipAudioSource* c);
 const char* ClipAudioSource_getFileName(ClipAudioSource* c);

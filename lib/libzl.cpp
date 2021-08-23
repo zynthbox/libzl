@@ -48,8 +48,8 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   return sClip;
 }
 
-void ClipAudioSource_play(ClipAudioSource* c) {
-  Helper::callFunctionOnMessageThread([&]() { c->play(); });
+void ClipAudioSource_play(ClipAudioSource* c, bool shouldLoop) {
+  Helper::callFunctionOnMessageThread([&]() { c->play(shouldLoop); });
 }
 
 void ClipAudioSource_stop(ClipAudioSource* c) {
