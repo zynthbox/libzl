@@ -7,6 +7,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mcpu=native")
 
 find_package(Qt5 5.11 REQUIRED NO_MODULE COMPONENTS Core Gui Quick Qml)
 
+set(CMAKE_AUTOMOC ON)
+
 add_subdirectory(tracktion_engine/modules/juce)
 add_subdirectory(tracktion_engine/modules)
 
@@ -77,7 +79,9 @@ target_sources(libzl
         lib/libzl.cpp
         lib/ClipAudioSource.cpp
         lib/SyncTimer.cpp
-        lib/Helper.cpp)
+        lib/Helper.cpp
+        lib/QPainterContext.cpp
+        lib/WaveFormItem.cpp)
 
 #target_link_libraries(libzl
 #    PRIVATE
@@ -99,8 +103,6 @@ target_compile_definitions(libzl
         TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1
     INTERFACE
         $<TARGET_PROPERTY:libzl,COMPILE_DEFINITIONS>)
-        lib/QPainterContext.cpp
-        lib/WaveFormItem.cpp)
 
 target_link_libraries(libzl
     PRIVATE
@@ -121,7 +123,11 @@ target_link_libraries(libzl
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
+        juce::juce_recommended_warning_flags
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Qml
+        Qt5::Quick)
   
 target_include_directories(libzl
     INTERFACE
