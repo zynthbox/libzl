@@ -46,8 +46,18 @@ void WaveFormItem::setSource(QString &source)
         m_thumbnail.setSource(new juce::FileInputSource (file));
         m_readerSource.reset (newSource.release());
     }
+    m_start = 0;
+    m_end = m_thumbnail.getTotalLength();
 
+    emit startChanged();
+    emit endChanged();
     emit sourceChanged();
+    emit lengthChanged();
+}
+
+qreal WaveFormItem::length() const
+{
+    return m_thumbnail.getTotalLength();
 }
 
 QColor WaveFormItem::color() const
@@ -66,14 +76,44 @@ void WaveFormItem::setColor(const QColor &color)
     emit colorChanged();
 }
 
+qreal WaveFormItem::start() const
+{
+    return m_start;
+}
+
+void WaveFormItem::setStart(qreal start)
+{
+    if (start == m_start) {
+        return;
+    }
+
+    m_start = start;
+    emit startChanged();
+}
+
+qreal WaveFormItem::end() const
+{
+    return m_end;
+}
+
+void WaveFormItem::setEnd(qreal end)
+{
+    if (end == m_end) {
+        return;
+    }
+
+    m_end = end;
+    emit endChanged();
+}
+
 void WaveFormItem::paint(QPainter *painter)
 {
     m_painterContext.setPainter(painter);
     juce::Rectangle<int> thumbnailBounds (0, 0, width(), height());
     m_thumbnail.drawChannel(m_juceGraphics,
                             thumbnailBounds,
-                            0.0,                                    // start time
-                            m_thumbnail.getTotalLength(),             // end time
+                            m_start,                                    // start time
+                            qMin(m_end, m_thumbnail.getTotalLength()),             // end time
                             0, // channel num
                             1.0f);
 }

@@ -18,7 +18,10 @@ class WaveFormItem : public QQuickPaintedItem
 {
 Q_OBJECT
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
+    Q_PROPERTY(qreal length READ length NOTIFY lengthChanged)
     Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged)
+    Q_PROPERTY(qreal start READ start WRITE setStart NOTIFY startChanged)
+    Q_PROPERTY(qreal end READ end WRITE setEnd NOTIFY endChanged)
 
 public:
     WaveFormItem(QQuickItem *parent = nullptr);
@@ -27,12 +30,24 @@ public:
     QString source() const;
     void setSource(QString &source);
 
+    qreal length() const;
+
     QColor color() const;
     void setColor(const QColor &color);
 
+    qreal start() const;
+    void setStart(qreal start);
+
+    qreal end() const;
+    void setEnd(qreal end);
+
 Q_SIGNALS:
     void sourceChanged();
+    void lengthChanged();
     void colorChanged();
+
+    void startChanged();
+    void endChanged();
 
 private:
     QString m_source;
@@ -46,5 +61,7 @@ private:
     //TransportState m_state;
     juce::AudioThumbnailCache m_thumbnailCache;
     juce::AudioThumbnail m_thumbnail;
+    qreal m_start = 0;
+    qreal m_end = 0;
 };
 
