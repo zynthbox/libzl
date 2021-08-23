@@ -45,14 +45,14 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
 
   this->startPositionInSeconds = startPositionInSeconds;
 
-  auto& transport = edit->getTransport();
-  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-      startPositionInSeconds, lengthInSeconds));
+  //  auto& transport = edit->getTransport();
+  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+  //      startPositionInSeconds, lengthInSeconds));
 
-  if (transport.isPlaying()) {
-    stop();
-    play(shouldLoop);
-  }
+  //  if (transport.isPlaying()) {
+  //    stop();
+  //    play(shouldLoop);
+  //  }
 }
 
 void ClipAudioSource::setLength(float lengthInSeconds) {
@@ -60,14 +60,14 @@ void ClipAudioSource::setLength(float lengthInSeconds) {
 
   this->lengthInSeconds = lengthInSeconds;
 
-  auto& transport = edit->getTransport();
-  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-      startPositionInSeconds, lengthInSeconds));
+  //  auto& transport = edit->getTransport();
+  //  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+  //      startPositionInSeconds, lengthInSeconds));
 
-  if (transport.isPlaying()) {
-    stop();
-    play(shouldLoop);
-  }
+  //  if (transport.isPlaying()) {
+  //    stop();
+  //    play(shouldLoop);
+  //  }
 }
 
 float ClipAudioSource::getDuration() { return edit->getLength(); }
@@ -82,16 +82,19 @@ void ClipAudioSource::play(bool loop) {
 
   transport.looping = loop;
 
-  if (loop) {
-    cerr << "Looping from " << startPositionInSeconds << " to "
-         << lengthInSeconds;
-    transport.play(false);
-  } else {
-    cerr << "Playing once from " << startPositionInSeconds << " to "
-         << lengthInSeconds;
-    transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(
-        startPositionInSeconds, lengthInSeconds));
-  }
+  transport.playSectionAndReset(
+      te::EditTimeRange::withStartAndLength(this->startPositionInSeconds, 0.1));
+
+  //  if (loop) {
+  //    cerr << "Looping from " << startPositionInSeconds << " to "
+  //         << lengthInSeconds;
+  //    transport.play(false);
+  //  } else {
+  //    cerr << "Playing once from " << startPositionInSeconds << " to "
+  //         << lengthInSeconds;
+  //    transport.playSectionAndReset(
+  //        te::EditTimeRange::withStartAndLength(0.8, 0.5));
+  //  }
 }
 
 void ClipAudioSource::stop() { edit->getTransport().stop(false, false); }
