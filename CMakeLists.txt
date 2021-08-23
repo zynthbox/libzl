@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mcpu=native")
 
+find_package(Qt5 5.11 REQUIRED NO_MODULE COMPONENTS Core Gui Quick Qml)
+
 add_subdirectory(tracktion_engine/modules/juce)
 add_subdirectory(tracktion_engine/modules)
 
@@ -17,6 +19,7 @@ link_directories (${W2GTK4_LIBRARY_DIRS})
 ################################
 #  JUCE MODULE STATIC LIBRARY  #
 ################################
+
 #add_library(juce_plugin_modules STATIC)
 
 #target_link_libraries(juce_plugin_modules
@@ -53,6 +56,7 @@ link_directories (${W2GTK4_LIBRARY_DIRS})
 #    VISIBILITY_INLINES_HIDDEN TRUE
 #    C_VISIBILITY_PRESET hidden
 #    CXX_VISIBILITY_PRESET hidden)
+
 
 ####################################
 #  END JUCE MODULE STATIC LIBRARY  #
@@ -95,6 +99,8 @@ target_compile_definitions(libzl
         TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1
     INTERFACE
         $<TARGET_PROPERTY:libzl,COMPILE_DEFINITIONS>)
+        lib/QPainterContext.cpp
+        lib/WaveFormItem.cpp)
 
 target_link_libraries(libzl
     PRIVATE

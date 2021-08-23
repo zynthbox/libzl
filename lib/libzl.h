@@ -39,4 +39,6 @@ void stopTimer();
 void registerTimerCallback(void (*functionPtr)());
 
 void startLoop(const char* filepath);
+
+void registerGraphicTypes();
 }
