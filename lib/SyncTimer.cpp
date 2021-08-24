@@ -13,8 +13,6 @@ void SyncTimer::hiResTimerCallback() {
     }
   }
 
-  cerr << "   C++ Current Beat : " << beat << endl;
-
   if (callback != nullptr) {
     callback();
   }
@@ -27,3 +25,10 @@ void SyncTimer::addClip(ClipAudioSource *clip) { this->clips.append(clip); }
 void SyncTimer::removeClip(ClipAudioSource *clip) {
   this->clips.removeOne(clip);
 }
+
+void SyncTimer::start(int interval) {
+  beat = 0;
+  startTimer(interval);
+}
+
+void SyncTimer::stop() { stopTimer(); }

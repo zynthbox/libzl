@@ -16,6 +16,8 @@ class SyncTimer : public HighResolutionTimer {
   void setCallback(void (*functionPtr)());
   void addClip(ClipAudioSource *clip);
   void removeClip(ClipAudioSource *clip);
+  void start(int interval);
+  void stop();
 
  private:
   int beat = 0;

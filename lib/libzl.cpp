@@ -91,9 +91,9 @@ void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
 //////////////
 /// SynTimer API Bridge
 //////////////
-void SyncTimer_startTimer(int interval) { syncTimer.startTimer(interval); }
+void SyncTimer_startTimer(int interval) { syncTimer.start(interval); }
 
-void SyncTimer_stopTimer() { syncTimer.stopTimer(); }
+void SyncTimer_stopTimer() { syncTimer.stop(); }
 
 void SyncTimer_registerTimerCallback(void (*functionPtr)()) {
   syncTimer.setCallback(functionPtr);
