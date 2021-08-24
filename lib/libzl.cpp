@@ -48,8 +48,8 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   return sClip;
 }
 
-void ClipAudioSource_play(ClipAudioSource* c, bool shouldLoop) {
-  Helper::callFunctionOnMessageThread([&]() { c->play(shouldLoop); }, true);
+void ClipAudioSource_play(ClipAudioSource* c) {
+  Helper::callFunctionOnMessageThread([&]() { c->play(); }, true);
 }
 
 void ClipAudioSource_stop(ClipAudioSource* c) {
@@ -102,44 +102,9 @@ void SyncTimer_registerTimerCallback(void (*functionPtr)()) {
 void SyncTimer_addClip(ClipAudioSource* clip) {
   Helper::callFunctionOnMessageThread([&]() { syncTimer.addClip(clip); }, true);
 }
-
-void SyncTimer_removeClip(ClipAudioSource* clip) {
-  Helper::callFunctionOnMessageThread([&]() { syncTimer.removeClip(clip); },
-                                      true);
-}
 //////////////
 /// END SyncTimer API Bridge
 //////////////
-
-void startLoop(const char* filepath) {
-  //  ScopedJuceInitialiser_GUI libraryInitialiser;
-
-  //  te::Engine engine{"libzl"};
-  //  te::Edit edit{engine, te::createEmptyEdit(engine), te::Edit::forEditing,
-  //                nullptr, 0};
-  //  te::TransportControl& transport{edit.getTransport()};
-
-  //  auto wavFile = File(filepath);
-  //  const File editFile("/tmp/editfile");
-  //  auto clip = EngineHelpers::loadAudioFileAsClip(edit, wavFile);
-
-  //  te::TimeStretcher ts;
-
-  //  for (auto mode : ts.getPossibleModes(engine, true)) {
-  //    cerr << "Mode : " << mode << endl;
-  //  }
-
-  //  clip->setAutoTempo(false);
-  //  clip->setAutoPitch(false);
-  //  clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
-
-  //  EngineHelpers::loopAroundClip(*clip);
-  //  clip->setSpeedRatio(2.0);
-  //  clip->setPitchChange(12);
-  //  EngineHelpers::loopAroundClip(*clip);
-
-  //  MessageManager::getInstance()->runDispatchLoop();
-}
 
 void initJuce() {
   cerr << "### INIT JUCE\n";

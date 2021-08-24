@@ -18,7 +18,7 @@ extern "C" {
 /// ClipAudioSource API Bridge
 //////////////
 ClipAudioSource* ClipAudioSource_new(const char* filepath);
-void ClipAudioSource_play(ClipAudioSource* c, bool shouldLoop);
+void ClipAudioSource_play(ClipAudioSource* c);
 void ClipAudioSource_stop(ClipAudioSource* c);
 float ClipAudioSource_getDuration(ClipAudioSource* c);
 const char* ClipAudioSource_getFileName(ClipAudioSource* c);
@@ -38,15 +38,11 @@ void SyncTimer_startTimer(int interval);
 void SyncTimer_stopTimer();
 void SyncTimer_registerTimerCallback(void (*functionPtr)());
 void SyncTimer_addClip(ClipAudioSource* clip);
-void SyncTimer_removeClip(ClipAudioSource* clip);
 //////////////
 /// END SyncTimer API Bridge
 //////////////
 
 void initJuce();
 void shutdownJuce();
-
-void startLoop(const char* filepath);
-
 void registerGraphicTypes();
 }

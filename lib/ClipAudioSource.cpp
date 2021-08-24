@@ -102,21 +102,11 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
   return {};
 }
 
-void ClipAudioSource::play(bool shouldLoop) {
-  this->shouldLoop = shouldLoop;
-
+void ClipAudioSource::play() {
   auto& transport = getClip()->edit.getTransport();
-  transport.looping = shouldLoop;
-  transport.stop(false, false);
 
-  if (shouldLoop) {
-    cerr << "### Looping Clip";
-    transport.play(false);
-  } else {
-    cerr << "### Playing Clip Section Once";
-    transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(
-        this->startPositionInSeconds, this->lengthInSeconds));
-  }
+  transport.stop(false, false);
+  transport.play(false);
 }
 
 void ClipAudioSource::stop() { edit->getTransport().stop(false, false); }

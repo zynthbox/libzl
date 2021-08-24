@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QList>
+#include <QQueue>
 
 #include "ClipAudioSource.h"
 #include "JUCEHeaders.h"
@@ -15,7 +15,6 @@ class SyncTimer : public HighResolutionTimer {
   void hiResTimerCallback();
   void setCallback(void (*functionPtr)());
   void addClip(ClipAudioSource *clip);
-  void removeClip(ClipAudioSource *clip);
   void start(int interval);
   void stop();
 
@@ -23,5 +22,5 @@ class SyncTimer : public HighResolutionTimer {
   int beat = 0;
   int bpm;
   void (*callback)() = nullptr;
-  QList<ClipAudioSource *> clips;
+  QQueue<ClipAudioSource *> clipsQueue;
 };

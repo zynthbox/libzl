@@ -26,7 +26,7 @@ class ClipAudioSource {
   void setLength(float lengthInSeconds);
   void setPitch(float pitchChange);
   void setSpeedRatio(float speedRatio);
-  void play(bool shouldLoop);
+  void play();
   void stop();
   float getDuration();
   const char* getFileName();
@@ -44,8 +44,6 @@ class ClipAudioSource {
   float lengthInSeconds = -1;
   float pitchChange = 0;
   float speedRatio = 1.0;
-
-  bool shouldLoop = true;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ClipAudioSource)
 };
