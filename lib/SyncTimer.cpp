@@ -8,8 +8,10 @@ void SyncTimer::hiResTimerCallback() {
   beat = (beat + 1) % 4;
 
   if (beat == 0) {
-    while (!clipsQueue.isEmpty()) {
-      clipsQueue.dequeue()->play();
+    while (!clipsToPlay.isEmpty()) {
+      auto clip = clipsToPlay.dequeue();
+      clip->play();
+      playingClips.append(clip);
     }
   }
 
@@ -20,8 +22,19 @@ void SyncTimer::hiResTimerCallback() {
 
 void SyncTimer::setCallback(void (*functionPtr)()) { callback = functionPtr; }
 
-void SyncTimer::addClip(ClipAudioSource *clip) {
-  this->clipsQueue.enqueue(clip);
+void SyncTimer::addClip(ClipAudioSource *clip) { clipsToPlay.enqueue(clip); }
+
+void SyncTimer::removeClip(ClipAudioSource *clip) {
+  clip->stop();
+  playingClips.removeOne(clip);
+}
+
+void SyncTimer::removeAllClips() {
+  while (!playingClips.empty()) {
+    auto clip = playingClips.first();
+    clip->stop();
+    playingClips.removeFirst();
+  }
 }
 
 void SyncTimer::start(int interval) {

@@ -38,6 +38,8 @@ void SyncTimer_startTimer(int interval);
 void SyncTimer_stopTimer();
 void SyncTimer_registerTimerCallback(void (*functionPtr)());
 void SyncTimer_addClip(ClipAudioSource* clip);
+void SyncTimer_removeClip(ClipAudioSource* clip);
+void SyncTimer_removeAllClips();
 //////////////
 /// END SyncTimer API Bridge
 //////////////
