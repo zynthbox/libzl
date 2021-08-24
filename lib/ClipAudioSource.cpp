@@ -17,15 +17,17 @@
 
 using namespace std;
 
-ClipAudioSource::ClipAudioSource(const char* filepath) {
-  engine.getDeviceManager().initialise(0, 2);
+ClipAudioSource::ClipAudioSource(te::Engine* engine, const char* filepath) {
+  this->engine = engine;
+
+  engine->getDeviceManager().initialise(0, 2);
 
   cerr << "Opening file : " << filepath << endl;
 
   juce::File file(filepath);
-  const File editFile = File::createTempFile("editFile");
 
-  edit = te::createEmptyEdit(engine, editFile);
+  edit = new te::Edit(*engine, te::createEmptyEdit(*engine),
+                      te::Edit::forEditing, nullptr, 0);
   auto clip = Helper::loadAudioFileAsClip(*edit, file);
   auto& transport = edit->getTransport();
 

@@ -22,6 +22,7 @@ using namespace std;
 
 ScopedJuceInitialiser_GUI* initializer = nullptr;
 SyncTimer syncTimer(120);
+te::Engine* engine = nullptr;
 
 class JuceEventLoopThread : public Thread {
  public:
@@ -43,7 +44,14 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   ClipAudioSource* sClip;
 
   Helper::callFunctionOnMessageThread(
-      [&]() { sClip = new ClipAudioSource(filepath); }, true);
+      [&]() {
+        if (engine == nullptr) {
+          engine = new te::Engine("libzl");
+        }
+
+        sClip = new ClipAudioSource(engine, filepath);
+      },
+      true);
 
   return sClip;
 }

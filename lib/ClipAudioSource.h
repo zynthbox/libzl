@@ -19,7 +19,7 @@ using namespace std;
 //==============================================================================
 class ClipAudioSource {
  public:
-  ClipAudioSource(const char* filepath);
+  ClipAudioSource(te::Engine* engine, const char* filepath);
   ~ClipAudioSource();
 
   void setStartPosition(float startPositionInSeconds);
@@ -34,8 +34,8 @@ class ClipAudioSource {
   te::WaveAudioClip::Ptr getClip();
 
  private:
-  te::Engine engine{"libzl"};
-  std::unique_ptr<te::Edit> edit;
+  te::Engine* engine = nullptr;
+  te::Edit* edit = nullptr;
 
   juce::String chosenPath;
   juce::String fileName;
