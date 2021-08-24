@@ -73,6 +73,14 @@ void ClipAudioSource_setStartPosition(ClipAudioSource* c,
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
   Helper::callFunctionOnMessageThread([&]() { c->setLength(lengthInSeconds); });
 }
+
+void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio) {
+  Helper::callFunctionOnMessageThread([&]() { c->setSpeedRatio(speedRatio); });
+}
+
+void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
+  Helper::callFunctionOnMessageThread([&]() { c->setPitch(pitchChange); });
+}
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////
@@ -115,14 +123,6 @@ void startLoop(const char* filepath) {
   //  MessageManager::getInstance()->runDispatchLoop();
 }
 
-void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio) {
-  Helper::callFunctionOnMessageThread([&]() { c->setSpeedRatio(speedRatio); });
-}
-
-void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
-  Helper::callFunctionOnMessageThread([&]() { c->setPitch(pitchChange); });
-}
-
 void initJuce() {
   cerr << "### INIT JUCE\n";
   elThread.startThread();
@@ -133,7 +133,6 @@ void shutdownJuce() {
   initializer = nullptr;
 }
 
-void registerGraphicTypes()
-{
-    qmlRegisterType<WaveFormItem>("JuceGraphics", 1, 0, "WaveFormItem");
+void registerGraphicTypes() {
+  qmlRegisterType<WaveFormItem>("JuceGraphics", 1, 0, "WaveFormItem");
 }

@@ -80,10 +80,14 @@ void ClipAudioSource::updateTempoAndPitch() {
   if (auto clip = getClip()) {
     auto& transport = clip->edit.getTransport();
 
-    cerr << "Updating speedRatio and pitch" << endl;
+    cerr << "Updating speedRatio(" << this->speedRatio << ") and pitch("
+         << this->pitchChange << ")" << endl;
 
     clip->setSpeedRatio(this->speedRatio);
     clip->setPitchChange(this->pitchChange);
+
+    cerr << "Setting loop range : " << startPositionInSeconds << " to "
+         << (startPositionInSeconds + lengthInSeconds) << endl;
 
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
         startPositionInSeconds, lengthInSeconds));
