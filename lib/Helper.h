@@ -5,7 +5,7 @@
 namespace Helper {
 
 template <typename Function>
-void callFunctionOnMessageThread(Function&& func) {
+void callFunctionOnMessageThread(Function&& func, bool shouldWait = false) {
   {
     if (MessageManager::getInstance()->isThisTheMessageThread()) {
       func();
@@ -17,7 +17,10 @@ void callFunctionOnMessageThread(Function&& func) {
         func();
         finishedSignal.signal();
       });
-      finishedSignal.wait(-1);
+
+      if (shouldWait) {
+        finishedSignal.wait(-1);
+      }
     }
   }
 }

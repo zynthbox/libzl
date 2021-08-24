@@ -43,17 +43,17 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   ClipAudioSource* sClip;
 
   Helper::callFunctionOnMessageThread(
-      [&]() { sClip = new ClipAudioSource(filepath); });
+      [&]() { sClip = new ClipAudioSource(filepath); }, true);
 
   return sClip;
 }
 
 void ClipAudioSource_play(ClipAudioSource* c, bool shouldLoop) {
-  Helper::callFunctionOnMessageThread([&]() { c->play(shouldLoop); });
+  Helper::callFunctionOnMessageThread([&]() { c->play(shouldLoop); }, true);
 }
 
 void ClipAudioSource_stop(ClipAudioSource* c) {
-  Helper::callFunctionOnMessageThread([&]() { c->stop(); });
+  Helper::callFunctionOnMessageThread([&]() { c->stop(); }, true);
 }
 
 float ClipAudioSource_getDuration(ClipAudioSource* c) {
@@ -67,31 +67,49 @@ const char* ClipAudioSource_getFileName(ClipAudioSource* c) {
 void ClipAudioSource_setStartPosition(ClipAudioSource* c,
                                       float startPositionInSeconds) {
   Helper::callFunctionOnMessageThread(
-      [&]() { c->setStartPosition(startPositionInSeconds); });
+      [&]() { c->setStartPosition(startPositionInSeconds); }, true);
 }
 
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
-  Helper::callFunctionOnMessageThread([&]() { c->setLength(lengthInSeconds); });
+  Helper::callFunctionOnMessageThread([&]() { c->setLength(lengthInSeconds); },
+                                      true);
 }
 
 void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio) {
-  Helper::callFunctionOnMessageThread([&]() { c->setSpeedRatio(speedRatio); });
+  Helper::callFunctionOnMessageThread([&]() { c->setSpeedRatio(speedRatio); },
+                                      true);
 }
 
 void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
-  Helper::callFunctionOnMessageThread([&]() { c->setPitch(pitchChange); });
+  Helper::callFunctionOnMessageThread([&]() { c->setPitch(pitchChange); },
+                                      true);
 }
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////
 
-void registerTimerCallback(void (*functionPtr)()) {
+//////////////
+/// SynTimer API Bridge
+//////////////
+void SyncTimer_startTimer(int interval) { syncTimer.startTimer(interval); }
+
+void SyncTimer_stopTimer() { syncTimer.stopTimer(); }
+
+void SyncTimer_registerTimerCallback(void (*functionPtr)()) {
   syncTimer.setCallback(functionPtr);
 }
 
-void startTimer(int interval) { syncTimer.startTimer(interval); }
+void SyncTimer_addClip(ClipAudioSource* clip) {
+  Helper::callFunctionOnMessageThread([&]() { syncTimer.addClip(clip); }, true);
+}
 
-void stopTimer() { syncTimer.stopTimer(); }
+void SyncTimer_removeClip(ClipAudioSource* clip) {
+  Helper::callFunctionOnMessageThread([&]() { syncTimer.removeClip(clip); },
+                                      true);
+}
+//////////////
+/// END SyncTimer API Bridge
+//////////////
 
 void startLoop(const char* filepath) {
   //  ScopedJuceInitialiser_GUI libraryInitialiser;

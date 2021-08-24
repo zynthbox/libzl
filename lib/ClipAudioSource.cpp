@@ -44,8 +44,8 @@ ClipAudioSource::ClipAudioSource(const char* filepath) {
 ClipAudioSource::~ClipAudioSource() {}
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
-  cerr << "Setting Start Position to " << startPositionInSeconds << endl;
-  this->startPositionInSeconds = startPositionInSeconds;
+  this->startPositionInSeconds = jmax(0.0f, startPositionInSeconds);
+  cerr << "Setting Start Position to " << this->startPositionInSeconds << endl;
   updateTempoAndPitch();
 }
 
@@ -107,6 +107,7 @@ void ClipAudioSource::play(bool shouldLoop) {
 
   auto& transport = getClip()->edit.getTransport();
   transport.looping = shouldLoop;
+  transport.stop(false, false);
 
   if (shouldLoop) {
     cerr << "### Looping Clip";

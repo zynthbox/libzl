@@ -31,12 +31,20 @@ void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange);
 /// END ClipAudioSource API Bridge
 //////////////
 
+//////////////
+/// SyncTimer API Bridge
+//////////////
+void SyncTimer_startTimer(int interval);
+void SyncTimer_stopTimer();
+void SyncTimer_registerTimerCallback(void (*functionPtr)());
+void SyncTimer_addClip(ClipAudioSource* clip);
+void SyncTimer_removeClip(ClipAudioSource* clip);
+//////////////
+/// END SyncTimer API Bridge
+//////////////
+
 void initJuce();
 void shutdownJuce();
-
-void startTimer(int interval);
-void stopTimer();
-void registerTimerCallback(void (*functionPtr)());
 
 void startLoop(const char* filepath);
 
