@@ -102,16 +102,6 @@ void SyncTimer_registerTimerCallback(void (*functionPtr)()) {
 void SyncTimer_addClip(ClipAudioSource* clip) {
   Helper::callFunctionOnMessageThread([&]() { syncTimer.addClip(clip); }, true);
 }
-
-void SyncTimer_removeClip(ClipAudioSource* clip) {
-  Helper::callFunctionOnMessageThread([&]() { syncTimer.removeClip(clip); },
-                                      true);
-}
-
-void SyncTimer_removeAllClips() {
-  Helper::callFunctionOnMessageThread([&]() { syncTimer.removeAllClips(); },
-                                      true);
-}
 //////////////
 /// END SyncTimer API Bridge
 //////////////
