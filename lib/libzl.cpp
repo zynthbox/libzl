@@ -53,6 +53,8 @@ void ClipAudioSource_play(ClipAudioSource* c) {
 }
 
 void ClipAudioSource_stop(ClipAudioSource* c) {
+  cerr << "libzl : Stop Clip " << c;
+
   Helper::callFunctionOnMessageThread([&]() { c->stop(); }, true);
 }
 

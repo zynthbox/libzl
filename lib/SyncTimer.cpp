@@ -5,13 +5,13 @@ using namespace std;
 SyncTimer::SyncTimer(int bpm) : bpm(bpm) {}
 
 void SyncTimer::hiResTimerCallback() {
-  beat = (beat + 1) % 4;
-
   if (beat == 0) {
     while (!clipsQueue.isEmpty()) {
       clipsQueue.dequeue()->play();
     }
   }
+
+  beat = (beat + 1) % 4;
 
   if (callback != nullptr) {
     callback();
