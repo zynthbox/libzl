@@ -14,12 +14,13 @@
 
 #include "JUCEHeaders.h"
 
+class SyncTimer;
 using namespace std;
 
 //==============================================================================
 class ClipAudioSource {
  public:
-  ClipAudioSource(const char* filepath);
+  ClipAudioSource(SyncTimer* syncTimer, const char* filepath);
   ~ClipAudioSource();
 
   void setStartPosition(float startPositionInSeconds);
@@ -36,6 +37,8 @@ class ClipAudioSource {
  private:
   te::Engine engine{"libzl"};
   std::unique_ptr<te::Edit> edit;
+
+  SyncTimer* syncTimer;
 
   juce::String chosenPath;
   juce::String fileName;

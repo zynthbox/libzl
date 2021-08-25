@@ -2,7 +2,7 @@
 
 using namespace std;
 
-SyncTimer::SyncTimer(int bpm) : bpm(bpm) {}
+SyncTimer::SyncTimer() {}
 
 void SyncTimer::hiResTimerCallback() {
   if (beat == 0) {

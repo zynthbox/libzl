@@ -21,7 +21,7 @@
 using namespace std;
 
 ScopedJuceInitialiser_GUI* initializer = nullptr;
-SyncTimer syncTimer(120);
+SyncTimer* syncTimer = new SyncTimer();
 
 class JuceEventLoopThread : public Thread {
  public:
@@ -43,7 +43,7 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   ClipAudioSource* sClip;
 
   Helper::callFunctionOnMessageThread(
-      [&]() { sClip = new ClipAudioSource(filepath); }, true);
+      [&]() { sClip = new ClipAudioSource(syncTimer, filepath); }, true);
 
   return sClip;
 }
@@ -93,16 +93,17 @@ void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
 //////////////
 /// SynTimer API Bridge
 //////////////
-void SyncTimer_startTimer(int interval) { syncTimer.start(interval); }
+void SyncTimer_startTimer(int interval) { syncTimer->start(interval); }
 
-void SyncTimer_stopTimer() { syncTimer.stop(); }
+void SyncTimer_stopTimer() { syncTimer->stop(); }
 
 void SyncTimer_registerTimerCallback(void (*functionPtr)()) {
-  syncTimer.setCallback(functionPtr);
+  syncTimer->setCallback(functionPtr);
 }
 
 void SyncTimer_addClip(ClipAudioSource* clip) {
-  Helper::callFunctionOnMessageThread([&]() { syncTimer.addClip(clip); }, true);
+  Helper::callFunctionOnMessageThread([&]() { syncTimer->addClip(clip); },
+                                      true);
 }
 //////////////
 /// END SyncTimer API Bridge

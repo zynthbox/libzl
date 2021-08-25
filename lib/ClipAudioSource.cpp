@@ -14,10 +14,12 @@
 
 #include "../tracktion_engine/examples/common/Utilities.h"
 #include "Helper.h"
+#include "SyncTimer.h"
 
 using namespace std;
 
-ClipAudioSource::ClipAudioSource(const char* filepath) {
+ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
+    : syncTimer(syncTimer) {
   engine.getDeviceManager().initialise(0, 2);
 
   cerr << "Opening file : " << filepath << endl;
@@ -79,6 +81,12 @@ const char* ClipAudioSource::getFileName() {
 void ClipAudioSource::updateTempoAndPitch() {
   if (auto clip = getClip()) {
     auto& transport = clip->edit.getTransport();
+    bool playing = false;
+
+    if (transport.isPlaying()) {
+      playing = true;
+      transport.stop(false, false);
+    }
 
     cerr << "Updating speedRatio(" << this->speedRatio << ") and pitch("
          << this->pitchChange << ")" << endl;
@@ -91,6 +99,10 @@ void ClipAudioSource::updateTempoAndPitch() {
 
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
         startPositionInSeconds, lengthInSeconds));
+
+    if (playing) {
+      syncTimer->addClip(this);
+    }
   }
 }
 

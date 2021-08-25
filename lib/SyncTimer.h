@@ -11,7 +11,7 @@ using namespace juce;
 class SyncTimer : public HighResolutionTimer {
   // HighResolutionTimer interface
  public:
-  SyncTimer(int bpm);
+  SyncTimer();
   void hiResTimerCallback();
   void setCallback(void (*functionPtr)());
   void addClip(ClipAudioSource *clip);
@@ -20,7 +20,6 @@ class SyncTimer : public HighResolutionTimer {
 
  private:
   int beat = 0;
-  int bpm;
   void (*callback)() = nullptr;
   QQueue<ClipAudioSource *> clipsQueue;
 };

@@ -11,6 +11,7 @@
 #pragma once
 
 #include "ClipAudioSource.h"
+#include "SyncTimer.h"
 
 extern "C" {
 
