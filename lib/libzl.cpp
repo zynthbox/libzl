@@ -40,6 +40,18 @@ class JuceEventLoopThread : public Thread {
   void setClipLength(ClipAudioSource* c, float lengthInSeconds) {
     c->setLength(lengthInSeconds);
   }
+
+  void setClipStartPosition(ClipAudioSource* c, float startPositionInSeconds) {
+    c->setStartPosition(startPositionInSeconds);
+  }
+
+  void setClipSpeedRatio(ClipAudioSource* c, float speedRatio) {
+    c->setSpeedRatio(speedRatio);
+  }
+
+  void setClipPitch(ClipAudioSource* c, float pitchChange) {
+    c->setPitch(pitchChange);
+  }
 };
 
 JuceEventLoopThread elThread;
@@ -80,8 +92,9 @@ const char* ClipAudioSource_getFileName(ClipAudioSource* c) {
 
 void ClipAudioSource_setStartPosition(ClipAudioSource* c,
                                       float startPositionInSeconds) {
-  Helper::callFunctionOnMessageThread(
-      [&]() { c->setStartPosition(startPositionInSeconds); }, true);
+  //  Helper::callFunctionOnMessageThread(
+  //      [&]() { c->setStartPosition(startPositionInSeconds); }, true);
+  elThread.setClipStartPosition(c, startPositionInSeconds);
 }
 
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
@@ -92,13 +105,17 @@ void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
 }
 
 void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio) {
-  Helper::callFunctionOnMessageThread([&]() { c->setSpeedRatio(speedRatio); },
-                                      true);
+  //  Helper::callFunctionOnMessageThread([&]() { c->setSpeedRatio(speedRatio);
+  //  },
+  //                                      true);
+  elThread.setClipSpeedRatio(c, speedRatio);
 }
 
 void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
-  Helper::callFunctionOnMessageThread([&]() { c->setPitch(pitchChange); },
-                                      true);
+  //  Helper::callFunctionOnMessageThread([&]() { c->setPitch(pitchChange); },
+  //                                      true);
+
+  elThread.setClipPitch(c, pitchChange);
 }
 //////////////
 /// END ClipAudioSource API Bridge
