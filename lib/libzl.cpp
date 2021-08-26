@@ -60,8 +60,6 @@ void ClipAudioSource_stop(ClipAudioSource* c) {
   //  Helper::callFunctionOnMessageThread([&]() { c->stop(); });  //, true);
   //  c->stop();
 
-  //  Helper::callFunctionOnMessageThread([&]() { syncTimer->stopClip(c); },
-  //  true);
   elThread.stopClip(c);
 }
 

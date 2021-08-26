@@ -23,5 +23,4 @@ class SyncTimer : public HighResolutionTimer {
   int beat = 0;
   void (*callback)() = nullptr;
   QQueue<ClipAudioSource *> clipsQueue;
-  QQueue<ClipAudioSource *> clipsStopQueue;
 };
