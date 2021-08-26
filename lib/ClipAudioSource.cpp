@@ -81,6 +81,11 @@ const char* ClipAudioSource::getFileName() {
 void ClipAudioSource::updateTempoAndPitch() {
   if (auto clip = getClip()) {
     auto& transport = clip->edit.getTransport();
+    bool isPlaying = transport.isPlaying();
+
+    if (isPlaying) {
+      transport.stop(false, false);
+    }
 
     cerr << "Updating speedRatio(" << this->speedRatio << ") and pitch("
          << this->pitchChange << ")" << endl;
@@ -93,6 +98,11 @@ void ClipAudioSource::updateTempoAndPitch() {
 
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
         startPositionInSeconds, lengthInSeconds));
+    transport.setCurrentPosition(transport.loopPoint1);
+
+    if (isPlaying) {
+      syncTimer->addClip(this);
+    }
   }
 }
 
@@ -108,6 +118,7 @@ void ClipAudioSource::play() {
   auto& transport = getClip()->edit.getTransport();
 
   transport.stop(false, false);
+  transport.setCurrentPosition(transport.loopPoint1);
   transport.play(false);
 }
 
