@@ -32,6 +32,8 @@ class JuceEventLoopThread : public Thread {
 
     MessageManager::getInstance()->runDispatchLoop();
   }
+
+  void stopClip(ClipAudioSource* c) { c->stop(); }
 };
 
 JuceEventLoopThread elThread;
@@ -55,7 +57,12 @@ void ClipAudioSource_play(ClipAudioSource* c) {
 void ClipAudioSource_stop(ClipAudioSource* c) {
   cerr << "libzl : Stop Clip " << c;
 
-  Helper::callFunctionOnMessageThread([&]() { c->stop(); });  //, true);
+  //  Helper::callFunctionOnMessageThread([&]() { c->stop(); });  //, true);
+  //  c->stop();
+
+  //  Helper::callFunctionOnMessageThread([&]() { syncTimer->stopClip(c); },
+  //  true);
+  elThread.stopClip(c);
 }
 
 float ClipAudioSource_getDuration(ClipAudioSource* c) {

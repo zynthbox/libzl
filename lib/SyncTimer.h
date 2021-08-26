@@ -17,9 +17,11 @@ class SyncTimer : public HighResolutionTimer {
   void addClip(ClipAudioSource *clip);
   void start(int interval);
   void stop();
+  void stopClip(ClipAudioSource *clip);
 
  private:
   int beat = 0;
   void (*callback)() = nullptr;
   QQueue<ClipAudioSource *> clipsQueue;
+  QQueue<ClipAudioSource *> clipsStopQueue;
 };

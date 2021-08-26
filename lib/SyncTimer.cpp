@@ -16,6 +16,10 @@ void SyncTimer::hiResTimerCallback() {
   if (callback != nullptr) {
     callback();
   }
+
+  while (!clipsStopQueue.isEmpty()) {
+    clipsStopQueue.dequeue()->stop();
+  }
 }
 
 void SyncTimer::setCallback(void (*functionPtr)()) { callback = functionPtr; }
@@ -30,3 +34,7 @@ void SyncTimer::start(int interval) {
 }
 
 void SyncTimer::stop() { stopTimer(); }
+
+void SyncTimer::stopClip(ClipAudioSource *clip) {
+  this->clipsStopQueue.enqueue(clip);
+}

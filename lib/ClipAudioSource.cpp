@@ -122,4 +122,8 @@ void ClipAudioSource::play() {
   transport.play(false);
 }
 
-void ClipAudioSource::stop() { edit->getTransport().stop(false, false); }
+void ClipAudioSource::stop() {
+  cerr << "libzl : Stopping clip " << this << endl;
+
+  edit->getTransport().stop(false, false);
+}
