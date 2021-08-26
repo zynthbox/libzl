@@ -33,7 +33,13 @@ class JuceEventLoopThread : public Thread {
     MessageManager::getInstance()->runDispatchLoop();
   }
 
+  void playClip(ClipAudioSource* c) { c->play(); }
+
   void stopClip(ClipAudioSource* c) { c->stop(); }
+
+  void setClipLength(ClipAudioSource* c, float lengthInSeconds) {
+    c->setLength(lengthInSeconds);
+  }
 };
 
 JuceEventLoopThread elThread;
@@ -51,7 +57,8 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
 }
 
 void ClipAudioSource_play(ClipAudioSource* c) {
-  Helper::callFunctionOnMessageThread([&]() { c->play(); }, true);
+  //  Helper::callFunctionOnMessageThread([&]() { c->play(); }, true);
+  elThread.playClip(c);
 }
 
 void ClipAudioSource_stop(ClipAudioSource* c) {
@@ -78,8 +85,10 @@ void ClipAudioSource_setStartPosition(ClipAudioSource* c,
 }
 
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
-  Helper::callFunctionOnMessageThread([&]() { c->setLength(lengthInSeconds); },
-                                      true);
+  //  Helper::callFunctionOnMessageThread([&]() { c->setLength(lengthInSeconds);
+  //  },
+  //                                      true);
+  elThread.setClipLength(c, lengthInSeconds);
 }
 
 void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio) {
