@@ -52,6 +52,15 @@ class JuceEventLoopThread : public Thread {
   void setClipPitch(ClipAudioSource* c, float pitchChange) {
     c->setPitch(pitchChange);
   }
+
+  void stopClips(int size, ClipAudioSource** clips) {
+    for (int i = 0; i < size; i++) {
+      ClipAudioSource* clip = clips[i];
+
+      cerr << "Stopping clip arr[" << i << "] : " << clips[i] << endl;
+      clip->stop();
+    }
+  }
 };
 
 JuceEventLoopThread elThread;
@@ -152,4 +161,8 @@ void shutdownJuce() {
 
 void registerGraphicTypes() {
   qmlRegisterType<WaveFormItem>("JuceGraphics", 1, 0, "WaveFormItem");
+}
+
+void stopClips(int size, ClipAudioSource** clips) {
+  elThread.stopClips(size, clips);
 }

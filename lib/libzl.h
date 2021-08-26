@@ -46,4 +46,5 @@ void SyncTimer_addClip(ClipAudioSource* clip);
 void initJuce();
 void shutdownJuce();
 void registerGraphicTypes();
+void stopClips(int size, ClipAudioSource** clips);
 }

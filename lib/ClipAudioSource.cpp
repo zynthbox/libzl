@@ -31,6 +31,8 @@ ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
   auto clip = Helper::loadAudioFileAsClip(*edit, file);
   auto& transport = edit->getTransport();
 
+  transport.ensureContextAllocated(true);
+
   clip->setAutoTempo(false);
   clip->setAutoPitch(false);
   clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
