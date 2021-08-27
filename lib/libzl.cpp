@@ -145,9 +145,14 @@ void SyncTimer_registerTimerCallback(void (*functionPtr)()) {
   syncTimer->setCallback(functionPtr);
 }
 
-void SyncTimer_addClip(ClipAudioSource* clip) {
-  Helper::callFunctionOnMessageThread([&]() { syncTimer->addClip(clip); },
-                                      true);
+void SyncTimer_queueClipToStart(ClipAudioSource* clip) {
+  Helper::callFunctionOnMessageThread(
+      [&]() { syncTimer->queueClipToStart(clip); }, true);
+}
+
+void SyncTimer_queueClipToStop(ClipAudioSource* clip) {
+  Helper::callFunctionOnMessageThread(
+      [&]() { syncTimer->queueClipToStop(clip); }, true);
 }
 //////////////
 /// END SyncTimer API Bridge

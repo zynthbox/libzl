@@ -39,7 +39,8 @@ void ClipAudioSource_destroy(ClipAudioSource* c);
 void SyncTimer_startTimer(int interval);
 void SyncTimer_stopTimer();
 void SyncTimer_registerTimerCallback(void (*functionPtr)());
-void SyncTimer_addClip(ClipAudioSource* clip);
+void SyncTimer_queueClipToStart(ClipAudioSource* clip);
+void SyncTimer_queueClipToStop(ClipAudioSource* clip);
 //////////////
 /// END SyncTimer API Bridge
 //////////////

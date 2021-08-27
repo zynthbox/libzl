@@ -6,8 +6,14 @@ SyncTimer::SyncTimer() {}
 
 void SyncTimer::hiResTimerCallback() {
   if (beat == 0) {
-    while (!clipsQueue.isEmpty()) {
-      clipsQueue.dequeue()->play();
+    playingClipsCount = playingClipsCount - clipsStopQueue.size();
+    while (!clipsStopQueue.isEmpty()) {
+      clipsStopQueue.dequeue()->stop();
+    }
+
+    playingClipsCount = playingClipsCount + clipsStartQueue.size();
+    while (!clipsStartQueue.isEmpty()) {
+      clipsStartQueue.dequeue()->play();
     }
   }
 
@@ -20,8 +26,12 @@ void SyncTimer::hiResTimerCallback() {
 
 void SyncTimer::setCallback(void (*functionPtr)()) { callback = functionPtr; }
 
-void SyncTimer::addClip(ClipAudioSource *clip) {
-  this->clipsQueue.enqueue(clip);
+void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
+  clipsStartQueue.enqueue(clip);
+}
+
+void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
+  clipsStopQueue.enqueue(clip);
 }
 
 void SyncTimer::start(int interval) {

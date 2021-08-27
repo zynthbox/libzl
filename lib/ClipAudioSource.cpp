@@ -107,7 +107,7 @@ void ClipAudioSource::updateTempoAndPitch() {
     transport.setCurrentPosition(transport.loopPoint1);
 
     if (isPlaying) {
-      syncTimer->addClip(this);
+      syncTimer->queueClipToStart(this);
     }
   }
 }
