@@ -45,7 +45,11 @@ ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
   transport.looping = true;
 }
 
-ClipAudioSource::~ClipAudioSource() {}
+ClipAudioSource::~ClipAudioSource() {
+  cerr << "Destroying Clip" << endl;
+  stop();
+  edit.reset();
+}
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   this->startPositionInSeconds = jmax(0.0f, startPositionInSeconds);

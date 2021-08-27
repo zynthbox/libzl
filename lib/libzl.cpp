@@ -61,6 +61,8 @@ class JuceEventLoopThread : public Thread {
       clip->stop();
     }
   }
+
+  void destroyClip(ClipAudioSource* c) { delete c; }
 };
 
 JuceEventLoopThread elThread;
@@ -126,6 +128,8 @@ void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
 
   elThread.setClipPitch(c, pitchChange);
 }
+
+void ClipAudioSource_destroy(ClipAudioSource* c) { elThread.destroyClip(c); }
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////

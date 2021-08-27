@@ -28,6 +28,7 @@ void ClipAudioSource_setStartPosition(ClipAudioSource* c,
 void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds);
 void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio);
 void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange);
+void ClipAudioSource_destroy(ClipAudioSource* c);
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////
