@@ -27,7 +27,6 @@ void SyncTimer::addClip(ClipAudioSource *clip) {
 void SyncTimer::start(int interval) {
   cerr << "#### Starting timer with interval " << interval << endl;
 
-  beat = 0;
   startTimer(interval);
 }
 
@@ -35,4 +34,5 @@ void SyncTimer::stop() {
   cerr << "#### Stopping timer" << endl;
 
   stopTimer();
+  beat = 0;
 }
