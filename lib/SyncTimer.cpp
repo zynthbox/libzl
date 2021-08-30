@@ -27,10 +27,24 @@ void SyncTimer::hiResTimerCallback() {
 void SyncTimer::setCallback(void (*functionPtr)()) { callback = functionPtr; }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
+  for (ClipAudioSource *c : clipsStopQueue) {
+    if (c == clip) {
+      cerr << "Found clip(" << c << ") in stop queue. Removing from stop queue"
+           << endl;
+      clipsStopQueue.removeOne(c);
+    }
+  }
   clipsStartQueue.enqueue(clip);
 }
 
 void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
+  for (ClipAudioSource *c : clipsStartQueue) {
+    if (c == clip) {
+      cerr << "Found clip(" << c
+           << ") in start queue. Removing from start queue" << endl;
+      clipsStartQueue.removeOne(c);
+    }
+  }
   clipsStopQueue.enqueue(clip);
 }
 
