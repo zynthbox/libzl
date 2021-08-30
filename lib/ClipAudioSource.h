@@ -18,11 +18,14 @@ class SyncTimer;
 using namespace std;
 
 //==============================================================================
-class ClipAudioSource {
+class ClipAudioSource
+{
  public:
   ClipAudioSource(SyncTimer* syncTimer, const char* filepath);
   ~ClipAudioSource();
 
+  void setProgressCallback(void *obj, void (*functionPtr)(void*));
+  void syncProgress();
   void setStartPosition(float startPositionInSeconds);
   void setLength(float lengthInSeconds);
   void setPitch(float pitchChange);
@@ -30,6 +33,7 @@ class ClipAudioSource {
   void play();
   void stop();
   float getDuration();
+  float getProgress() const;
   const char* getFileName();
   void updateTempoAndPitch();
   te::WaveAudioClip::Ptr getClip();
@@ -39,6 +43,8 @@ class ClipAudioSource {
   std::unique_ptr<te::Edit> edit;
 
   SyncTimer* syncTimer;
+  void *zl_clip = nullptr;
+  void (*zl_progress_callback)(void *obj) = nullptr;
 
   juce::String chosenPath;
   juce::String fileName;

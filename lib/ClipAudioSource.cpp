@@ -18,8 +18,30 @@
 
 using namespace std;
 
+
+class ClipProgress: public ValueTree::Listener
+{
+public:
+    ClipProgress(ClipAudioSource *source)
+        : ValueTree::Listener()
+        , m_source(source)
+    {}
+
+    void valueTreePropertyChanged (ValueTree&, const juce::Identifier& i) override
+    {
+        if (i != juce::Identifier("position")) {
+            return;
+        }
+        m_source->syncProgress();
+    }
+
+private:
+    ClipAudioSource *m_source = nullptr;
+};
+
 ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
-    : syncTimer(syncTimer) {
+    : syncTimer(syncTimer)
+{
   engine.getDeviceManager().initialise(0, 2);
 
   cerr << "Opening file : " << filepath << endl;
@@ -43,12 +65,28 @@ ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
   transport.setLoopRange(te::EditTimeRange::withStartAndLength(
       startPositionInSeconds, lengthInSeconds));
   transport.looping = true;
+  transport.state.addListener(new ClipProgress(this));
 }
 
 ClipAudioSource::~ClipAudioSource() {
   cerr << "Destroying Clip" << endl;
   stop();
   edit.reset();
+}
+
+void ClipAudioSource::setProgressCallback(void *obj, void (*functionPtr)(void *))
+{
+    zl_clip = obj;
+    zl_progress_callback = functionPtr;
+}
+
+void ClipAudioSource::syncProgress()
+{
+    if (!zl_clip || !zl_progress_callback) {
+        return;
+    }
+
+    zl_progress_callback(zl_clip);
 }
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
@@ -76,8 +114,13 @@ void ClipAudioSource::setLength(float lengthInSeconds) {
 }
 
 float ClipAudioSource::getDuration() {
-  cerr << "Getting Duration : " << edit->getLength();
+  //cerr << "Getting Duration : " << edit->getLength();
   return edit->getLength();
+}
+
+float ClipAudioSource::getProgress() const
+{
+    return edit->getTransport().getCurrentPosition();
 }
 
 const char* ClipAudioSource::getFileName() {

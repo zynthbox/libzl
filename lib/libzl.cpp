@@ -97,8 +97,16 @@ float ClipAudioSource_getDuration(ClipAudioSource* c) {
   return c->getDuration();
 }
 
+float ClipAudioSource_getProgress(ClipAudioSource* c) {
+  return c->getProgress();
+}
+
 const char* ClipAudioSource_getFileName(ClipAudioSource* c) {
   return c->getFileName();
+}
+
+void ClipAudioSource_setProgressCallback(ClipAudioSource* c, void *obj, void (*functionPtr)(void*)) {
+  c->setProgressCallback(obj, functionPtr);
 }
 
 void ClipAudioSource_setStartPosition(ClipAudioSource* c,
