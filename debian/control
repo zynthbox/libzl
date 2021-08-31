@@ -1,0 +1,13 @@
+Source: libzl
+Section: misc
+Priority: optional
+Maintainer: Leszek Lesner <leszek@zevenos.com>
+Build-Depends: debhelper (>= 11), libwebkit2gtk-4.0-dev
+Standards-Version: 4.1.3
+Homepage: https://github.com/zynthbox/libzl
+
+Package: libzl
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: ZynthiLoops library
+ A library to process audio for ZynthiLoops in c++ with JUCE
