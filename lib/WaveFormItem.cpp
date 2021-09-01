@@ -53,6 +53,7 @@ void WaveFormItem::setSource(QString &source)
     emit endChanged();
     emit sourceChanged();
     emit lengthChanged();
+    update();
 }
 
 qreal WaveFormItem::length() const
