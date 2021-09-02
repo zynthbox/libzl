@@ -21,7 +21,7 @@ extern "C" {
 ClipAudioSource* ClipAudioSource_new(const char* filepath);
 void ClipAudioSource_setProgressCallback(ClipAudioSource* c, void *obj, void (*functionPtr)(void*));
 void ClipAudioSource_connectProgress(ClipAudioSource* c, void *obj);
-void ClipAudioSource_play(ClipAudioSource* c);
+void ClipAudioSource_play(ClipAudioSource* c, bool loop);
 void ClipAudioSource_stop(ClipAudioSource* c);
 float ClipAudioSource_getDuration(ClipAudioSource* c);
 float ClipAudioSource_getProgress(ClipAudioSource* c);

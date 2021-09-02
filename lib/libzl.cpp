@@ -33,7 +33,7 @@ class JuceEventLoopThread : public Thread {
     MessageManager::getInstance()->runDispatchLoop();
   }
 
-  void playClip(ClipAudioSource* c) { c->play(); }
+  void playClip(ClipAudioSource* c, bool loop) { c->play(loop); }
 
   void stopClip(ClipAudioSource* c) { c->stop(); }
 
@@ -79,9 +79,9 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   return sClip;
 }
 
-void ClipAudioSource_play(ClipAudioSource* c) {
+void ClipAudioSource_play(ClipAudioSource* c, bool loop) {
   //  Helper::callFunctionOnMessageThread([&]() { c->play(); }, true);
-  elThread.playClip(c);
+  elThread.playClip(c, loop);
 }
 
 void ClipAudioSource_stop(ClipAudioSource* c) {

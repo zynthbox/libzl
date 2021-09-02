@@ -166,18 +166,22 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
   return {};
 }
 
-void ClipAudioSource::play()
-{
-    auto clip = getClip();
-    if (!clip) {
-        return;
-    }
+void ClipAudioSource::play(bool loop) {
+  auto clip = getClip();
+  if (!clip) {
+      return;
+  }
 
-    auto &transport = clip->edit.getTransport();
+  auto& transport = getClip()->edit.getTransport();
 
-    transport.stop(false, false);
-    transport.setCurrentPosition(transport.loopPoint1);
-    transport.play(false);
+  transport.stop(false, false);
+  transport.setCurrentPosition(transport.loopPoint1);
+
+  if (loop) {
+      transport.play(false);
+  } else {
+      transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(0.0f, lengthInSeconds));
+  }
 }
 
 void ClipAudioSource::stop() {
