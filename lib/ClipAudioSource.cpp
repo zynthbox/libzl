@@ -47,6 +47,7 @@ ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
   cerr << "Opening file : " << filepath << endl;
 
   juce::File file(filepath);
+
   const File editFile = File::createTempFile("editFile");
 
   edit = te::createEmptyEdit(engine, editFile);
@@ -55,12 +56,14 @@ ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
 
   transport.ensureContextAllocated(true);
 
-  clip->setAutoTempo(false);
-  clip->setAutoPitch(false);
-  clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
-
   this->fileName = file.getFileName();
   this->lengthInSeconds = edit->getLength();
+
+    if (clip) {
+        clip->setAutoTempo(false);
+        clip->setAutoPitch(false);
+        clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
+    }
 
   transport.setLoopRange(te::EditTimeRange::withStartAndLength(
       startPositionInSeconds, lengthInSeconds));
@@ -163,12 +166,18 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
   return {};
 }
 
-void ClipAudioSource::play() {
-  auto& transport = getClip()->edit.getTransport();
+void ClipAudioSource::play()
+{
+    auto clip = getClip();
+    if (!clip) {
+        return;
+    }
 
-  transport.stop(false, false);
-  transport.setCurrentPosition(transport.loopPoint1);
-  transport.play(false);
+    auto &transport = clip->edit.getTransport();
+
+    transport.stop(false, false);
+    transport.setCurrentPosition(transport.loopPoint1);
+    transport.play(false);
 }
 
 void ClipAudioSource::stop() {
