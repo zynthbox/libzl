@@ -81,7 +81,8 @@ target_sources(libzl
         lib/SyncTimer.cpp
         lib/Helper.cpp
         lib/QPainterContext.cpp
-        lib/WaveFormItem.cpp)
+        lib/WaveFormItem.cpp
+        lib/WavMetadataHelper.cpp)
 
 #target_link_libraries(libzl
 #    PRIVATE

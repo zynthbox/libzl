@@ -48,6 +48,15 @@ void SyncTimer_queueClipToStop(ClipAudioSource* clip);
 /// END SyncTimer API Bridge
 //////////////
 
+//////////////
+/// WavMetadataHelper API Bridge
+//////////////
+void WavMetadataHelper_readMetadataFromWav(const char *file);
+void WavMetadataHelper_writeMetadataToWav(const char *file);
+//////////////
+/// END WavMetadataHelper API Bridge
+//////////////
+
 void initJuce();
 void shutdownJuce();
 void registerGraphicTypes();

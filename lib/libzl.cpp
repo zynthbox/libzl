@@ -17,6 +17,7 @@
 #include "JUCEHeaders.h"
 #include "SyncTimer.h"
 #include "WaveFormItem.h"
+#include "WavMetadataHelper.h"
 
 using namespace std;
 
@@ -164,6 +165,20 @@ void SyncTimer_queueClipToStop(ClipAudioSource* clip) {
 }
 //////////////
 /// END SyncTimer API Bridge
+//////////////
+
+//////////////
+/// WavMetadataHelper API Bridge
+//////////////
+void WavMetadataHelper_readMetadataFromWav(const char *file) {
+    WavMetadataHelper::readMetadataFromWav(file);
+}
+
+void WavMetadataHelper_writeMetadataToWav(const char *file) {
+    WavMetadataHelper::writeMetadataToWav(file);
+}
+//////////////
+/// END WavMetadataHelper API Bridge
 //////////////
 
 void initJuce() {
