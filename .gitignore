@@ -3,3 +3,4 @@ cmake-build
 build
 CMakeLists.txt.user
 *.qmlc
+*.kdev4
