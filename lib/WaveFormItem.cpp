@@ -12,6 +12,7 @@
 
 #include <QPainter>
 #include <QDebug>
+#include <QTimer>
 
 WaveFormItem::WaveFormItem(QQuickItem *parent)
     : QQuickPaintedItem(parent),
@@ -21,6 +22,7 @@ WaveFormItem::WaveFormItem(QQuickItem *parent)
       m_thumbnail (512, m_formatManager, m_thumbnailCache)
 
 {
+    // std::cerr << "Initializing WaveFormItem" << std::endl;
     m_formatManager.registerBasicFormats();
 }
 
@@ -35,6 +37,8 @@ void WaveFormItem::setSource(QString &source)
         return;
     }
 
+    // std::cerr << "Setting source to : " << source.toUtf8().constData() << std::endl;
+
     m_source = source;
 
     juce::File file(source.toUtf8().constData());
@@ -48,6 +52,14 @@ void WaveFormItem::setSource(QString &source)
     }
     m_start = 0;
     m_end = m_thumbnail.getTotalLength();
+
+    // for (auto *ptr = m_formatManager.begin(); ptr < m_formatManager.end(); ptr++) {
+    //     std::cerr << "Known Format : " << (*ptr)->getFormatName() << std::endl;
+    // }
+
+    // std::cerr << "Reader : " << reader << std::endl;
+    // std::cerr << "Start : " << m_start<< std::endl;
+    // std::cerr << "End : " << m_end << std::endl;
 
     emit startChanged();
     emit endChanged();
