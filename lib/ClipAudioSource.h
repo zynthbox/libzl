@@ -30,6 +30,7 @@ class ClipAudioSource
   void setLength(float lengthInSeconds);
   void setPitch(float pitchChange);
   void setSpeedRatio(float speedRatio);
+  void setGain(float db);
   void play(bool loop=true);
   void stop();
   float getDuration();

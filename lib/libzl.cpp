@@ -20,49 +20,52 @@
 
 using namespace std;
 
-ScopedJuceInitialiser_GUI* initializer = nullptr;
-SyncTimer* syncTimer = new SyncTimer();
+ScopedJuceInitialiser_GUI *initializer = nullptr;
+SyncTimer *syncTimer = new SyncTimer();
 
 class JuceEventLoopThread : public Thread {
- public:
+public:
   JuceEventLoopThread() : Thread("Juce EventLoop Thread") {}
 
   void run() override {
-    if (initializer == nullptr) initializer = new ScopedJuceInitialiser_GUI();
+    if (initializer == nullptr)
+      initializer = new ScopedJuceInitialiser_GUI();
 
     MessageManager::getInstance()->runDispatchLoop();
   }
 
-  void playClip(ClipAudioSource* c, bool loop) { c->play(loop); }
+  void playClip(ClipAudioSource *c, bool loop) { c->play(loop); }
 
-  void stopClip(ClipAudioSource* c) { c->stop(); }
+  void stopClip(ClipAudioSource *c) { c->stop(); }
 
-  void setClipLength(ClipAudioSource* c, float lengthInSeconds) {
+  void setClipLength(ClipAudioSource *c, float lengthInSeconds) {
     c->setLength(lengthInSeconds);
   }
 
-  void setClipStartPosition(ClipAudioSource* c, float startPositionInSeconds) {
+  void setClipStartPosition(ClipAudioSource *c, float startPositionInSeconds) {
     c->setStartPosition(startPositionInSeconds);
   }
 
-  void setClipSpeedRatio(ClipAudioSource* c, float speedRatio) {
+  void setClipSpeedRatio(ClipAudioSource *c, float speedRatio) {
     c->setSpeedRatio(speedRatio);
   }
 
-  void setClipPitch(ClipAudioSource* c, float pitchChange) {
+  void setClipPitch(ClipAudioSource *c, float pitchChange) {
     c->setPitch(pitchChange);
   }
 
-  void stopClips(int size, ClipAudioSource** clips) {
+  void setClipGain(ClipAudioSource *c, float db) { c->setGain(db); }
+
+  void stopClips(int size, ClipAudioSource **clips) {
     for (int i = 0; i < size; i++) {
-      ClipAudioSource* clip = clips[i];
+      ClipAudioSource *clip = clips[i];
 
       cerr << "Stopping clip arr[" << i << "] : " << clips[i] << endl;
       clip->stop();
     }
   }
 
-  void destroyClip(ClipAudioSource* c) { delete c; }
+  void destroyClip(ClipAudioSource *c) { delete c; }
 };
 
 JuceEventLoopThread elThread;
@@ -70,8 +73,8 @@ JuceEventLoopThread elThread;
 //////////////
 /// ClipAudioSource API Bridge
 //////////////
-ClipAudioSource* ClipAudioSource_new(const char* filepath) {
-  ClipAudioSource* sClip;
+ClipAudioSource *ClipAudioSource_new(const char *filepath) {
+  ClipAudioSource *sClip;
 
   Helper::callFunctionOnMessageThread(
       [&]() { sClip = new ClipAudioSource(syncTimer, filepath); }, true);
@@ -79,65 +82,55 @@ ClipAudioSource* ClipAudioSource_new(const char* filepath) {
   return sClip;
 }
 
-void ClipAudioSource_play(ClipAudioSource* c, bool loop) {
-  //  Helper::callFunctionOnMessageThread([&]() { c->play(); }, true);
+void ClipAudioSource_play(ClipAudioSource *c, bool loop) {
   elThread.playClip(c, loop);
 }
 
-void ClipAudioSource_stop(ClipAudioSource* c) {
+void ClipAudioSource_stop(ClipAudioSource *c) {
   cerr << "libzl : Stop Clip " << c;
-
-  //  Helper::callFunctionOnMessageThread([&]() { c->stop(); });  //, true);
-  //  c->stop();
 
   elThread.stopClip(c);
 }
 
-float ClipAudioSource_getDuration(ClipAudioSource* c) {
+float ClipAudioSource_getDuration(ClipAudioSource *c) {
   return c->getDuration();
 }
 
-float ClipAudioSource_getProgress(ClipAudioSource* c) {
+float ClipAudioSource_getProgress(ClipAudioSource *c) {
   return c->getProgress();
 }
 
-const char* ClipAudioSource_getFileName(ClipAudioSource* c) {
+const char *ClipAudioSource_getFileName(ClipAudioSource *c) {
   return c->getFileName();
 }
 
-void ClipAudioSource_setProgressCallback(ClipAudioSource* c, void *obj, void (*functionPtr)(void*)) {
+void ClipAudioSource_setProgressCallback(ClipAudioSource *c, void *obj,
+                                         void (*functionPtr)(void *)) {
   c->setProgressCallback(obj, functionPtr);
 }
 
-void ClipAudioSource_setStartPosition(ClipAudioSource* c,
+void ClipAudioSource_setStartPosition(ClipAudioSource *c,
                                       float startPositionInSeconds) {
-  //  Helper::callFunctionOnMessageThread(
-  //      [&]() { c->setStartPosition(startPositionInSeconds); }, true);
   elThread.setClipStartPosition(c, startPositionInSeconds);
 }
 
-void ClipAudioSource_setLength(ClipAudioSource* c, float lengthInSeconds) {
-  //  Helper::callFunctionOnMessageThread([&]() { c->setLength(lengthInSeconds);
-  //  },
-  //                                      true);
+void ClipAudioSource_setLength(ClipAudioSource *c, float lengthInSeconds) {
   elThread.setClipLength(c, lengthInSeconds);
 }
 
-void ClipAudioSource_setSpeedRatio(ClipAudioSource* c, float speedRatio) {
-  //  Helper::callFunctionOnMessageThread([&]() { c->setSpeedRatio(speedRatio);
-  //  },
-  //                                      true);
+void ClipAudioSource_setSpeedRatio(ClipAudioSource *c, float speedRatio) {
   elThread.setClipSpeedRatio(c, speedRatio);
 }
 
-void ClipAudioSource_setPitch(ClipAudioSource* c, float pitchChange) {
-  //  Helper::callFunctionOnMessageThread([&]() { c->setPitch(pitchChange); },
-  //                                      true);
-
+void ClipAudioSource_setPitch(ClipAudioSource *c, float pitchChange) {
   elThread.setClipPitch(c, pitchChange);
 }
 
-void ClipAudioSource_destroy(ClipAudioSource* c) { elThread.destroyClip(c); }
+void ClipAudioSource_setGain(ClipAudioSource *c, float db) {
+  elThread.setClipGain(c, db);
+}
+
+void ClipAudioSource_destroy(ClipAudioSource *c) { elThread.destroyClip(c); }
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////
@@ -153,12 +146,12 @@ void SyncTimer_registerTimerCallback(void (*functionPtr)()) {
   syncTimer->setCallback(functionPtr);
 }
 
-void SyncTimer_queueClipToStart(ClipAudioSource* clip) {
+void SyncTimer_queueClipToStart(ClipAudioSource *clip) {
   Helper::callFunctionOnMessageThread(
       [&]() { syncTimer->queueClipToStart(clip); }, true);
 }
 
-void SyncTimer_queueClipToStop(ClipAudioSource* clip) {
+void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
   Helper::callFunctionOnMessageThread(
       [&]() { syncTimer->queueClipToStop(clip); }, true);
 }
@@ -180,6 +173,6 @@ void registerGraphicTypes() {
   qmlRegisterType<WaveFormItem>("JuceGraphics", 1, 0, "WaveFormItem");
 }
 
-void stopClips(int size, ClipAudioSource** clips) {
+void stopClips(int size, ClipAudioSource **clips) {
   elThread.stopClips(size, clips);
 }

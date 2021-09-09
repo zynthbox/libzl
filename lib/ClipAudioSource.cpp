@@ -18,30 +18,25 @@
 
 using namespace std;
 
-
-class ClipProgress: public ValueTree::Listener
-{
+class ClipProgress : public ValueTree::Listener {
 public:
-    ClipProgress(ClipAudioSource *source)
-        : ValueTree::Listener()
-        , m_source(source)
-    {}
+  ClipProgress(ClipAudioSource *source)
+      : ValueTree::Listener(), m_source(source) {}
 
-    void valueTreePropertyChanged (ValueTree&, const juce::Identifier& i) override
-    {
-        if (i != juce::Identifier("position")) {
-            return;
-        }
-        m_source->syncProgress();
+  void valueTreePropertyChanged(ValueTree &,
+                                const juce::Identifier &i) override {
+    if (i != juce::Identifier("position")) {
+      return;
     }
+    m_source->syncProgress();
+  }
 
 private:
-    ClipAudioSource *m_source = nullptr;
+  ClipAudioSource *m_source = nullptr;
 };
 
-ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
-    : syncTimer(syncTimer)
-{
+ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath)
+    : syncTimer(syncTimer) {
   engine.getDeviceManager().initialise(0, 2);
 
   cerr << "Opening file : " << filepath << endl;
@@ -52,18 +47,18 @@ ClipAudioSource::ClipAudioSource(SyncTimer* syncTimer, const char* filepath)
 
   edit = te::createEmptyEdit(engine, editFile);
   auto clip = Helper::loadAudioFileAsClip(*edit, file);
-  auto& transport = edit->getTransport();
+  auto &transport = edit->getTransport();
 
   transport.ensureContextAllocated(true);
 
   this->fileName = file.getFileName();
   this->lengthInSeconds = edit->getLength();
 
-    if (clip) {
-        clip->setAutoTempo(false);
-        clip->setAutoPitch(false);
-        clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
-    }
+  if (clip) {
+    clip->setAutoTempo(false);
+    clip->setAutoPitch(false);
+    clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
+  }
 
   transport.setLoopRange(te::EditTimeRange::withStartAndLength(
       startPositionInSeconds, lengthInSeconds));
@@ -77,19 +72,18 @@ ClipAudioSource::~ClipAudioSource() {
   edit.reset();
 }
 
-void ClipAudioSource::setProgressCallback(void *obj, void (*functionPtr)(void *))
-{
-    zl_clip = obj;
-    zl_progress_callback = functionPtr;
+void ClipAudioSource::setProgressCallback(void *obj,
+                                          void (*functionPtr)(void *)) {
+  zl_clip = obj;
+  zl_progress_callback = functionPtr;
 }
 
-void ClipAudioSource::syncProgress()
-{
-    if (!zl_clip || !zl_progress_callback) {
-        return;
-    }
+void ClipAudioSource::syncProgress() {
+  if (!zl_clip || !zl_progress_callback) {
+    return;
+  }
 
-    zl_progress_callback(zl_clip);
+  zl_progress_callback(zl_clip);
 }
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
@@ -110,29 +104,32 @@ void ClipAudioSource::setSpeedRatio(float speedRatio) {
   updateTempoAndPitch();
 }
 
+void ClipAudioSource::setGain(float db) {
+  if (auto clip = getClip()) {
+    cerr << "Setting gain : " << db;
+    clip->setGainDB(db);
+  }
+}
+
 void ClipAudioSource::setLength(float lengthInSeconds) {
   cerr << "Setting Length to " << lengthInSeconds << endl;
   this->lengthInSeconds = lengthInSeconds;
   updateTempoAndPitch();
 }
 
-float ClipAudioSource::getDuration() {
-  //cerr << "Getting Duration : " << edit->getLength();
-  return edit->getLength();
+float ClipAudioSource::getDuration() { return edit->getLength(); }
+
+float ClipAudioSource::getProgress() const {
+  return edit->getTransport().getCurrentPosition();
 }
 
-float ClipAudioSource::getProgress() const
-{
-    return edit->getTransport().getCurrentPosition();
-}
-
-const char* ClipAudioSource::getFileName() {
-  return static_cast<const char*>(fileName.toUTF8());
+const char *ClipAudioSource::getFileName() {
+  return static_cast<const char *>(fileName.toUTF8());
 }
 
 void ClipAudioSource::updateTempoAndPitch() {
   if (auto clip = getClip()) {
-    auto& transport = clip->edit.getTransport();
+    auto &transport = clip->edit.getTransport();
     bool isPlaying = transport.isPlaying();
 
     if (isPlaying) {
@@ -160,7 +157,7 @@ void ClipAudioSource::updateTempoAndPitch() {
 
 te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
   if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0))
-    if (auto clip = dynamic_cast<te::WaveAudioClip*>(track->getClips()[0]))
+    if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0]))
       return *clip;
 
   return {};
@@ -169,18 +166,19 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
 void ClipAudioSource::play(bool loop) {
   auto clip = getClip();
   if (!clip) {
-      return;
+    return;
   }
 
-  auto& transport = getClip()->edit.getTransport();
+  auto &transport = getClip()->edit.getTransport();
 
   transport.stop(false, false);
   transport.setCurrentPosition(transport.loopPoint1);
 
   if (loop) {
-      transport.play(false);
+    transport.play(false);
   } else {
-      transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(0.0f, lengthInSeconds));
+    transport.playSectionAndReset(
+        te::EditTimeRange::withStartAndLength(0.0f, lengthInSeconds));
   }
 }
 
