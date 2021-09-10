@@ -56,6 +56,8 @@ public:
 
   void setClipGain(ClipAudioSource *c, float db) { c->setGain(db); }
 
+  void setClipVolume(ClipAudioSource *c, float vol) { c->setVolume(vol); }
+
   void stopClips(int size, ClipAudioSource **clips) {
     for (int i = 0; i < size; i++) {
       ClipAudioSource *clip = clips[i];
@@ -128,6 +130,10 @@ void ClipAudioSource_setPitch(ClipAudioSource *c, float pitchChange) {
 
 void ClipAudioSource_setGain(ClipAudioSource *c, float db) {
   elThread.setClipGain(c, db);
+}
+
+void ClipAudioSource_setVolume(ClipAudioSource *c, float vol) {
+  elThread.setClipVolume(c, vol);
 }
 
 void ClipAudioSource_destroy(ClipAudioSource *c) { elThread.destroyClip(c); }
