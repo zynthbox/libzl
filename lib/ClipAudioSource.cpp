@@ -64,12 +64,21 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath)
       startPositionInSeconds, lengthInSeconds));
   transport.looping = true;
   transport.state.addListener(new ClipProgress(this));
+
+  auto track = Helper::getOrInsertAudioTrackAt(*edit, 0);
+  auto levelMeasurerPlugin = track->getLevelMeterPlugin();
+  levelMeasurerPlugin->measurer.addClient(levelClient);
+  startTimerHz(30);
 }
 
 ClipAudioSource::~ClipAudioSource() {
   cerr << "Destroying Clip" << endl;
   stop();
   edit.reset();
+  auto track = Helper::getOrInsertAudioTrackAt(*edit, 0);
+  auto levelMeasurerPlugin = track->getLevelMeterPlugin();
+  levelMeasurerPlugin->measurer.removeClient(levelClient);
+  stopTimer();
 }
 
 void ClipAudioSource::setProgressCallback(void *obj,
@@ -116,6 +125,10 @@ void ClipAudioSource::setVolume(float vol) {
     cerr << "Setting volume : " << vol;
     clip->edit.setMasterVolumeSliderPos(vol);
   }
+}
+
+void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
+  audioLevelChangedCallback = functionPtr;
 }
 
 void ClipAudioSource::setLength(float lengthInSeconds) {
@@ -168,6 +181,27 @@ te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
       return *clip;
 
   return {};
+}
+
+void ClipAudioSource::timerCallback() {
+  prevLeveldB = currentLeveldB;
+
+  currentLeveldB = levelClient.getAndClearAudioLevel(0).dB;
+
+  // Now we give the level bar fading charcteristics.
+  // And, the below coversions, decibelsToGain and gainToDecibels,
+  // take care of 0dB, which will never fade!...but a gain of 1.0 (0dB) will.
+
+  const auto prevLevel{Decibels::decibelsToGain(prevLeveldB)};
+
+  if (prevLeveldB > currentLeveldB)
+    currentLeveldB = Decibels::gainToDecibels(prevLevel * 0.94);
+
+  // the test below may save some unnecessary paints
+  if (currentLeveldB != prevLeveldB && audioLevelChangedCallback != nullptr) {
+    // Callback
+    audioLevelChangedCallback(currentLeveldB);
+  }
 }
 
 void ClipAudioSource::play(bool loop) {

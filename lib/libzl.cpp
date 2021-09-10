@@ -136,6 +136,11 @@ void ClipAudioSource_setVolume(ClipAudioSource *c, float vol) {
   elThread.setClipVolume(c, vol);
 }
 
+void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
+                                                  void (*functionPtr)(float)) {
+  c->setAudioLevelChangedCallback(functionPtr);
+}
+
 void ClipAudioSource_destroy(ClipAudioSource *c) { elThread.destroyClip(c); }
 //////////////
 /// END ClipAudioSource API Bridge

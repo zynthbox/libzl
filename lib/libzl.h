@@ -34,6 +34,8 @@ void ClipAudioSource_setSpeedRatio(ClipAudioSource *c, float speedRatio);
 void ClipAudioSource_setPitch(ClipAudioSource *c, float pitchChange);
 void ClipAudioSource_setGain(ClipAudioSource *c, float db);
 void ClipAudioSource_setVolume(ClipAudioSource *c, float vol);
+void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
+                                                  void (*functionPtr)(float));
 void ClipAudioSource_destroy(ClipAudioSource *c);
 //////////////
 /// END ClipAudioSource API Bridge
