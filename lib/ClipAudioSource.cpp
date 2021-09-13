@@ -81,18 +81,14 @@ ClipAudioSource::~ClipAudioSource() {
   stopTimer();
 }
 
-void ClipAudioSource::setProgressCallback(void *obj,
-                                          void (*functionPtr)(void *)) {
-  zl_clip = obj;
-  zl_progress_callback = functionPtr;
+void ClipAudioSource::setProgressCallback(void (*functionPtr)(float)) {
+  progressChangedCallback = functionPtr;
 }
 
 void ClipAudioSource::syncProgress() {
-  if (!zl_clip || !zl_progress_callback) {
-    return;
+  if (progressChangedCallback != nullptr) {
+    progressChangedCallback(edit->getTransport().getCurrentPosition());
   }
-
-  zl_progress_callback(zl_clip);
 }
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
@@ -138,10 +134,6 @@ void ClipAudioSource::setLength(float lengthInSeconds) {
 }
 
 float ClipAudioSource::getDuration() { return edit->getLength(); }
-
-float ClipAudioSource::getProgress() const {
-  return edit->getTransport().getCurrentPosition();
-}
 
 const char *ClipAudioSource::getFileName() {
   return static_cast<const char *>(fileName.toUTF8());

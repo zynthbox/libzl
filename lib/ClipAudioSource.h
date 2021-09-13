@@ -23,7 +23,7 @@ public:
   ClipAudioSource(SyncTimer *syncTimer, const char *filepath);
   ~ClipAudioSource();
 
-  void setProgressCallback(void *obj, void (*functionPtr)(void *));
+  void setProgressCallback(void (*functionPtr)(float));
   void syncProgress();
   void setStartPosition(float startPositionInSeconds);
   void setLength(float lengthInSeconds);
@@ -35,7 +35,6 @@ public:
   void play(bool loop = true);
   void stop();
   float getDuration();
-  float getProgress() const;
   const char *getFileName();
   void updateTempoAndPitch();
   te::WaveAudioClip::Ptr getClip();
@@ -47,8 +46,7 @@ private:
   std::unique_ptr<te::Edit> edit;
 
   SyncTimer *syncTimer;
-  void *zl_clip = nullptr;
-  void (*zl_progress_callback)(void *obj) = nullptr;
+  void (*progressChangedCallback)(float progress) = nullptr;
   void (*audioLevelChangedCallback)(float leveldB) = nullptr;
 
   juce::String chosenPath;
