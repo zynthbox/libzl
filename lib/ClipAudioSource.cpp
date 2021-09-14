@@ -74,10 +74,10 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath)
 ClipAudioSource::~ClipAudioSource() {
   cerr << "Destroying Clip" << endl;
   stop();
-  edit.reset();
   auto track = Helper::getOrInsertAudioTrackAt(*edit, 0);
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
   levelMeasurerPlugin->measurer.removeClient(levelClient);
+  edit.reset();
   stopTimer();
 }
 
