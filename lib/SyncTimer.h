@@ -10,20 +10,26 @@ using namespace juce;
 
 class SyncTimer : public HighResolutionTimer {
   // HighResolutionTimer interface
- public:
+public:
   SyncTimer();
   void hiResTimerCallback();
-  void setCallback(void (*functionPtr)());
+  void setCallbackOneFourth(void (*functionPtr)(int));
+  void setCallbackOneEighth(void (*functionPtr)(int));
+  void setCallbackOneSixteenth(void (*functionPtr)(int));
+  void setCallbackOneThirtySecond(void (*functionPtr)(int));
   void queueClipToStart(ClipAudioSource *clip);
   void queueClipToStop(ClipAudioSource *clip);
-  void start(int interval);
+  void start(int bpm);
   void stop();
   void stopClip(ClipAudioSource *clip);
 
- private:
+private:
   int playingClipsCount = 0;
   int beat = 0;
-  void (*callback)() = nullptr;
+  void (*oneFourthCallback)(int) = nullptr;
+  void (*oneEighthCallback)(int) = nullptr;
+  void (*oneSixteenthCallback)(int) = nullptr;
+  void (*oneThirtySecondCallback)(int) = nullptr;
   QQueue<ClipAudioSource *> clipsStartQueue;
   QQueue<ClipAudioSource *> clipsStopQueue;
 };

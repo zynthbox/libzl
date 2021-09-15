@@ -45,7 +45,11 @@ void ClipAudioSource_destroy(ClipAudioSource *c);
 //////////////
 void SyncTimer_startTimer(int interval);
 void SyncTimer_stopTimer();
-void SyncTimer_registerTimerCallback(void (*functionPtr)());
+void SyncTimer_registerTimerCallbackOneFourth(void (*functionPtr)(int));
+void SyncTimer_registerTimerCallbackOneEighth(void (*functionPtr)(int));
+void SyncTimer_registerTimerCallbackOneSixteenth(void (*functionPtr)(int));
+void SyncTimer_registerTimerCallbackOneThirtySecond(
+    void (*functionPtr)(int beat));
 void SyncTimer_queueClipToStart(ClipAudioSource *clip);
 void SyncTimer_queueClipToStop(ClipAudioSource *clip);
 //////////////

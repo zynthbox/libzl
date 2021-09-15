@@ -17,14 +17,37 @@ void SyncTimer::hiResTimerCallback() {
     }
   }
 
-  beat = (beat + 1) % 4;
+  beat = (beat + 1) % 16;
 
-  if (callback != nullptr) {
-    callback();
+  //  if (oneFourthCallback != nullptr && beat % 4 == 0) {
+  //    oneFourthCallback(beat / 4);
+  //  }
+  //  if (oneEighthCallback != nullptr && beat % 2 == 0) {
+  //    oneEighthCallback(beat / 2);
+  //  }
+  if (oneSixteenthCallback != nullptr) {
+    oneSixteenthCallback(beat);
   }
+  //  if (oneThirtySecondCallback != nullptr) {
+  //    oneThirtySecondCallback(beat);
+  //  }
 }
 
-void SyncTimer::setCallback(void (*functionPtr)()) { callback = functionPtr; }
+void SyncTimer::setCallbackOneFourth(void (*functionPtr)(int)) {
+  oneFourthCallback = functionPtr;
+}
+
+void SyncTimer::setCallbackOneEighth(void (*functionPtr)(int)) {
+  oneEighthCallback = functionPtr;
+}
+
+void SyncTimer::setCallbackOneSixteenth(void (*functionPtr)(int)) {
+  oneSixteenthCallback = functionPtr;
+}
+
+void SyncTimer::setCallbackOneThirtySecond(void (*functionPtr)(int)) {
+  oneThirtySecondCallback = functionPtr;
+}
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
   for (ClipAudioSource *c : clipsStopQueue) {
@@ -48,9 +71,12 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
   clipsStopQueue.enqueue(clip);
 }
 
-void SyncTimer::start(int interval) {
-  cerr << "#### Starting timer with interval " << interval << endl;
+void SyncTimer::start(int bpm) {
+  // Calculate interval for 1/16
+  int interval = floor(((60 / (float)bpm) / 4) * 1000);
 
+  cerr << "#### Starting timer with bpm " << bpm << " and interval " << interval
+       << endl;
   startTimer(interval);
 }
 
