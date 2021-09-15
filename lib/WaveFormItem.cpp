@@ -22,6 +22,10 @@ WaveFormItem::WaveFormItem(QQuickItem *parent)
       m_thumbnail (512, m_formatManager, m_thumbnailCache)
 
 {
+    m_repaintTimer = new QTimer(this);
+    m_repaintTimer->setSingleShot(true);
+    m_repaintTimer->setInterval(200);
+    connect(m_repaintTimer, &QTimer::timeout, this, [this]() {update();});
     // std::cerr << "Initializing WaveFormItem" << std::endl;
     m_formatManager.registerBasicFormats();
 }
@@ -131,6 +135,9 @@ void WaveFormItem::paint(QPainter *painter)
                             qMin(m_end, m_thumbnail.getTotalLength()),             // end time
                             0, // channel num
                             1.0f);
+    if (!m_thumbnail.isFullyLoaded()) {
+        m_repaintTimer->start();
+    }
 }
 
 #include "moc_WaveFormItem.cpp"

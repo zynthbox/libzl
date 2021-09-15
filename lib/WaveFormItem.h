@@ -52,6 +52,7 @@ Q_SIGNALS:
 private:
     QString m_source;
 
+    QTimer *m_repaintTimer;
     juce::Graphics m_juceGraphics;
     QPainterContext m_painterContext;
     QColor m_color;
