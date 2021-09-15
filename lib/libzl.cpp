@@ -149,20 +149,8 @@ void SyncTimer_startTimer(int interval) { syncTimer->start(interval); }
 
 void SyncTimer_stopTimer() { syncTimer->stop(); }
 
-void SyncTimer_registerTimerCallbackOneFourth(void (*functionPtr)(int)) {
-  syncTimer->setCallbackOneFourth(functionPtr);
-}
-
-void SyncTimer_registerTimerCallbackOneEighth(void (*functionPtr)(int)) {
-  syncTimer->setCallbackOneEighth(functionPtr);
-}
-
-void SyncTimer_registerTimerCallbackOneSixteenth(void (*functionPtr)(int)) {
-  syncTimer->setCallbackOneSixteenth(functionPtr);
-}
-
-void SyncTimer_registerTimerCallbackOneThirtySecond(void (*functionPtr)(int)) {
-  syncTimer->setCallbackOneThirtySecond(functionPtr);
+void SyncTimer_registerTimerCallback(void (*functionPtr)(int)) {
+  syncTimer->setCallback(functionPtr);
 }
 
 void SyncTimer_queueClipToStart(ClipAudioSource *clip) {

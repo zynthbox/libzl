@@ -13,10 +13,7 @@ class SyncTimer : public HighResolutionTimer {
 public:
   SyncTimer();
   void hiResTimerCallback();
-  void setCallbackOneFourth(void (*functionPtr)(int));
-  void setCallbackOneEighth(void (*functionPtr)(int));
-  void setCallbackOneSixteenth(void (*functionPtr)(int));
-  void setCallbackOneThirtySecond(void (*functionPtr)(int));
+  void setCallback(void (*functionPtr)(int));
   void queueClipToStart(ClipAudioSource *clip);
   void queueClipToStop(ClipAudioSource *clip);
   void start(int bpm);
@@ -26,10 +23,7 @@ public:
 private:
   int playingClipsCount = 0;
   int beat = 0;
-  void (*oneFourthCallback)(int) = nullptr;
-  void (*oneEighthCallback)(int) = nullptr;
-  void (*oneSixteenthCallback)(int) = nullptr;
-  void (*oneThirtySecondCallback)(int) = nullptr;
+  void (*callback)(int) = nullptr;
   QQueue<ClipAudioSource *> clipsStartQueue;
   QQueue<ClipAudioSource *> clipsStopQueue;
 };

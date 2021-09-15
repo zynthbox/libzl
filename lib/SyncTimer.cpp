@@ -17,36 +17,15 @@ void SyncTimer::hiResTimerCallback() {
     }
   }
 
-  beat = (beat + 1) % 16;
-
-  //  if (oneFourthCallback != nullptr && beat % 4 == 0) {
-  //    oneFourthCallback(beat / 4);
-  //  }
-  //  if (oneEighthCallback != nullptr && beat % 2 == 0) {
-  //    oneEighthCallback(beat / 2);
-  //  }
-  if (oneSixteenthCallback != nullptr) {
-    oneSixteenthCallback(beat);
+  if (callback != nullptr) {
+    callback(beat);
   }
-  //  if (oneThirtySecondCallback != nullptr) {
-  //    oneThirtySecondCallback(beat);
-  //  }
+
+  beat = (beat + 1) % 16;
 }
 
-void SyncTimer::setCallbackOneFourth(void (*functionPtr)(int)) {
-  oneFourthCallback = functionPtr;
-}
-
-void SyncTimer::setCallbackOneEighth(void (*functionPtr)(int)) {
-  oneEighthCallback = functionPtr;
-}
-
-void SyncTimer::setCallbackOneSixteenth(void (*functionPtr)(int)) {
-  oneSixteenthCallback = functionPtr;
-}
-
-void SyncTimer::setCallbackOneThirtySecond(void (*functionPtr)(int)) {
-  oneThirtySecondCallback = functionPtr;
+void SyncTimer::setCallback(void (*functionPtr)(int)) {
+  callback = functionPtr;
 }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
