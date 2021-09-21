@@ -210,8 +210,8 @@ void ClipAudioSource::play(bool loop) {
   if (loop) {
     transport.play(false);
   } else {
-    transport.playSectionAndReset(
-        te::EditTimeRange::withStartAndLength(0.0f, lengthInSeconds));
+    transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(
+        startPositionInSeconds, lengthInSeconds));
   }
 }
 
