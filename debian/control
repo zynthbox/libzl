@@ -2,7 +2,7 @@ Source: libzl
 Section: misc
 Priority: optional
 Maintainer: Leszek Lesner <leszek@zevenos.com>
-Build-Depends: debhelper (>= 11), libwebkit2gtk-4.0-dev, cmake (>= 3.15), qtbase5-dev, qtdeclarative5-dev, qtquickcontrols2-5-dev
+Build-Depends: debhelper (>= 11), libwebkit2gtk-4.0-dev, cmake (>= 3.15), qtbase5-dev, qtdeclarative5-dev, qtquickcontrols2-5-dev, libjack-jackd2-dev
 Standards-Version: 4.1.3
 Homepage: https://github.com/zynthbox/libzl
 
