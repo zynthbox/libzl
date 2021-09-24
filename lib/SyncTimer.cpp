@@ -2,7 +2,7 @@
 
 using namespace std;
 
-SyncTimer::SyncTimer() {}
+SyncTimer::SyncTimer() { multiplier = 32; }
 
 void SyncTimer::hiResTimerCallback() {
   if (beat == 0) {
@@ -21,7 +21,7 @@ void SyncTimer::hiResTimerCallback() {
     cb(beat);
   }
 
-  beat = (beat + 1) % 16;
+  beat = (beat + 1) % (multiplier * 4);
 }
 
 void SyncTimer::setCallback(void (*functionPtr)(int)) {
@@ -57,12 +57,9 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
 }
 
 void SyncTimer::start(int bpm) {
-  // Calculate interval for 1/16
-  int interval = 60000 / (bpm * 4);
-
-  cerr << "#### Starting timer with bpm " << bpm << " and interval " << interval
-       << endl;
-  startTimer(interval);
+  cerr << "#### Starting timer with bpm " << bpm << " and interval "
+       << getInterval(bpm) << endl;
+  startTimer(getInterval(bpm));
 }
 
 void SyncTimer::stop() {
@@ -71,3 +68,10 @@ void SyncTimer::stop() {
   stopTimer();
   beat = 0;
 }
+
+int SyncTimer::getInterval(int bpm) {
+  // Calculate interval
+  return 60000 / (bpm * multiplier);
+}
+
+int SyncTimer::getMultiplier() { return multiplier; }

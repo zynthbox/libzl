@@ -127,7 +127,11 @@ void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
   audioLevelChangedCallback = functionPtr;
 }
 
-void ClipAudioSource::setLength(float lengthInSeconds) {
+void ClipAudioSource::setLength(int beat, int bpm) {
+  cerr << "Interval : " << syncTimer->getInterval(bpm) << endl;
+  float lengthInSeconds =
+      (syncTimer->getInterval(bpm) * syncTimer->getMultiplier() * beat) /
+      (float)1000;
   cerr << "Setting Length to " << lengthInSeconds << endl;
   this->lengthInSeconds = lengthInSeconds;
   updateTempoAndPitch();

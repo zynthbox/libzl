@@ -21,10 +21,14 @@ public:
   void start(int bpm);
   void stop();
   void stopClip(ClipAudioSource *clip);
+  int getInterval(int bpm);
+  int getMultiplier();
 
 private:
   int playingClipsCount = 0;
   int beat = 0;
+  int bpm = 0;
+  int multiplier;
   QList<void (*)(int)> callbacks;
   QQueue<ClipAudioSource *> clipsStartQueue;
   QQueue<ClipAudioSource *> clipsStopQueue;
