@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QList>
 #include <QQueue>
 
 #include "ClipAudioSource.h"
@@ -14,6 +15,7 @@ public:
   SyncTimer();
   void hiResTimerCallback();
   void setCallback(void (*functionPtr)(int));
+  void removeCallback(void (*functionPtr)(int));
   void queueClipToStart(ClipAudioSource *clip);
   void queueClipToStop(ClipAudioSource *clip);
   void start(int bpm);
@@ -23,7 +25,7 @@ public:
 private:
   int playingClipsCount = 0;
   int beat = 0;
-  void (*callback)(int) = nullptr;
+  QList<void (*)(int)> callbacks;
   QQueue<ClipAudioSource *> clipsStartQueue;
   QQueue<ClipAudioSource *> clipsStopQueue;
 };

@@ -17,15 +17,21 @@ void SyncTimer::hiResTimerCallback() {
     }
   }
 
-  if (callback != nullptr) {
-    callback(beat);
+  for (auto cb : callbacks) {
+    cb(beat);
   }
 
   beat = (beat + 1) % 16;
 }
 
 void SyncTimer::setCallback(void (*functionPtr)(int)) {
-  callback = functionPtr;
+  cerr << "Adding callback " << functionPtr;
+  callbacks.append(functionPtr);
+}
+
+void SyncTimer::removeCallback(void (*functionPtr)(int)) {
+  bool result = callbacks.removeOne(functionPtr);
+  cerr << "Removing callback " << functionPtr << " : " << result;
 }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {

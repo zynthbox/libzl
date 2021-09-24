@@ -153,6 +153,10 @@ void SyncTimer_registerTimerCallback(void (*functionPtr)(int)) {
   syncTimer->setCallback(functionPtr);
 }
 
+void SyncTimer_deregisterTimerCallback(void (*functionPtr)(int)) {
+  syncTimer->removeCallback(functionPtr);
+}
+
 void SyncTimer_queueClipToStart(ClipAudioSource *clip) {
   Helper::callFunctionOnMessageThread(
       [&]() { syncTimer->queueClipToStart(clip); }, true);
