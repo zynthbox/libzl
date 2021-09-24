@@ -52,7 +52,7 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
 
 void SyncTimer::start(int bpm) {
   // Calculate interval for 1/16
-  int interval = floor(((60 / (float)bpm) / 4) * 1000);
+  int interval = 60000 / (bpm * 4);
 
   cerr << "#### Starting timer with bpm " << bpm << " and interval " << interval
        << endl;
