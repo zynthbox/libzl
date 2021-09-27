@@ -10,8 +10,8 @@
 
 #pragma once
 
-#include "ClipAudioSource.h"
-#include "SyncTimer.h"
+class ClipAudioSource;
+class SyncTimer;
 
 extern "C" {
 
