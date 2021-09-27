@@ -145,12 +145,14 @@ void ClipAudioSource_destroy(ClipAudioSource *c) { elThread.destroyClip(c); }
 //////////////
 /// SynTimer API Bridge
 //////////////
+QObject* SyncTimer_instance() { return syncTimer; }
+
 void SyncTimer_startTimer(int interval) { syncTimer->start(interval); }
 
 void SyncTimer_stopTimer() { syncTimer->stop(); }
 
 void SyncTimer_registerTimerCallback(void (*functionPtr)(int)) {
-  syncTimer->setCallback(functionPtr);
+  syncTimer->addCallback(functionPtr);
 }
 
 void SyncTimer_deregisterTimerCallback(void (*functionPtr)(int)) {
