@@ -36,12 +36,11 @@ target_sources(libzl
         lib/QPainterContext.cpp
         lib/WaveFormItem.cpp)
 
-set_target_properties(libzl
-    PROPERTIES
-        PUBLIC_HEADER
-            lib/libzl.h
-            lib/ClipAudioSource.h
-            lib/SyncTimer.h)
+set(libzl_headers
+    lib/libzl.h)
+set(libzl_subheaders
+    lib/ClipAudioSource.h
+    lib/SyncTimer.h)
 
 target_compile_definitions(libzl
     PUBLIC
@@ -90,8 +89,9 @@ target_include_directories(libzl
         $<TARGET_PROPERTY:libzl,INCLUDE_DIRECTORIES>)
 
 install(TARGETS libzl
-    LIBRARY DESTINATION lib
-    PUBLIC_HEADER DESTINATION include)
+    LIBRARY DESTINATION lib)
+install(FILES ${libzl_headers} DESTINATION include)
+install(FILES ${libzl_subheaders} DESTINATION include/libzl)
 
 ##############################
 #  END libzl SHARED LIBRARY  #
