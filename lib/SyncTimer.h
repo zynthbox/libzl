@@ -1,20 +1,20 @@
 #pragma once
 
+#include <QObject>
 #include <QList>
 #include <QQueue>
 
-#include "ClipAudioSource.h"
-#include "JUCEHeaders.h"
+// #include "ClipAudioSource.h"
 
 using namespace std;
-using namespace juce;
 
-class SyncTimer : public HighResolutionTimer {
-  // HighResolutionTimer interface
+class ClipAudioSource;
+class SyncTimer : public QObject {
+  // HighResolutionTimer facade
+  Q_OBJECT
 public:
-  SyncTimer();
-  void hiResTimerCallback();
-  void setCallback(void (*functionPtr)(int));
+  explicit SyncTimer(QObject *parent = nullptr);
+  void addCallback(void (*functionPtr)(int));
   void removeCallback(void (*functionPtr)(int));
   void queueClipToStart(ClipAudioSource *clip);
   void queueClipToStop(ClipAudioSource *clip);
@@ -25,11 +25,6 @@ public:
   int getMultiplier();
 
 private:
-  int playingClipsCount = 0;
-  int beat = 0;
-  int bpm = 0;
-  int multiplier;
-  QList<void (*)(int)> callbacks;
-  QQueue<ClipAudioSource *> clipsStartQueue;
-  QQueue<ClipAudioSource *> clipsStopQueue;
+  class Private;
+  Private *d = nullptr;
 };
