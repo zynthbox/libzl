@@ -1,77 +1,101 @@
 #include "SyncTimer.h"
+#include "ClipAudioSource.h"
+
+#include "JUCEHeaders.h"
 
 using namespace std;
+using namespace juce;
 
-SyncTimer::SyncTimer() { multiplier = 32; }
+class SyncTimer::Private : public HighResolutionTimer {
+public:
+  Private() : HighResolutionTimer() {}
+  ~Private() override {}
+  int playingClipsCount = 0;
+  int beat = 0;
+  int bpm = 0;
+  int multiplier;
+  QList<void (*)(int)> callbacks;
+  QQueue<ClipAudioSource *> clipsStartQueue;
+  QQueue<ClipAudioSource *> clipsStopQueue;
 
-void SyncTimer::hiResTimerCallback() {
-  if (beat == 0) {
-    playingClipsCount = playingClipsCount - clipsStopQueue.size();
-    while (!clipsStopQueue.isEmpty()) {
-      clipsStopQueue.dequeue()->stop();
+  void hiResTimerCallback() override {
+    if (beat == 0) {
+        playingClipsCount = playingClipsCount - clipsStopQueue.size();
+        while (!clipsStopQueue.isEmpty()) {
+          clipsStopQueue.dequeue()->stop();
+        }
+
+        playingClipsCount = playingClipsCount + clipsStartQueue.size();
+        while (!clipsStartQueue.isEmpty()) {
+          clipsStartQueue.dequeue()->play();
+        }
     }
 
-    playingClipsCount = playingClipsCount + clipsStartQueue.size();
-    while (!clipsStartQueue.isEmpty()) {
-      clipsStartQueue.dequeue()->play();
+    for (auto cb : callbacks) {
+        cb(beat);
     }
-  }
 
-  for (auto cb : callbacks) {
-    cb(beat);
+    beat = (beat + 1) % (multiplier * 4);
   }
+};
 
-  beat = (beat + 1) % (multiplier * 4);
+SyncTimer::SyncTimer(QObject *parent)
+    : QObject(parent)
+    , d(new Private)
+{
+    d->multiplier = 32;
 }
 
-void SyncTimer::setCallback(void (*functionPtr)(int)) {
+void SyncTimer::addCallback(void (*functionPtr)(int)) {
   cerr << "Adding callback " << functionPtr;
-  callbacks.append(functionPtr);
+  d->callbacks.append(functionPtr);
 }
 
 void SyncTimer::removeCallback(void (*functionPtr)(int)) {
-  bool result = callbacks.removeOne(functionPtr);
+  bool result = d->callbacks.removeOne(functionPtr);
   cerr << "Removing callback " << functionPtr << " : " << result;
 }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
-  for (ClipAudioSource *c : clipsStopQueue) {
+  for (ClipAudioSource *c : d->clipsStopQueue) {
     if (c == clip) {
       cerr << "Found clip(" << c << ") in stop queue. Removing from stop queue"
            << endl;
-      clipsStopQueue.removeOne(c);
+      d->clipsStopQueue.removeOne(c);
     }
   }
-  clipsStartQueue.enqueue(clip);
+  d->clipsStartQueue.enqueue(clip);
 }
 
 void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
-  for (ClipAudioSource *c : clipsStartQueue) {
+  for (ClipAudioSource *c : d->clipsStartQueue) {
     if (c == clip) {
       cerr << "Found clip(" << c
            << ") in start queue. Removing from start queue" << endl;
-      clipsStartQueue.removeOne(c);
+      d->clipsStartQueue.removeOne(c);
     }
   }
-  clipsStopQueue.enqueue(clip);
+  d->clipsStopQueue.enqueue(clip);
 }
 
 void SyncTimer::start(int bpm) {
   cerr << "#### Starting timer with bpm " << bpm << " and interval "
        << getInterval(bpm) << endl;
-  startTimer(getInterval(bpm));
+  d->startTimer(getInterval(bpm));
 }
 
 void SyncTimer::stop() {
   cerr << "#### Stopping timer" << endl;
 
-  stopTimer();
-  beat = 0;
+  d->stopTimer();
+  d->beat = 0;
 }
 
 int SyncTimer::getInterval(int bpm) {
   // Calculate interval
-  return 60000 / (bpm * multiplier);
+  return 60000 / (bpm * d->multiplier);
 }
 
-int SyncTimer::getMultiplier() { return multiplier; }
+int SyncTimer::getMultiplier() {
+  return d->multiplier;
+}

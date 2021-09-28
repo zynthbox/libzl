@@ -7,7 +7,7 @@
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 
-#include "../tracktion_engine/modules/tracktion_engine/tracktion_engine.h"
+#include <tracktion_engine/tracktion_engine.h>
 
 namespace te = tracktion_engine;
 using namespace juce;
