@@ -145,7 +145,7 @@ void ClipAudioSource_destroy(ClipAudioSource *c) { elThread.destroyClip(c); }
 //////////////
 /// SynTimer API Bridge
 //////////////
-QObject* SyncTimer_instance() { return syncTimer; }
+QObject *SyncTimer_instance() { return syncTimer; }
 
 void SyncTimer_startTimer(int interval) { syncTimer->start(interval); }
 
@@ -189,3 +189,5 @@ void registerGraphicTypes() {
 void stopClips(int size, ClipAudioSource **clips) {
   elThread.stopClips(size, clips);
 }
+
+float dBFromVolume(float vol) { return te::volumeFaderPositionToDB(vol); }

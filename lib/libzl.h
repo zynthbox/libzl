@@ -60,4 +60,5 @@ void initJuce();
 void shutdownJuce();
 void registerGraphicTypes();
 void stopClips(int size, ClipAudioSource **clips);
+float dBFromVolume(float vol);
 }
