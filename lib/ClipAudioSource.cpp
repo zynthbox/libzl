@@ -119,7 +119,7 @@ void ClipAudioSource::setGain(float db) {
 void ClipAudioSource::setVolume(float vol) {
   if (auto clip = getClip()) {
     cerr << "Setting volume : " << vol;
-    clip->edit.setMasterVolumeSliderPos(vol);
+    clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
   }
 }
 
