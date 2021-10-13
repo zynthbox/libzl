@@ -24,6 +24,8 @@ public:
   int getInterval(int bpm);
   int getMultiplier();
 
+  bool timerRunning();
+  Q_SIGNAL void timerRunningChanged();
 private:
   class Private;
   Private *d = nullptr;

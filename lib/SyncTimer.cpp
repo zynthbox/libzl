@@ -82,12 +82,16 @@ void SyncTimer::start(int bpm) {
   cerr << "#### Starting timer with bpm " << bpm << " and interval "
        << getInterval(bpm) << endl;
   d->startTimer(getInterval(bpm));
+  Q_EMIT timerRunningChanged();
 }
 
 void SyncTimer::stop() {
   cerr << "#### Stopping timer" << endl;
 
-  d->stopTimer();
+  if(d->isTimerRunning()) {
+    d->stopTimer();
+    Q_EMIT timerRunningChanged();
+  }
   d->beat = 0;
 }
 
@@ -98,4 +102,8 @@ int SyncTimer::getInterval(int bpm) {
 
 int SyncTimer::getMultiplier() {
   return d->multiplier;
+}
+
+bool SyncTimer::timerRunning() {
+    return d->isTimerRunning();
 }
