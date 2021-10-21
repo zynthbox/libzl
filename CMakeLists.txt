@@ -15,6 +15,7 @@ include_directories(tracktion_engine/modules/)
 
 find_package (PkgConfig REQUIRED)
 pkg_check_modules (W2GTK4 REQUIRED webkit2gtk-4.0)
+pkg_check_modules(RTMIDI REQUIRED rtmidi)
 
 include_directories (${W2GTK4_INCLUDE_DIRS})
 link_directories (${W2GTK4_LIBRARY_DIRS})
@@ -63,6 +64,7 @@ target_compile_definitions(libzl
 
 target_link_libraries(libzl
     PRIVATE
+        ${RTMIDI_LIBRARIES}
         ${W2GTK4_LIBRARIES}
         tracktion::tracktion_engine
         tracktion::tracktion_graph
@@ -85,8 +87,10 @@ target_link_libraries(libzl
         Qt5::Gui
         Qt5::Qml
         Qt5::Quick)
-  
+
 target_include_directories(libzl
+    PRIVATE
+        ${RTMIDI_INCLUDE_DIRS}
     INTERFACE
         $<TARGET_PROPERTY:libzl,INCLUDE_DIRECTORIES>)
 
