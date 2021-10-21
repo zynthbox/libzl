@@ -159,6 +159,12 @@ void SyncTimer::stop() {
     d->stopTimer();
     Q_EMIT timerRunningChanged();
   }
+  if (d->midiout) {
+      std::vector<unsigned char> message;
+      message.push_back(0x7B);
+      message.push_back(0);
+      d->midiout->sendMessage(&message);
+  }
   d->beat = 0;
 }
 
