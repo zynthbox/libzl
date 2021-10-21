@@ -59,19 +59,25 @@ public:
   int i{0};
   void hiResTimerCallback() override {
     QMutexLocker locker(&mutex);
+    // Stop things that want stopping
     if (midiout) {
       for (const std::vector<unsigned char> &offNote : qAsConst(offNotes)) {
         midiout->sendMessage(&offNote);
       }
-      for (const std::vector<unsigned char> &onNote : qAsConst(onNotes)) {
-        midiout->sendMessage(&onNote);
-      }
     }
-
     if (beat == 0) {
       for (ClipAudioSource *clip : clipsStopQueue) {
         clip->stop();
       }
+    }
+
+    // Now play things which want playing
+    if (midiout) {
+      for (const std::vector<unsigned char> &onNote : qAsConst(onNotes)) {
+        midiout->sendMessage(&onNote);
+      }
+    }
+    if (beat == 0) {
       for (ClipAudioSource *clip : clipsStartQueue) {
         clip->play();
       }
@@ -84,6 +90,9 @@ public:
       clipsStopQueue.clear();
       clipsStartQueue.clear();
     }
+
+    // Since we're likely to be doing things in the callbacks which schedule stuff to be
+    // done, and we are done with the lists and queues, unlock the locked stuff
     locker.unlock();
 
     // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
