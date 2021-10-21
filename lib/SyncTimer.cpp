@@ -73,12 +73,6 @@ public:
       }
     }
 
-    for (auto cb : callbacks) {
-      cb(beat);
-    }
-
-    beat = (beat + 1) % (multiplier * 4);
-
     // Now that we're done doing performance intensive things, we can clean up
     offNotes.clear();
     onNotes.clear();
@@ -86,6 +80,13 @@ public:
       clipsStopQueue.clear();
       clipsStartQueue.clear();
     }
+
+    // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
+    for (auto cb : callbacks) {
+      cb(beat);
+    }
+
+    beat = (beat + 1) % (multiplier * 4);
   }
 };
 
