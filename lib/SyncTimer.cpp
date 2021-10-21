@@ -161,9 +161,12 @@ void SyncTimer::stop() {
   }
   if (d->midiout) {
       std::vector<unsigned char> message;
+      message.push_back(0xB0);
       message.push_back(0x7B);
-      message.push_back(0);
-      d->midiout->sendMessage(&message);
+      for (int i = 0; i < 16; ++i) {
+        message[0] = 0xB0 + i;
+        d->midiout->sendMessage(&message);
+      }
   }
   d->beat = 0;
 }
