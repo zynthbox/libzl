@@ -177,6 +177,10 @@ int SyncTimer::getMultiplier() {
   return d->multiplier;
 }
 
+int SyncTimer::beat() const {
+  return d->beat;
+}
+
 void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, int duration, int delay)
 {
   // Not using this one yet... but we shall!

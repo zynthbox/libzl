@@ -25,6 +25,12 @@ public:
   int getMultiplier();
 
   /**
+   * \brief The current beat, where that makes useful sense
+   * @returns An integer from 0 through 128
+   */
+  int beat() const;
+
+  /**
    * \brief Schedule a note message to be sent on the next tick of the timer
    * @param midiNote The note you wish to change the state of
    * @param midiChannel The channel you wish to change the given note on
