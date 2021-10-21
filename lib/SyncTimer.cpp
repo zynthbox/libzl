@@ -3,6 +3,8 @@
 
 #include "JUCEHeaders.h"
 
+#include <QMutex>
+#include <QMutexLocker>
 #include <RtMidi.h>
 
 using namespace std;
@@ -53,8 +55,10 @@ public:
   QList<std::vector<unsigned char> > onNotes;
   RtMidiOut *midiout{nullptr};
 
+  QMutex mutex;
   int i{0};
   void hiResTimerCallback() override {
+    QMutexLocker locker(&mutex);
     if (midiout) {
       for (const std::vector<unsigned char> &offNote : qAsConst(offNotes)) {
         midiout->sendMessage(&offNote);
@@ -80,6 +84,7 @@ public:
       clipsStopQueue.clear();
       clipsStartQueue.clear();
     }
+    locker.unlock();
 
     // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
     for (auto cb : callbacks) {
@@ -108,6 +113,7 @@ void SyncTimer::removeCallback(void (*functionPtr)(int)) {
 }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
+  QMutexLocker locker(&d->mutex);
   for (ClipAudioSource *c : d->clipsStopQueue) {
     if (c == clip) {
       cerr << "Found clip(" << c << ") in stop queue. Removing from stop queue"
@@ -119,6 +125,7 @@ void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
 }
 
 void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
+  QMutexLocker locker(&d->mutex);
   for (ClipAudioSource *c : d->clipsStartQueue) {
     if (c == clip) {
       cerr << "Found clip(" << c
@@ -168,6 +175,7 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
   }
   note.push_back(midiNote);
   note.push_back(velocity);
+  QMutexLocker locker(&d->mutex);
   if (setOn) {
     d->onNotes.append(note);
   } else {
