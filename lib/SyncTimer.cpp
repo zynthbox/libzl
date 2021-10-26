@@ -243,10 +243,6 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
         list.append(note);
         d->onQueue[d->cumulativeBeat + delay] = list;
     }
-    if (duration > 0) {
-      // Schedule an off note for that position
-      scheduleNote(midiNote, midiChannel, false, 64, 0, d->cumulativeBeat + delay + duration);
-    }
   } else {
     if (d->offQueue.contains(d->cumulativeBeat + delay)) {
       d->offQueue[d->cumulativeBeat + delay].append(note);
@@ -255,6 +251,11 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
         list.append(note);
         d->offQueue[d->cumulativeBeat + delay] = list;
     }
+  }
+  locker.unlock(); // Because we'll be locking again in a moment (and we're actually kind of done anyway)
+  if (setOn && duration > 0) {
+    // Schedule an off note for that position
+    scheduleNote(midiNote, midiChannel, false, 64, 0, d->cumulativeBeat + delay + duration);
   }
 }
 
