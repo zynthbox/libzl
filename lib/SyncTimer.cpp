@@ -137,13 +137,13 @@ SyncTimer::SyncTimer(QObject *parent)
 }
 
 void SyncTimer::addCallback(void (*functionPtr)(int)) {
-  cerr << "Adding callback " << functionPtr;
+  cerr << "Adding callback " << functionPtr << endl;
   d->callbacks.append(functionPtr);
 }
 
 void SyncTimer::removeCallback(void (*functionPtr)(int)) {
   bool result = d->callbacks.removeOne(functionPtr);
-  cerr << "Removing callback " << functionPtr << " : " << result;
+  cerr << "Removing callback " << functionPtr << " : " << result << endl;
 }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
