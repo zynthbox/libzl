@@ -3,6 +3,7 @@
 
 #include "JUCEHeaders.h"
 
+#include <QHash>
 #include <QMutex>
 #include <QMutexLocker>
 #include <RtMidi.h>
@@ -51,6 +52,9 @@ public:
   QQueue<ClipAudioSource *> clipsStartQueue;
   QQueue<ClipAudioSource *> clipsStopQueue;
 
+  quint64 cumulativeBeat = 0;
+  QHash<quint64, QList<std::vector<unsigned char> > > offQueue;
+  QHash<quint64, QList<std::vector<unsigned char> > > onQueue;
   QList<std::vector<unsigned char> > offNotes;
   QList<std::vector<unsigned char> > onNotes;
   RtMidiOut *midiout{nullptr};
@@ -59,6 +63,12 @@ public:
   int i{0};
   void hiResTimerCallback() override {
     QMutexLocker locker(&mutex);
+    /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+    ///      Performance Intensive Stuff Goes Below Here
+    /// avoid allocations, list changes, etc if at all possible
+    /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+    /// {
+
     // Stop things that want stopping
     if (midiout) {
       for (const std::vector<unsigned char> &offNote : qAsConst(offNotes)) {
@@ -83,6 +93,12 @@ public:
       }
     }
 
+    /// }
+    /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+    ///      Performance Intensive Stuff Goes Above Here
+    /// avoid allocations, list changes, etc if at all possible
+    /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
+
     // Now that we're done doing performance intensive things, we can clean up
     offNotes.clear();
     onNotes.clear();
@@ -93,7 +109,7 @@ public:
 
     // Since we're likely to be doing things in the callbacks which schedule stuff to be
     // done, and we are done with the lists and queues, unlock the locked stuff
-    locker.unlock();
+//     locker.unlock();
 
     // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
     for (auto cb : callbacks) {
@@ -101,6 +117,15 @@ public:
     }
 
     beat = (beat + 1) % (multiplier * 4);
+
+    ++cumulativeBeat;
+    // Finally, queue up the next lot of notes - is there a position for this beat in the on/off note queues?
+    if (onQueue.contains(cumulativeBeat)) {
+        onNotes = onQueue.take(cumulativeBeat);
+    }
+    if (offQueue.contains(cumulativeBeat)) {
+        offNotes = offQueue.take(cumulativeBeat);
+    }
   }
 };
 
@@ -148,6 +173,13 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
 void SyncTimer::start(int bpm) {
   cerr << "#### Starting timer with bpm " << bpm << " and interval "
        << getInterval(bpm) << endl;
+  // If we've got any notes queued for beat 0, grab those out of the queue
+  if (d->onQueue.contains(0)) {
+      d->onNotes = d->onQueue.take(0);
+  }
+  if (d->offQueue.contains(0)) {
+      d->offNotes = d->offQueue.take(0);
+  }
   d->startTimer(getInterval(bpm));
   Q_EMIT timerRunningChanged();
 }
@@ -169,6 +201,11 @@ void SyncTimer::stop() {
       }
   }
   d->beat = 0;
+  d->cumulativeBeat = 0;
+  d->onQueue.clear();
+  d->onNotes.clear();
+  d->offQueue.clear();
+  d->offNotes.clear();
 }
 
 int SyncTimer::getInterval(int bpm) {
@@ -184,7 +221,7 @@ int SyncTimer::beat() const {
   return d->beat;
 }
 
-void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, int duration, int delay)
+void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay)
 {
   // Not using this one yet... but we shall!
   Q_UNUSED(delay)
@@ -199,9 +236,25 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
   note.push_back(velocity);
   QMutexLocker locker(&d->mutex);
   if (setOn) {
-    d->onNotes.append(note);
+    if (d->onQueue.contains(d->cumulativeBeat + delay)) {
+      d->onQueue[d->cumulativeBeat + delay].append(note);
+    } else {
+        QList<std::vector<unsigned char> > list;
+        list.append(note);
+        d->onQueue[d->cumulativeBeat + delay] = list;
+    }
+    if (duration > 0) {
+      // Schedule an off note for that position
+      scheduleNote(midiNote, midiChannel, false, 64, 0, d->cumulativeBeat + delay + duration);
+    }
   } else {
-    d->offNotes.append(note);
+    if (d->offQueue.contains(d->cumulativeBeat + delay)) {
+      d->offQueue[d->cumulativeBeat + delay].append(note);
+    } else {
+        QList<std::vector<unsigned char> > list;
+        list.append(note);
+        d->offQueue[d->cumulativeBeat + delay] = list;
+    }
   }
 }
 

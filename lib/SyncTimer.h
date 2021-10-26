@@ -36,10 +36,10 @@ public:
    * @param midiChannel The channel you wish to change the given note on
    * @param setOn Whether or not you are turning the note on
    * @param velocity The velocity of the note (only matters if you're turning it on)
-   * @param duration An optional duration (0 means don't schedule a release)         (not used yet!)
-   * @param delay A delay in ms counting from the beat                               (not used yet!)
+   * @param duration An optional duration for on notes (0 means don't schedule a release, higher will schedule an off at the durationth beat from the start of the note)
+   * @param delay A delay in numbers of timer ticks counting from the current position
    */
-  void scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, int duration, int delay);
+  void scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay);
 
   bool timerRunning();
   Q_SIGNAL void timerRunningChanged();
