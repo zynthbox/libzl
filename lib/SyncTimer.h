@@ -37,6 +37,7 @@ public:
 
   /**
    * \brief Schedule a note message to be sent on the next tick of the timer
+   * @note This is not thread-safe in itself - when the timer is running, don't call this function outside of a callback
    * @param midiNote The note you wish to change the state of
    * @param midiChannel The channel you wish to change the given note on
    * @param setOn Whether or not you are turning the note on

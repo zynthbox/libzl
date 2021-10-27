@@ -107,10 +107,6 @@ public:
       clipsStartQueue.clear();
     }
 
-    // Since we're likely to be doing things in the callbacks which schedule stuff to be
-    // done, and we are done with the lists and queues, unlock the locked stuff
-    locker.unlock();
-
     // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
     for (auto cb : callbacks) {
       cb(beat);
@@ -239,7 +235,6 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
   }
   note.push_back(midiNote);
   note.push_back(velocity);
-  QMutexLocker locker(&d->mutex);
   if (setOn) {
     if (d->onQueue.contains(d->cumulativeBeat + delay)) {
       d->onQueue[d->cumulativeBeat + delay].append(note);
@@ -257,7 +252,6 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
         d->offQueue[d->cumulativeBeat + delay] = list;
     }
   }
-  locker.unlock(); // Because we'll be locking again in a moment (and we're actually kind of done anyway)
   if (setOn && duration > 0) {
     // Schedule an off note for that position
     scheduleNote(midiNote, midiChannel, false, 64, 0, d->cumulativeBeat + delay + duration);
