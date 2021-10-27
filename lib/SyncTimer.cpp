@@ -100,8 +100,6 @@ public:
     /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
 
     // Now that we're done doing performance intensive things, we can clean up
-    offNotes.clear();
-    onNotes.clear();
     if (beat == 0) {
       clipsStopQueue.clear();
       clipsStartQueue.clear();
@@ -115,7 +113,9 @@ public:
     beat = (beat + 1) % (multiplier * 4);
     ++cumulativeBeat;
 
-    // Finally, queue up the next lot of notes - is there a position for this beat in the on/off note queues?
+    // Finally, queue up the next lot of notes by taking the next beat positions from
+    // the queues (or the default constructed value returned by take)
+    // (this also is why we're not clearing them above, no need)
     onNotes = onQueue.take(cumulativeBeat);
     offNotes = offQueue.take(cumulativeBeat);
   }
