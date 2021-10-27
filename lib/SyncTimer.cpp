@@ -192,13 +192,14 @@ void SyncTimer::stop() {
     Q_EMIT timerRunningChanged();
   }
   if (d->midiout) {
-      std::vector<unsigned char> message;
-      message.push_back(0xB0);
-      message.push_back(0x7B);
-      for (int i = 0; i < 16; ++i) {
-        message[0] = 0xB0 + i;
-        d->midiout->sendMessage(&message);
+    for (const std::vector<unsigned char> &offNote : qAsConst(d->offNotes)) {
+      d->midiout->sendMessage(&offNote);
+    }
+    for (const auto &offNotes : qAsConst(d->offQueue)) {
+      for (const std::vector<unsigned char> &offNote : offNotes) {
+        d->midiout->sendMessage(&offNote);
       }
+    }
   }
   d->beat = 0;
   d->cumulativeBeat = 0;
@@ -219,6 +220,10 @@ int SyncTimer::getMultiplier() {
 
 int SyncTimer::beat() const {
   return d->beat;
+}
+
+quint64 SyncTimer::cumulativeBeat() const {
+    return d->cumulativeBeat;
 }
 
 void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay)

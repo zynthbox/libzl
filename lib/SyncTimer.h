@@ -29,6 +29,11 @@ public:
    * @returns An integer from 0 through 128
    */
   int beat() const;
+  /**
+   * \brief The number of ticks since the timer was most recently started
+   * @returns The number of times the timer has fired since it was most recently started
+   */
+  quint64 cumulativeBeat() const;
 
   /**
    * \brief Schedule a note message to be sent on the next tick of the timer
