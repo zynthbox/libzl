@@ -254,7 +254,7 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
   }
   if (setOn && duration > 0) {
     // Schedule an off note for that position
-    scheduleNote(midiNote, midiChannel, false, 64, 0, d->cumulativeBeat + delay + duration);
+    scheduleNote(midiNote, midiChannel, false, 64, 0, delay + duration);
   }
 }
 
