@@ -113,15 +113,11 @@ public:
     }
 
     beat = (beat + 1) % (multiplier * 4);
-
     ++cumulativeBeat;
+
     // Finally, queue up the next lot of notes - is there a position for this beat in the on/off note queues?
-    if (onQueue.contains(cumulativeBeat)) {
-        onNotes = onQueue.take(cumulativeBeat);
-    }
-    if (offQueue.contains(cumulativeBeat)) {
-        offNotes = offQueue.take(cumulativeBeat);
-    }
+    onNotes = onQueue.take(cumulativeBeat);
+    offNotes = offQueue.take(cumulativeBeat);
   }
 };
 
