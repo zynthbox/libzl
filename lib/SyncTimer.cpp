@@ -16,7 +16,7 @@ public:
     Private() : HighResolutionTimer() {
       // RtMidiOut constructor
       try {
-        midiout = new RtMidiOut();
+        midiout = new RtMidiOut(RtMidi::UNIX_JACK);
       }
       catch ( RtMidiError &error ) {
         error.printMessage();
@@ -30,7 +30,7 @@ public:
         for (unsigned int i = 0; i < nPorts; ++i) {
           try {
             portName = midiout->getPortName(i);
-            if (portName.rfind("Midi Through", 0) == 0) {
+            if (portName.rfind("ZynMidiRouter:seq", 0) == 0) {
               std::cout << "Using output port " << i << " named " << portName << endl;
               midiout->openPort(i);
               break;
