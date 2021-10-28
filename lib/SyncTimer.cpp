@@ -13,36 +13,7 @@ using namespace juce;
 
 class SyncTimer::Private : public HighResolutionTimer {
 public:
-    Private() : HighResolutionTimer() {
-      // RtMidiOut constructor
-      try {
-        midiout = new RtMidiOut(RtMidi::UNIX_JACK);
-      }
-      catch ( RtMidiError &error ) {
-        error.printMessage();
-        midiout = nullptr;
-      }
-      if (midiout) {
-        // Check outputs.
-        unsigned int nPorts = midiout->getPortCount();
-        std::string portName;
-        std::cout << "\nThere are " << nPorts << " MIDI output ports available.\n";
-        for (unsigned int i = 0; i < nPorts; ++i) {
-          try {
-            portName = midiout->getPortName(i);
-            if (portName.rfind("ZynMidiRouter:seq", 0) == 0) {
-              std::cout << "Using output port " << i << " named " << portName << endl;
-              midiout->openPort(i);
-              break;
-            }
-          }
-          catch (RtMidiError &error) {
-            error.printMessage();
-            delete midiout;
-          }
-        }
-      }
-    }
+  Private() : HighResolutionTimer() {}
   ~Private() override {}
   int playingClipsCount = 0;
   int beat = 0;
@@ -165,6 +136,36 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
 void SyncTimer::start(int bpm) {
   cerr << "#### Starting timer with bpm " << bpm << " and interval "
        << getInterval(bpm) << endl;
+  if (!d->midiout) {
+    // RtMidiOut constructor - can't stick this in the pimpl ctor, as the output we need won't be ready yet at that time
+    try {
+      d->midiout = new RtMidiOut(RtMidi::UNIX_JACK);
+    }
+    catch ( RtMidiError &error ) {
+      error.printMessage();
+      d->midiout = nullptr;
+    }
+    if (d->midiout) {
+      // Check outputs.
+      unsigned int nPorts = d->midiout->getPortCount();
+      std::string portName;
+      std::cout << "\nThere are " << nPorts << " MIDI output ports available.\n";
+      for (unsigned int i = 0; i < nPorts; ++i) {
+        try {
+          portName = d->midiout->getPortName(i);
+          if (portName.rfind("ZynMidiRouter:seq", 0) == 0) {
+            std::cout << "Using output port " << i << " named " << portName << endl;
+            d->midiout->openPort(i);
+            break;
+          }
+        }
+        catch (RtMidiError &error) {
+          error.printMessage();
+          delete d->midiout;
+        }
+      }
+    }
+  }
   // If we've got any notes queued for beat 0, grab those out of the queue
   if (d->onQueue.contains(0)) {
       d->onNotes = d->onQueue.take(0);
