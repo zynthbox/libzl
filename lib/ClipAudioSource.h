@@ -38,6 +38,7 @@ public:
   const char *getFileName();
   void updateTempoAndPitch();
   te::WaveAudioClip::Ptr getClip();
+  const te::Engine &getEngine() const { return engine; };
 
 private:
   void timerCallback();
