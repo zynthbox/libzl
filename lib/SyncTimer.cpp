@@ -76,7 +76,7 @@ public:
                 }
                 Q_EMIT timeout(); // Do the thing!
                 ++count;
-                waitTill(start + (nanosecondsPerMinute * minuteCount) + (interval * count));
+                waitTill(frame_clock::duration(adjustment) + start + (nanosecondsPerMinute * minuteCount) + (interval * count));
             }
             qDebug() << "Reached" << count << "ticks in this minute, and we should have" << bpm * BeatSubdivisions;
             count = 0; // Reset the count each minute
@@ -119,7 +119,15 @@ public:
         Q_EMIT pausedChanged();
     }
     Q_SIGNAL void pausedChanged();
+
+    void addAdjustmentBySeconds(double seconds) {
+        mutex.lock();
+        adjustment += (NanosecondsPerSecond * seconds);
+        mutex.unlock();
+    }
 private:
+    qint64 adjustment{0};
+
     quint64 bpm{0};
     std::chrono::nanoseconds interval;
     bool aborted{false};
@@ -225,27 +233,23 @@ public:
         onNotes = onQueue.take(cumulativeBeat);
         offNotes = offQueue.take(cumulativeBeat);
 
-        // Sync tracktion's position with out own every 16 ticks
-        if (cumulativeBeat % 16 == 0) {
+        // Sync tracktion's position with out own every 64 ticks, offset by 17 from the start for a bit of ease of tracking
+        if (beat == 17 || beat == 81) {
             if (auto actualClip = clip->getClip()) {
                 auto& transport = actualClip->edit.getTransport();
                 if (auto playhead = transport.getCurrentPlayhead()) {
                     // N.B. Because we don't have full tempo sequence info from the host, we have
                     // to assume that the tempo is constant and just sync to that
                     // We could sync to a single bar by subtracting the ppqPositionOfLastBarStart from ppqPosition here
-                    const double timeOffset = (cumulativeBeat * (NanosecondsPerMinute / (double)(BeatSubdivisions * timerThread->getBpm()))) / (double)NanosecondsPerSecond;
-//                     qDebug() << "Getting block size in seconds";
-//                     const double blockSizeInSeconds = edit->engine.getDeviceManager().getBlockSizeMs() / 1000.0;
-//                     qDebug() << "Getting current position in seconds";
-//                     const double currentPositionInSeconds = playhead->getPosition() * blockSizeInSeconds;
+                    const double timeOffset = (beat * (NanosecondsPerMinute / (double)(BeatSubdivisions * timerThread->getBpm()))) / (double)NanosecondsPerSecond;
                     const double currentPositionInSeconds = playhead->getPosition();
-                    qDebug() << "Clip is currently at position" << currentPositionInSeconds << "the clip things its duration is" << clip->getDuration() << "and we think we should be at" << timeOffset;
+//                     qDebug() << "Clip is currently at position" << currentPositionInSeconds << "the clip things its duration is" << clip->getDuration() << "and we think we should be at" << timeOffset;
                     static const double acceptableDeviation = 0.1f;
                     if (std::abs (timeOffset - currentPositionInSeconds) > acceptableDeviation) {
-                        qWarning() << "Overriding playhead position from, changing from" << currentPositionInSeconds << "to" << timeOffset;
-//                         playhead->overridePosition(timeOffset);
+                        qWarning() << "Adjusting playback position, deviation was at" << timeOffset - currentPositionInSeconds << " changing from" << currentPositionInSeconds << "to" << timeOffset;
+                        timerThread->addAdjustmentBySeconds(timeOffset - currentPositionInSeconds);
                     } else {
-                        qWarning() << "Within tolerances, we're good, keep going!" << currentPositionInSeconds << "when we should have" << timeOffset;
+                        qWarning() << "Within tolerances, we're good, keep going! Deviation is at" << timeOffset - currentPositionInSeconds;
                     }
                 } else {
                     qWarning() << "Ow, no playhead...";
