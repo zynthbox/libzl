@@ -142,7 +142,7 @@ public:
         QObject::connect(timerThread, &QThread::started, q, [q](){ Q_EMIT q->timerRunningChanged(); });
         QObject::connect(timerThread, &QThread::finished, q, [q](){ Q_EMIT q->timerRunningChanged(); });
         QObject::connect(timerThread, &SyncTimerThread::pausedChanged, q, [q](){ q->timerRunningChanged(); });
-        timerThread->start();
+        timerThread->start(QThread::TimeCriticalPriority);
     }
     ~Private() {
         timerThread->requestAbort();
