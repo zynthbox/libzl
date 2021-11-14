@@ -290,6 +290,7 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
 
 void SyncTimer::start(int bpm) {
     qDebug() << "#### Starting timer with bpm " << bpm << " and interval " << getInterval(bpm);
+    d->timerThread->setBPM(quint64(bpm));
     if (!d->midiout) {
         // RtMidiOut constructor - can't stick this in the pimpl ctor, as the output we need won't be ready yet at that time
         try {
@@ -334,7 +335,6 @@ void SyncTimer::start(int bpm) {
     if (d->offQueue.contains(0)) {
         d->offNotes = d->offQueue.take(0);
     }
-    d->timerThread->setBPM(quint64(bpm));
     d->timerThread->resume();
 }
 
