@@ -8,6 +8,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QThread>
+#include <QWaitCondition>
 #include <RtMidi.h>
 
 #include "JUCEHeaders.h"
@@ -48,14 +49,27 @@ public:
         quint64 count{0};
         quint64 minuteCount{0};
         std::chrono::nanoseconds nanosecondsPerMinute{NanosecondsPerMinute};
+        std::chrono::time_point< std::chrono::_V2::steady_clock, std::chrono::duration< long long unsigned int, std::ratio< 1, 1000000000 > > > nextMinute;
         qDebug() << "Starting Sync Timer";
         while (true) {
             if (aborted) {
                 break;
             }
-            auto nextMinute = start + ((minuteCount + 1) * nanosecondsPerMinute);
+            nextMinute = start + ((minuteCount + 1) * nanosecondsPerMinute);
             qDebug() << "Sync timer reached minute:" << minuteCount << "with interval" << interval.count();
             while (nextMinute > frame_clock::now()) {
+                mutex.lock();
+                if (paused)
+                {
+                    qDebug() << "Out sync timer thread is paused, let's wait...";
+                    waitCondition.wait(&mutex);
+                    qDebug() << "Unpaused, let's goooo!";
+                    count = 0;
+                    minuteCount = 0;
+                    start = frame_clock::now();
+                    nextMinute = start + ((minuteCount + 1) * nanosecondsPerMinute);
+                }
+                mutex.unlock();
                 if (aborted) {
                     break;
                 }
@@ -87,10 +101,31 @@ public:
     void requestAbort() {
         aborted = true;
     }
+
+    Q_SLOT void pause() { setPaused(true); }
+    Q_SLOT void resume() { setPaused(false); }
+    bool isPaused() const {
+        return paused;
+    }
+    void setPaused(bool shouldPause) {
+        qDebug() << "Attempting to set paused state to" << shouldPause;
+        mutex.lock();
+        qDebug() << "Locked mutex";
+        paused=shouldPause;
+        if (!paused)
+            waitCondition.wakeAll();
+        mutex.unlock();
+        Q_EMIT pausedChanged();
+    }
+    Q_SIGNAL void pausedChanged();
 private:
     quint64 bpm{0};
     std::chrono::nanoseconds interval;
     bool aborted{false};
+
+    bool paused{true};
+    QMutex mutex;
+    QWaitCondition waitCondition;
 
     // This is equivalent to .1 ms
     const frame_clock::duration spinTime{frame_clock::duration(100000)};
@@ -105,8 +140,13 @@ public:
         QObject::connect(timerThread, &SyncTimerThread::timeout, q, [this](){ hiResTimerCallback(); }, Qt::DirectConnection);
         QObject::connect(timerThread, &QThread::started, q, [q](){ Q_EMIT q->timerRunningChanged(); });
         QObject::connect(timerThread, &QThread::finished, q, [q](){ Q_EMIT q->timerRunningChanged(); });
+        QObject::connect(timerThread, &SyncTimerThread::pausedChanged, q, [q](){ q->timerRunningChanged(); });
+        timerThread->start();
     }
-    ~Private() {}
+    ~Private() {
+        timerThread->requestAbort();
+        timerThread->wait();
+    }
     SyncTimerThread *timerThread;
     int playingClipsCount = 0;
     int beat = 0;
@@ -186,24 +226,22 @@ public:
 
         // Sync tracktion's position with out own every 16 ticks
         if (cumulativeBeat % 16 == 0) {
-            auto &engine = clip->getEngine();
-            auto &activeEdits = engine.getActiveEdits();
-            for (auto *edit : activeEdits.getEdits()) {
-                auto& transport = edit->getTransport();
+            if (auto actualClip = clip->getClip()) {
+                auto& transport = actualClip->edit.getTransport();
                 if (auto playhead = transport.getCurrentPlayhead()) {
                     // N.B. Because we don't have full tempo sequence info from the host, we have
                     // to assume that the tempo is constant and just sync to that
                     // We could sync to a single bar by subtracting the ppqPositionOfLastBarStart from ppqPosition here
                     const double timeOffset = cumulativeBeat * (NanosecondsPerMinute / timerThread->getBpm()) / (float)1000000000;
                     const double blockSizeInSeconds = edit->engine.getDeviceManager().getBlockSizeMs() / 1000.0;
-                    const double currentPositionInSeconds = playhead->getPosition() + blockSizeInSeconds;
+                    const double currentPositionInSeconds = playhead->getPosition() * blockSizeInSeconds;
+                    qDebug() << "Clip is currently at position:" << playhead->getPosition() << currentPositionInSeconds;
                     if (std::abs (timeOffset - currentPositionInSeconds) > (blockSizeInSeconds / 2.0)) {
                         qWarning() << "Overriding playhead position from, changing from" << currentPositionInSeconds << "to" << timeOffset;
-                        playhead->overridePosition(timeOffset);
+//                         playhead->overridePosition(timeOffset);
                     } else {
                         qWarning() << "Within tolerances, we're good, keep going!" << currentPositionInSeconds << "when we should have" << timeOffset;
                     }
-                    break;
                 } else {
                     qWarning() << "Ow, no playhead...";
                 }
@@ -283,8 +321,12 @@ void SyncTimer::start(int bpm) {
         }
     }
     if (!d->clip) {
-        d->clip = ClipAudioSource_new("a wholly empty bit of something just used to get the play-head");
+        // Get literally any thing and then set the volume to nothing so we are running but not outputting the sound
+        d->clip = ClipAudioSource_new("/zynthian/zynthian-ui/zynqtgui/zynthiloops/assets/click_track_4-4.wav");
+        d->clip->setVolume(0.0f);
+        d->clip->setLength(4, d->timerThread->getBpm());
     }
+    d->clip->play(true);
     // If we've got any notes queued for beat 0, grab those out of the queue
     if (d->onQueue.contains(0)) {
         d->onNotes = d->onQueue.take(0);
@@ -293,17 +335,14 @@ void SyncTimer::start(int bpm) {
         d->offNotes = d->offQueue.take(0);
     }
     d->timerThread->setBPM(quint64(bpm));
-    d->timerThread->start();
-    Q_EMIT timerRunningChanged();
+    d->timerThread->resume();
 }
 
 void SyncTimer::stop() {
     cerr << "#### Stopping timer" << endl;
 
-    if(d->timerThread->isRunning()) {
-        d->timerThread->requestAbort();
-        d->timerThread->wait();
-        Q_EMIT timerRunningChanged();
+    if(!d->timerThread->isPaused()) {
+        d->timerThread->pause();
     }
     if (d->midiout) {
         for (const std::vector<unsigned char> &offNote : qAsConst(d->offNotes)) {
@@ -315,6 +354,7 @@ void SyncTimer::stop() {
             }
         }
     }
+    d->clip->stop();
     d->beat = 0;
     d->cumulativeBeat = 0;
     d->onQueue.clear();
@@ -382,7 +422,7 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
 }
 
 bool SyncTimer::timerRunning() {
-    return d->timerThread->isRunning();
+    return !d->timerThread->isPaused();
 }
 
 #include "SyncTimer.moc"
