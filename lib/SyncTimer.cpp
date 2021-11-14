@@ -22,6 +22,7 @@ using frame_clock = std::conditional_t<
     std::chrono::steady_clock>;
 
 #define NanosecondsPerMinute 60000000000
+#define NanosecondsPerSecond 1000000000
 #define BeatSubdivisions 32
 class SyncTimerThread : public QThread {
     Q_OBJECT
@@ -49,7 +50,7 @@ public:
         quint64 count{0};
         quint64 minuteCount{0};
         std::chrono::nanoseconds nanosecondsPerMinute{NanosecondsPerMinute};
-        std::chrono::time_point< std::chrono::_V2::steady_clock, std::chrono::duration< long long unsigned int, std::ratio< 1, 1000000000 > > > nextMinute;
+        std::chrono::time_point< std::chrono::_V2::steady_clock, std::chrono::duration< long long unsigned int, std::ratio< 1, NanosecondsPerSecond > > > nextMinute;
         qDebug() << "Starting Sync Timer";
         while (true) {
             if (aborted) {
@@ -67,7 +68,7 @@ public:
                     count = 0;
                     minuteCount = 0;
                     start = frame_clock::now();
-                    nextMinute = start + ((minuteCount + 1) * nanosecondsPerMinute);
+                    nextMinute = start + nanosecondsPerMinute;
                 }
                 mutex.unlock();
                 if (aborted) {
@@ -232,11 +233,15 @@ public:
                     // N.B. Because we don't have full tempo sequence info from the host, we have
                     // to assume that the tempo is constant and just sync to that
                     // We could sync to a single bar by subtracting the ppqPositionOfLastBarStart from ppqPosition here
-                    const double timeOffset = cumulativeBeat * (NanosecondsPerMinute / timerThread->getBpm()) / (float)1000000000;
-                    const double blockSizeInSeconds = edit->engine.getDeviceManager().getBlockSizeMs() / 1000.0;
-                    const double currentPositionInSeconds = playhead->getPosition() * blockSizeInSeconds;
-                    qDebug() << "Clip is currently at position:" << playhead->getPosition() << currentPositionInSeconds;
-                    if (std::abs (timeOffset - currentPositionInSeconds) > (blockSizeInSeconds / 2.0)) {
+                    const double timeOffset = (cumulativeBeat * (NanosecondsPerMinute / (double)(BeatSubdivisions * timerThread->getBpm()))) / (double)NanosecondsPerSecond;
+//                     qDebug() << "Getting block size in seconds";
+//                     const double blockSizeInSeconds = edit->engine.getDeviceManager().getBlockSizeMs() / 1000.0;
+//                     qDebug() << "Getting current position in seconds";
+//                     const double currentPositionInSeconds = playhead->getPosition() * blockSizeInSeconds;
+                    const double currentPositionInSeconds = playhead->getPosition();
+                    qDebug() << "Clip is currently at position" << currentPositionInSeconds << "the clip things its duration is" << clip->getDuration() << "and we think we should be at" << timeOffset;
+                    static const double acceptableDeviation = 0.1f;
+                    if (std::abs (timeOffset - currentPositionInSeconds) > acceptableDeviation) {
                         qWarning() << "Overriding playhead position from, changing from" << currentPositionInSeconds << "to" << timeOffset;
 //                         playhead->overridePosition(timeOffset);
                     } else {
