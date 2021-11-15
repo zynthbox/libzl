@@ -228,7 +228,7 @@ public:
 
         // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
         for (auto cb : callbacks) {
-        cb(beat);
+            cb(beat);
         }
 
         beat = (beat + 1) % (BeatSubdivisions * 4);
@@ -240,24 +240,18 @@ public:
         onNotes = onQueue.take(cumulativeBeat);
         offNotes = offQueue.take(cumulativeBeat);
 
-        // Sync tracktion's position with out own every 64 ticks, offset by 17 from the start for a bit of ease of tracking
+        // Sync our position with tracktion's every 64 ticks, offset by 17 from the start for a bit of ease of tracking
+        // We do this because tracktion will slide a bit in a fairly regular manner (buffer glitches, that sort of thing),
+        // and since SyncTimerThread is a real-time-aligned timer, we need to adjust it to match tracktion, or we end up
+        // out of sync, which would make the name of our timer a lie.
         if (beat == 17 || beat == 81) {
             if (auto actualClip = clip->getClip()) {
                 auto& transport = actualClip->edit.getTransport();
                 if (auto playhead = transport.getCurrentPlayhead()) {
-                    // N.B. Because we don't have full tempo sequence info from the host, we have
-                    // to assume that the tempo is constant and just sync to that
-                    // We could sync to a single bar by subtracting the ppqPositionOfLastBarStart from ppqPosition here
                     const double timeOffset = (beat * (NanosecondsPerMinute / (double)(BeatSubdivisions * timerThread->getBpm()))) / (double)NanosecondsPerSecond;
-                    const double currentPositionInSeconds = playhead->getPosition();
-//                     qDebug() << "Clip is currently at position" << currentPositionInSeconds << "the clip things its duration is" << clip->getDuration() << "and we think we should be at" << timeOffset;
-                    static const double acceptableDeviation = 0.1f;
-                    if (std::abs (timeOffset - currentPositionInSeconds) > acceptableDeviation) {
-                        qWarning() << "Adjusting playback position, deviation was at" << timeOffset - currentPositionInSeconds << " changing from" << currentPositionInSeconds << "to" << timeOffset;
-                        timerThread->addAdjustmentBySeconds(timeOffset - currentPositionInSeconds);
-                    } else {
-                        qWarning() << "Within tolerances, we're good, keep going! Deviation is at" << timeOffset - currentPositionInSeconds;
-                    }
+                    // qDebug() << "Clip thinks its duration is" << clip->getDuration();
+                    // qDebug() << "Adjusting playback position, deviation was at" << timeOffset - playhead->getPosition() << " changing from" << playhead->getPosition() << "to" << timeOffset;
+                    timerThread->addAdjustmentBySeconds(timeOffset - playhead->getPosition());
                 } else {
                     qWarning() << "Ow, no playhead...";
                 }
