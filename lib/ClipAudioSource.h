@@ -20,7 +20,8 @@ using namespace std;
 //==============================================================================
 class ClipAudioSource : public Timer {
 public:
-  ClipAudioSource(SyncTimer *syncTimer, const char *filepath);
+  ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
+                  bool muted = false);
   ~ClipAudioSource();
 
   void setProgressCallback(void (*functionPtr)(float));

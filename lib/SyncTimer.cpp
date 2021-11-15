@@ -331,9 +331,8 @@ void SyncTimer::start(int bpm) {
         }
     }
     if (!d->clip) {
-        // Get literally any thing and then set the volume to nothing so we are running but not outputting the sound
-        d->clip = ClipAudioSource_new("/zynthian/zynthian-ui/zynqtgui/zynthiloops/assets/click_track_4-4.wav");
-        d->clip->setVolume(0.0f);
+        // Get literally any thing and then set muted to true so we are running but not outputting the sound
+        d->clip = ClipAudioSource_new("/zynthian/zynthian-ui/zynqtgui/zynthiloops/assets/click_track_4-4.wav", true);
         d->clip->setLength(4, d->timerThread->getBpm());
     }
     d->clip->play(true);

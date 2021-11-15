@@ -20,7 +20,7 @@ extern "C" {
 //////////////
 /// ClipAudioSource API Bridge
 //////////////
-ClipAudioSource *ClipAudioSource_new(const char *filepath);
+ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted = false);
 void ClipAudioSource_setProgressCallback(ClipAudioSource *c,
                                          void (*functionPtr)(float));
 void ClipAudioSource_connectProgress(ClipAudioSource *c, void *obj);
