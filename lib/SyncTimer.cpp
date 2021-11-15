@@ -231,15 +231,6 @@ public:
             cb(beat);
         }
 
-        beat = (beat + 1) % (BeatSubdivisions * 4);
-        ++cumulativeBeat;
-
-        // Finally, queue up the next lot of notes by taking the next beat positions from
-        // the queues (or the default constructed value returned by take)
-        // (this also is why we're not clearing them above, no need)
-        onNotes = onQueue.take(cumulativeBeat);
-        offNotes = offQueue.take(cumulativeBeat);
-
         // Sync our position with tracktion's every 64 ticks, offset by 17 from the start for a bit of ease of tracking
         // We do this because tracktion will slide a bit in a fairly regular manner (buffer glitches, that sort of thing),
         // and since SyncTimerThread is a real-time-aligned timer, we need to adjust it to match tracktion, or we end up
@@ -257,6 +248,15 @@ public:
                 }
             }
         }
+
+        beat = (beat + 1) % (BeatSubdivisions * 4);
+        ++cumulativeBeat;
+
+        // Finally, queue up the next lot of notes by taking the next beat positions from
+        // the queues (or the default constructed value returned by take)
+        // (this also is why we're not clearing them above, no need)
+        onNotes = onQueue.take(cumulativeBeat);
+        offNotes = offQueue.take(cumulativeBeat);
     }
 };
 
