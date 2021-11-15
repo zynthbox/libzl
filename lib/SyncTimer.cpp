@@ -1,3 +1,4 @@
+#include <sched.h>
 #include "SyncTimer.h"
 #include "ClipAudioSource.h"
 #include "libzl.h"
@@ -64,7 +65,13 @@ public:
                 {
                     qDebug() << "Out sync timer thread is paused, let's wait...";
                     waitCondition.wait(&mutex);
-                    qDebug() << "Unpaused, let's goooo!";
+                    qDebug() << "Unpaused, let's goooo!";                    
+
+                    // Set thread policy to SCHED_FIFO with maximum possible priority
+                    struct sched_param param;
+                    param.sched_priority = sched_get_priority_max(SCHED_FIFO);
+                    sched_setscheduler(0, SCHED_FIFO, &param);
+
                     count = 0;
                     minuteCount = 0;
                     start = frame_clock::now();
@@ -150,7 +157,7 @@ public:
         QObject::connect(timerThread, &QThread::started, q, [q](){ Q_EMIT q->timerRunningChanged(); });
         QObject::connect(timerThread, &QThread::finished, q, [q](){ Q_EMIT q->timerRunningChanged(); });
         QObject::connect(timerThread, &SyncTimerThread::pausedChanged, q, [q](){ q->timerRunningChanged(); });
-        timerThread->start(QThread::TimeCriticalPriority);
+        timerThread->start();
     }
     ~Private() {
         timerThread->requestAbort();
