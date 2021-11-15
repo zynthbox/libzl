@@ -39,6 +39,7 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
                                  bool muted)
     : syncTimer(syncTimer) {
   engine.getDeviceManager().initialise(0, 2);
+  engine.getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
 
   cerr << "Opening file : " << filepath << endl;
 
