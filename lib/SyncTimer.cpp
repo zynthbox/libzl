@@ -10,7 +10,6 @@
 #include <QMutexLocker>
 #include <QThread>
 #include <QWaitCondition>
-#include <RtMidi.h>
 
 #include "JUCEHeaders.h"
 
@@ -63,9 +62,9 @@ public:
                 mutex.lock();
                 if (paused)
                 {
-                    qDebug() << "Out sync timer thread is paused, let's wait...";
+                    qDebug() << "Our sync timer thread is paused, let's wait...";
                     waitCondition.wait(&mutex);
-                    qDebug() << "Unpaused, let's goooo!";                    
+                    qDebug() << "Unpaused, let's goooo!";
 
                     // Set thread policy to SCHED_FIFO with maximum possible priority
                     struct sched_param param;
@@ -116,9 +115,7 @@ public:
         return paused;
     }
     void setPaused(bool shouldPause) {
-        qDebug() << "Attempting to set paused state to" << shouldPause;
         mutex.lock();
-        qDebug() << "Locked mutex";
         paused=shouldPause;
         if (!paused)
             waitCondition.wakeAll();
@@ -171,11 +168,9 @@ public:
     QQueue<ClipAudioSource *> clipsStopQueue;
 
     quint64 cumulativeBeat = 0;
-    QHash<quint64, QList<std::vector<unsigned char> > > offQueue;
-    QHash<quint64, QList<std::vector<unsigned char> > > onQueue;
-    QList<std::vector<unsigned char> > offNotes;
-    QList<std::vector<unsigned char> > onNotes;
-    RtMidiOut *midiout{nullptr};
+    QHash<quint64, MidiBuffer> midiMessageQueues;
+    MidiBuffer nextMidiMessages;
+    std::unique_ptr<MidiOutput> juceMidiOut{nullptr};
 
     ClipAudioSource* clip{nullptr};
     std::unique_ptr<te::Edit> edit;
@@ -190,24 +185,16 @@ public:
         /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
         /// {
 
-        // Stop things that want stopping
-        if (midiout) {
-            for (const std::vector<unsigned char> &offNote : qAsConst(offNotes)) {
-                midiout->sendMessage(&offNote);
-            }
+        if (juceMidiOut) {
+            juceMidiOut->sendBlockOfMessagesNow(nextMidiMessages);
         }
+
         if (beat == 0) {
             for (ClipAudioSource *clip : clipsStopQueue) {
                 clip->stop();
             }
         }
 
-        // Now play things which want playing
-        if (midiout) {
-            for (const std::vector<unsigned char> &onNote : qAsConst(onNotes)) {
-                midiout->sendMessage(&onNote);
-            }
-        }
         if (beat == 0) {
             for (ClipAudioSource *clip : clipsStartQueue) {
                 clip->play();
@@ -253,10 +240,9 @@ public:
         ++cumulativeBeat;
 
         // Finally, queue up the next lot of notes by taking the next beat positions from
-        // the queues (or the default constructed value returned by take)
+        // the queue (or the default constructed value returned by take)
         // (this also is why we're not clearing them above, no need)
-        onNotes = onQueue.take(cumulativeBeat);
-        offNotes = offQueue.take(cumulativeBeat);
+        nextMidiMessages = midiMessageQueues.take(cumulativeBeat);
     }
 };
 
@@ -301,35 +287,12 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
 void SyncTimer::start(int bpm) {
     qDebug() << "#### Starting timer with bpm " << bpm << " and interval " << getInterval(bpm);
     d->timerThread->setBPM(quint64(bpm));
-    if (!d->midiout) {
-        // RtMidiOut constructor - can't stick this in the pimpl ctor, as the output we need won't be ready yet at that time
-        try {
-            d->midiout = new RtMidiOut(RtMidi::UNIX_JACK);
-        }
-        catch ( RtMidiError &error ) {
-            error.printMessage();
-            d->midiout = nullptr;
-        }
-        if (d->midiout) {
-        // Check outputs.
-        unsigned int nPorts = d->midiout->getPortCount();
-        std::string portName;
-        std::cout << "\nThere are " << nPorts << " MIDI output ports available.\n";
-            for (unsigned int i = 0; i < nPorts; ++i) {
-                try {
-                    portName = d->midiout->getPortName(i);
-                    if (portName.rfind("ZynMidiRouter:seq", 0) == 0) {
-                        std::cout << "Using output port " << i << " named " << portName << endl;
-                        d->midiout->openPort(i);
-                        break;
-                    }
-                }
-                catch (RtMidiError &error) {
-                    error.printMessage();
-                    delete d->midiout;
-                }
-            }
-        }
+    for (auto device : MidiOutput::getAvailableDevices ()) {
+        qDebug() << "Juce output" << QString::fromUtf8(device.name.toRawUTF8()) << QString(device.identifier.toRawUTF8());
+    }
+    d->juceMidiOut = MidiOutput::openDevice(0);
+    if (!d->juceMidiOut) {
+        qWarning() << "Failed to create juce midi-out";
     }
     if (!d->clip) {
         // Get literally any thing and then set muted to true so we are running but not outputting the sound
@@ -338,11 +301,8 @@ void SyncTimer::start(int bpm) {
     }
     d->clip->play(true);
     // If we've got any notes queued for beat 0, grab those out of the queue
-    if (d->onQueue.contains(0)) {
-        d->onNotes = d->onQueue.take(0);
-    }
-    if (d->offQueue.contains(0)) {
-        d->offNotes = d->offQueue.take(0);
+    if (d->midiMessageQueues.contains(0)) {
+        d->nextMidiMessages = d->midiMessageQueues.take(0);
     }
     d->timerThread->resume();
 }
@@ -353,23 +313,27 @@ void SyncTimer::stop() {
     if(!d->timerThread->isPaused()) {
         d->timerThread->pause();
     }
-    if (d->midiout) {
-        for (const std::vector<unsigned char> &offNote : qAsConst(d->offNotes)) {
-            d->midiout->sendMessage(&offNote);
+    if (d->juceMidiOut) {
+        for (const auto &message : qAsConst(d->nextMidiMessages)) {
+            // We have designated position 0 as off notes, so turn all those off
+            if (message.samplePosition == 0) {
+                d->juceMidiOut->sendMessageNow(message.getMessage());
+            }
         }
-        for (const auto &offNotes : qAsConst(d->offQueue)) {
-            for (const std::vector<unsigned char> &offNote : offNotes) {
-                d->midiout->sendMessage(&offNote);
+        for (const auto &messages : qAsConst(d->midiMessageQueues)) {
+            for (const auto &message : messages) {
+                // We have designated position 0 as off notes, so turn all those off
+                if (message.samplePosition == 0) {
+                    d->juceMidiOut->sendMessageNow(message.getMessage());
+                }
             }
         }
     }
     d->clip->stop();
     d->beat = 0;
     d->cumulativeBeat = 0;
-    d->onQueue.clear();
-    d->onNotes.clear();
-    d->offQueue.clear();
-    d->offNotes.clear();
+    d->midiMessageQueues.clear();
+    d->nextMidiMessages.clear();
 }
 
 int SyncTimer::getInterval(int bpm) {
@@ -399,30 +363,21 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
     // Not using this one yet... but we shall!
     Q_UNUSED(delay)
     Q_UNUSED(duration)
-    std::vector<unsigned char> note;
+    unsigned char note[3];
     if (setOn) {
-        note.push_back(0x90 + midiChannel);
+        note[0] = 0x90 + midiChannel;
     } else {
-        note.push_back(0x80 + midiChannel);
+        note[0] = 0x80 + midiChannel;
     }
-    note.push_back(midiNote);
-    note.push_back(velocity);
-    if (setOn) {
-        if (d->onQueue.contains(d->cumulativeBeat + delay)) {
-            d->onQueue[d->cumulativeBeat + delay].append(note);
-        } else {
-            QList<std::vector<unsigned char> > list;
-            list.append(note);
-            d->onQueue[d->cumulativeBeat + delay] = list;
-        }
+    note[1] = midiNote;
+    note[2] = velocity;
+    const int onOrOff = setOn ? 1 : 0;
+    if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
+        d->midiMessageQueues[d->cumulativeBeat + delay].addEvent(note, 3, onOrOff);
     } else {
-        if (d->offQueue.contains(d->cumulativeBeat + delay)) {
-            d->offQueue[d->cumulativeBeat + delay].append(note);
-        } else {
-            QList<std::vector<unsigned char> > list;
-            list.append(note);
-            d->offQueue[d->cumulativeBeat + delay] = list;
-        }
+        MidiBuffer buffer;
+        buffer.addEvent(note, 3, onOrOff);
+        d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
     }
     if (setOn && duration > 0) {
         // Schedule an off note for that position
