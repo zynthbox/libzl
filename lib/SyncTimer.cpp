@@ -38,7 +38,7 @@ public:
             usleep((long unsigned int)waitTime.count());
         } else {
             // overrun situation this is bad, we should tell someone!
-            qWarning() << "The playback synchronisation timer had a falling out with reality and ended up asked to wait for a time in the past. This is not awesome, so now we make it even slower by outputting this message complaining about it.";
+            // qWarning() << "The playback synchronisation timer had a falling out with reality and ended up asked to wait for a time in the past. This is not awesome, so now we make it even slower by outputting this message complaining about it.";
         }
         while (till > frame_clock::now()) {
             //spin till actual timepoint
@@ -58,7 +58,7 @@ public:
             }
             nextMinute = start + ((minuteCount + 1) * nanosecondsPerMinute);
             qDebug() << "Sync timer reached minute:" << minuteCount << "with interval" << interval.count();
-            while (nextMinute > frame_clock::now()) {
+            while (count < bpm * BeatSubdivisions) {
                 mutex.lock();
                 if (paused)
                 {
@@ -84,7 +84,7 @@ public:
                 ++count;
                 waitTill(frame_clock::duration(adjustment) + start + (nanosecondsPerMinute * minuteCount) + (interval * count));
             }
-            qDebug() << "Reached" << count << "ticks in this minute, and we should have" << bpm * BeatSubdivisions;
+            qDebug() << "The most recent pseudo-minute took an extra" << (frame_clock::now() - nextMinute).count() << "nanoseconds";
             count = 0; // Reset the count each minute
             ++minuteCount;
         }
@@ -132,7 +132,7 @@ public:
 private:
     qint64 adjustment{0};
 
-    quint64 bpm{0};
+    quint64 bpm{120};
     std::chrono::nanoseconds interval;
     bool aborted{false};
 
