@@ -8,6 +8,9 @@
 
 using namespace std;
 
+namespace juce {
+    class MidiBuffer;
+}
 class ClipAudioSource;
 class SyncTimer : public QObject {
   // HighResolutionTimer facade
@@ -47,6 +50,14 @@ public:
    * @param delay A delay in numbers of timer ticks counting from the current position
    */
   void scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay);
+
+  /**
+   * \brief Schedule a buffer of midi messages (the Juce type) to be sent with the given delay
+   * @note This is not thread-safe in itself - when the timer is running, don't call this function outside of a callback
+   * @param buffer The buffer that you wish to add to the schedule
+   * @param delay The delay (if any) you wish to add
+   */
+  void scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay);
 
   bool timerRunning();
   Q_SIGNAL void timerRunningChanged();

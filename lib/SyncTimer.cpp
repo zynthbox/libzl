@@ -360,9 +360,6 @@ quint64 SyncTimer::cumulativeBeat() const {
 
 void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay)
 {
-    // Not using this one yet... but we shall!
-    Q_UNUSED(delay)
-    Q_UNUSED(duration)
     unsigned char note[3];
     if (setOn) {
         note[0] = 0x90 + midiChannel;
@@ -382,6 +379,15 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
     if (setOn && duration > 0) {
         // Schedule an off note for that position
         scheduleNote(midiNote, midiChannel, false, 64, 0, delay + duration);
+    }
+}
+
+void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay)
+{
+    if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
+        d->midiMessageQueues[d->cumulativeBeat + delay].addEvents(buffer, 0, -1, 0);
+    } else {
+        d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
     }
 }
 
