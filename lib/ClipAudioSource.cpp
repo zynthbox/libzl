@@ -35,9 +35,11 @@ private:
   ClipAudioSource *m_source = nullptr;
 };
 
-ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath)
+ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
+                                 bool muted)
     : syncTimer(syncTimer) {
   engine.getDeviceManager().initialise(0, 2);
+  engine.getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
 
   cerr << "Opening file : " << filepath << endl;
 
@@ -66,6 +68,12 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath)
   transport.state.addListener(new ClipProgress(this));
 
   auto track = Helper::getOrInsertAudioTrackAt(*edit, 0);
+
+  if (muted) {
+    cerr << "Clip marked to be muted" << endl;
+    setVolume(-100.0f);
+  }
+
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
   levelMeasurerPlugin->measurer.addClient(levelClient);
   startTimerHz(30);
@@ -118,7 +126,7 @@ void ClipAudioSource::setGain(float db) {
 
 void ClipAudioSource::setVolume(float vol) {
   if (auto clip = getClip()) {
-    cerr << "Setting volume : " << vol;
+    cerr << "Setting volume : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
   }
 }
@@ -129,9 +137,8 @@ void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
 
 void ClipAudioSource::setLength(int beat, int bpm) {
   cerr << "Interval : " << syncTimer->getInterval(bpm) << endl;
-  float lengthInSeconds =
-      (syncTimer->getInterval(bpm) * syncTimer->getMultiplier() * beat) /
-      (float)1000;
+  float lengthInSeconds = syncTimer->subbeatCountToSeconds(
+      (quint64)bpm, (quint64)(beat * syncTimer->getMultiplier()));
   cerr << "Setting Length to " << lengthInSeconds << endl;
   this->lengthInSeconds = lengthInSeconds;
   updateTempoAndPitch();

@@ -20,7 +20,8 @@ using namespace std;
 //==============================================================================
 class ClipAudioSource : public Timer {
 public:
-  ClipAudioSource(SyncTimer *syncTimer, const char *filepath);
+  ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
+                  bool muted = false);
   ~ClipAudioSource();
 
   void setProgressCallback(void (*functionPtr)(float));
@@ -38,6 +39,7 @@ public:
   const char *getFileName();
   void updateTempoAndPitch();
   te::WaveAudioClip::Ptr getClip();
+  const te::Engine &getEngine() const { return engine; };
 
 private:
   void timerCallback();

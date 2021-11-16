@@ -22,6 +22,7 @@ public:
   void stop();
   void stopClip(ClipAudioSource *clip);
   int getInterval(int bpm);
+  float subbeatCountToSeconds(quint64 bpm, quint64 beats) const;
   int getMultiplier();
 
   /**
