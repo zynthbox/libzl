@@ -9,6 +9,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QThread>
+#include <QTimer>
 #include <QWaitCondition>
 
 #include "JUCEHeaders.h"
@@ -223,15 +224,17 @@ public:
         // and since SyncTimerThread is a real-time-aligned timer, we need to adjust it to match tracktion, or we end up
         // out of sync, which would make the name of our timer a lie.
         if (beat == 17 || beat == 81) {
-            if (auto actualClip = clip->getClip()) {
-                auto& transport = actualClip->edit.getTransport();
-                if (auto playhead = transport.getCurrentPlayhead()) {
-                    const double timeOffset = (beat * (NanosecondsPerMinute / (double)(BeatSubdivisions * timerThread->getBpm()))) / (double)NanosecondsPerSecond;
-                    // qDebug() << "Clip thinks its duration is" << clip->getDuration();
-                    // qDebug() << "Adjusting playback position, deviation was at" << timeOffset - playhead->getPosition() << " changing from" << playhead->getPosition() << "to" << timeOffset;
-                    timerThread->addAdjustmentBySeconds(timeOffset - playhead->getPosition());
-                } else {
-                    qWarning() << "Ow, no playhead...";
+            if (clip) {
+                if (auto actualClip = clip->getClip()) {
+                    auto& transport = actualClip->edit.getTransport();
+                    if (auto playhead = transport.getCurrentPlayhead()) {
+                        const double timeOffset = (beat * (NanosecondsPerMinute / (double)(BeatSubdivisions * timerThread->getBpm()))) / (double)NanosecondsPerSecond;
+                        // qDebug() << "Clip thinks its duration is" << clip->getDuration();
+                        // qDebug() << "Adjusting playback position, deviation was at" << timeOffset - playhead->getPosition() << " changing from" << playhead->getPosition() << "to" << timeOffset;
+                        timerThread->addAdjustmentBySeconds(timeOffset - playhead->getPosition());
+                    } else {
+                        qWarning() << "Ow, no playhead...";
+                    }
                 }
             }
         }
@@ -255,6 +258,21 @@ SyncTimer::SyncTimer(QObject *parent)
 void SyncTimer::addCallback(void (*functionPtr)(int)) {
     cerr << "Adding callback " << functionPtr << endl;
     d->callbacks.append(functionPtr);
+    if (!d->juceMidiOut) {
+        QTimer::singleShot(1, this, [this](){
+            for (auto device : MidiOutput::getAvailableDevices ()) {
+                qDebug() << "Juce output" << QString::fromUtf8(device.name.toRawUTF8()) << QString(device.identifier.toRawUTF8());
+            }
+            d->juceMidiOut = MidiOutput::openDevice(0);
+            if (!d->juceMidiOut) {
+                qWarning() << "Failed to create juce midi-out";
+            }
+            if (!d->clip) {
+                // Get literally any thing and then set muted to true so we are running but not outputting the sound
+                d->clip = ClipAudioSource_new("/zynthian/zynthian-ui/zynqtgui/zynthiloops/assets/click_track_4-4.wav", true);
+            }
+        });
+    }
 }
 
 void SyncTimer::removeCallback(void (*functionPtr)(int)) {
@@ -287,19 +305,12 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
 void SyncTimer::start(int bpm) {
     qDebug() << "#### Starting timer with bpm " << bpm << " and interval " << getInterval(bpm);
     d->timerThread->setBPM(quint64(bpm));
-    for (auto device : MidiOutput::getAvailableDevices ()) {
-        qDebug() << "Juce output" << QString::fromUtf8(device.name.toRawUTF8()) << QString(device.identifier.toRawUTF8());
-    }
-    d->juceMidiOut = MidiOutput::openDevice(0);
-    if (!d->juceMidiOut) {
-        qWarning() << "Failed to create juce midi-out";
-    }
-    if (!d->clip) {
-        // Get literally any thing and then set muted to true so we are running but not outputting the sound
-        d->clip = ClipAudioSource_new("/zynthian/zynthian-ui/zynqtgui/zynthiloops/assets/click_track_4-4.wav", true);
+    if (d->clip) {
         d->clip->setLength(4, d->timerThread->getBpm());
+        d->clip->play(true);
+    } else {
+        qWarning() << "We do not have a Juce audio clip to sync against - the timer synchronisation will not work!";
     }
-    d->clip->play(true);
     // If we've got any notes queued for beat 0, grab those out of the queue
     if (d->midiMessageQueues.contains(0)) {
         d->nextMidiMessages = d->midiMessageQueues.take(0);
@@ -329,7 +340,9 @@ void SyncTimer::stop() {
             }
         }
     }
-    d->clip->stop();
+    if (d->clip) {
+        d->clip->stop();
+    }
     d->beat = 0;
     d->cumulativeBeat = 0;
     d->midiMessageQueues.clear();
