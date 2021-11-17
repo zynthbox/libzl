@@ -26,8 +26,8 @@ WaveFormItem::WaveFormItem(QQuickItem *parent)
     m_repaintTimer->setSingleShot(true);
     m_repaintTimer->setInterval(200);
     connect(m_repaintTimer, &QTimer::timeout, this, [this]() {update();});
-    // std::cerr << "Initializing WaveFormItem" << std::endl;
     m_formatManager.registerBasicFormats();
+    m_thumbnail.addChangeListener(this);
 }
 
 QString WaveFormItem::source() const
@@ -41,8 +41,6 @@ void WaveFormItem::setSource(QString &source)
         return;
     }
 
-    // std::cerr << "Setting source to : " << source.toUtf8().constData() << std::endl;
-
     m_source = source;
 
     juce::File file(source.toUtf8().constData());
@@ -54,22 +52,6 @@ void WaveFormItem::setSource(QString &source)
         m_thumbnail.setSource(new juce::FileInputSource (file));
         m_readerSource.reset (newSource.release());
     }
-    m_start = 0;
-    m_end = m_thumbnail.getTotalLength();
-
-    // for (auto *ptr = m_formatManager.begin(); ptr < m_formatManager.end(); ptr++) {
-    //     std::cerr << "Known Format : " << (*ptr)->getFormatName() << std::endl;
-    // }
-
-    // std::cerr << "Reader : " << reader << std::endl;
-    // std::cerr << "Start : " << m_start<< std::endl;
-    // std::cerr << "End : " << m_end << std::endl;
-
-    emit startChanged();
-    emit endChanged();
-    emit sourceChanged();
-    emit lengthChanged();
-    update();
 }
 
 qreal WaveFormItem::length() const
@@ -122,6 +104,26 @@ void WaveFormItem::setEnd(qreal end)
 
     m_end = end;
     emit endChanged();
+    update();
+}
+
+void WaveFormItem::changeListenerCallback(juce::ChangeBroadcaster *source)
+{
+    if (source == &m_thumbnail) {
+        qWarning() << "Thumbnail Source Changed. Repainting.";
+        QMetaObject::invokeMethod(this, "thumbnailChanged", Qt::QueuedConnection);
+    }
+}
+
+void WaveFormItem::thumbnailChanged()
+{
+    m_start = 0;
+    m_end = m_thumbnail.getTotalLength();
+
+    emit startChanged();
+    emit endChanged();
+    emit sourceChanged();
+    emit lengthChanged();
     update();
 }
 

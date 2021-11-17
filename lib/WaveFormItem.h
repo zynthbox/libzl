@@ -14,7 +14,8 @@
 #include "QPainterContext.h"
 #include <QQuickPaintedItem>
 
-class WaveFormItem : public QQuickPaintedItem
+class WaveFormItem : public QQuickPaintedItem,
+                     private juce::ChangeListener
 {
 Q_OBJECT
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
@@ -40,6 +41,9 @@ public:
 
     qreal end() const;
     void setEnd(qreal end);
+
+    void changeListenerCallback (juce::ChangeBroadcaster* source) override;
+    Q_SLOT void thumbnailChanged();
 
 Q_SIGNALS:
     void sourceChanged();
