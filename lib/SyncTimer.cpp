@@ -8,6 +8,7 @@
 #include <QHash>
 #include <QMutex>
 #include <QMutexLocker>
+#include "QProcess"
 #include <QThread>
 #include <QTimer>
 #include <QWaitCondition>
@@ -156,12 +157,47 @@ public:
         QObject::connect(timerThread, &QThread::finished, q, [q](){ Q_EMIT q->timerRunningChanged(); });
         QObject::connect(timerThread, &SyncTimerThread::pausedChanged, q, [q](){ q->timerRunningChanged(); });
         timerThread->start();
+
+        midiBridge = new QProcess(q);
+        // Using the https://github.com/free-creations/a2jmidi tool
+        // NB: Note the difference between this and a2jmidid! (this is considerably lower latency, which seems pretty important)
+        midiBridge->setProgram("a2jmidi");
+        // We are creating a new output in jack called SyncTimer, based on any Alsa midi out called SyncTimer Out.
+        // a2jmidi will sit quietly in the background until such time that device is created, at which time it will
+        // start listening and push the events through to jack.
+        midiBridge->setArguments({"--name", "SyncTimer", "--connect", "SyncTimer Out"});
+        connect(midiBridge, &QProcess::started, q, [](){
+            qDebug() << "SyncTimer Midi bridge started - now hook it up to ZynMidiRouter";
+            // Connect our SyncTimer:SyncTimer jack output to where ZynMidiRouter expects step sequencer input to arrive
+            // This has to happen a little delayed, just to be sure we don't attempt to connect a partially-created port
+            QTimer::singleShot(1000, [](){
+                QProcess::startDetached("jack_connect", {"SyncTimer:SyncTimer", "ZynMidiRouter:step_in"});
+            });
+        });
+        connect(midiBridge, &QProcess::errorOccurred, q, [](QProcess::ProcessError error){
+            qDebug() << "SyncTimer Midi bridge had an error" << error;
+        });
+//         connect(midiBridge, &QProcess::stateChanged, q, [](QProcess::ProcessState state){
+//             qDebug() << "SyncTimer Midi bridge state changed:" << state;
+//         });
+//         connect(midiBridge, &QProcess::readyReadStandardError, q, [this](){
+//             qDebug() << "SyncTimer Midi bridge errored:" << midiBridge->readAllStandardError();
+//         });
+//         connect(midiBridge, &QProcess::readyReadStandardOutput, q, [this](){
+//             qDebug() << "SyncTimer Midi bridge said:" << midiBridge->readAllStandardOutput();
+//         });
     }
     ~Private() {
         timerThread->requestAbort();
         timerThread->wait();
+        midiBridge->terminate();
+        if (!midiBridge->waitForFinished(2000)) {
+            // Let's not hang around too long...
+            midiBridge->kill();
+        }
     }
     SyncTimerThread *timerThread;
+    QProcess *midiBridge;
     int playingClipsCount = 0;
     int beat = 0;
     QList<void (*)(int)> callbacks;
@@ -260,12 +296,15 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
     d->callbacks.append(functionPtr);
     if (!d->juceMidiOut) {
         QTimer::singleShot(1, this, [this](){
-            for (auto device : MidiOutput::getAvailableDevices ()) {
-                qDebug() << "Juce output" << QString::fromUtf8(device.name.toRawUTF8()) << QString(device.identifier.toRawUTF8());
-            }
-            d->juceMidiOut = MidiOutput::openDevice(0);
+            qDebug() << "Attempting to create a special midi out for SyncTimer";
+            d->juceMidiOut = MidiOutput::createNewDevice("SyncTimer Out");
             if (!d->juceMidiOut) {
-                qWarning() << "Failed to create juce midi-out";
+                qWarning() << "Failed to create SyncTimer's Juce-based midi-out";
+            } else {
+                // Start our midi bridge - we could do it earlier, but it also needs
+                // to happen /after/ ZynMidiRouter is initialised, and so we might as
+                // well wait until now to do it.
+                d->midiBridge->start();
             }
             if (!d->clip) {
                 // Get literally any thing and then set muted to true so we are running but not outputting the sound
