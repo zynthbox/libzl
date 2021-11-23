@@ -8,6 +8,6 @@ Homepage: https://github.com/zynthbox/libzl
 
 Package: libzl
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, a2jmidi
 Description: ZynthiLoops library
  A library to process audio for ZynthiLoops in c++ with JUCE
