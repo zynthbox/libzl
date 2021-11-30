@@ -53,18 +53,16 @@ public:
         quint64 minuteCount{0};
         std::chrono::nanoseconds nanosecondsPerMinute{NanosecondsPerMinute};
         std::chrono::time_point< std::chrono::_V2::steady_clock, std::chrono::duration< long long unsigned int, std::ratio< 1, NanosecondsPerSecond > > > nextMinute;
-        qDebug() << "Starting Sync Timer";
         while (true) {
             if (aborted) {
                 break;
             }
             nextMinute = start + ((minuteCount + 1) * nanosecondsPerMinute);
-            qDebug() << "Sync timer reached minute:" << minuteCount << "with interval" << interval.count();
             while (count < bpm * BeatSubdivisions) {
                 mutex.lock();
                 if (paused)
                 {
-                    qDebug() << "Our sync timer thread is paused, let's wait...";
+                    qDebug() << "SyncTimer thread is paused, let's wait...";
                     waitCondition.wait(&mutex);
                     qDebug() << "Unpaused, let's goooo!";
 
@@ -86,6 +84,7 @@ public:
                 ++count;
                 waitTill(frame_clock::duration(adjustment) + start + (nanosecondsPerMinute * minuteCount) + (interval * count));
             }
+            qDebug() << "Sync timer reached minute:" << minuteCount << "with interval" << interval.count();
             qDebug() << "The most recent pseudo-minute took an extra" << (frame_clock::now() - nextMinute).count() << "nanoseconds";
             count = 0; // Reset the count each minute
             ++minuteCount;
@@ -440,6 +439,24 @@ void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay
         d->midiMessageQueues[d->cumulativeBeat + delay].addEvents(buffer, 0, -1, 0);
     } else {
         d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
+    }
+}
+
+void SyncTimer::sendNoteImmediately(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity)
+{
+    if (d->juceMidiOut) {
+        if (setOn) {
+            d->juceMidiOut->sendMessageNow(juce::MidiMessage::noteOn(midiChannel + 1, midiNote, juce::uint8(velocity)));
+        } else {
+            d->juceMidiOut->sendMessageNow(juce::MidiMessage::noteOff(midiChannel + 1, midiNote));
+        }
+    }
+}
+
+void SyncTimer::sendMidiBufferImmediately(const juce::MidiBuffer& buffer)
+{
+    if (d->juceMidiOut) {
+        d->juceMidiOut->sendBlockOfMessagesNow(buffer);
     }
 }
 

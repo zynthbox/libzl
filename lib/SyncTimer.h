@@ -59,6 +59,21 @@ public:
    */
   void scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay);
 
+  /**
+   * \brief Send a note message immediately (ensuring it goes through the step sequencer output)
+   * @param midiNote The note you wish to change the state of
+   * @param midiChannel The channel you wish to change the given note on
+   * @param setOn Whether or not you are turning the note on
+   * @param velocity The velocity of the note (only matters if you're turning it on)
+   */
+  void sendNoteImmediately(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity);
+
+  /**
+   * \brief Send a set of midi messages out immediately (ensuring they go through the step sequencer output)
+   * @param buffer The buffer that you wish to send out immediately
+   */
+  void sendMidiBufferImmediately(const juce::MidiBuffer& buffer);
+
   bool timerRunning();
   Q_SIGNAL void timerRunningChanged();
 private:
