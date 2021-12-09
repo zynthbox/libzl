@@ -15,6 +15,10 @@
 
 #include "JUCEHeaders.h"
 
+// Defining this will cause the sync timer to collect the intervals of each beat, and output them when you call stop
+// It will also make the timer thread output the discrepancies and internal counter states on a per-pseudo-minute basis
+// #define DEBUG_SYNCTIMER_TIMING
+
 using namespace std;
 using namespace juce;
 
@@ -84,8 +88,10 @@ public:
                 ++count;
                 waitTill(frame_clock::duration(adjustment) + start + (nanosecondsPerMinute * minuteCount) + (interval * count));
             }
+#ifdef DEBUG_SYNCTIMER_TIMING
             qDebug() << "Sync timer reached minute:" << minuteCount << "with interval" << interval.count();
             qDebug() << "The most recent pseudo-minute took an extra" << (frame_clock::now() - nextMinute).count() << "nanoseconds";
+#endif
             count = 0; // Reset the count each minute
             ++minuteCount;
         }
@@ -211,9 +217,18 @@ public:
     ClipAudioSource* clip{nullptr};
     std::unique_ptr<te::Edit> edit;
 
+#ifdef DEBUG_SYNCTIMER_TIMING
+    frame_clock::time_point lastRound;
+    QList<long> intervals;
+#endif
     QMutex mutex;
     int i{0};
     void hiResTimerCallback() {
+#ifdef DEBUG_SYNCTIMER_TIMING
+        frame_clock::time_point thisRound = frame_clock::now();
+        intervals << (thisRound - lastRound).count();
+        lastRound = thisRound;
+#endif
         QMutexLocker locker(&mutex);
         /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
         ///      Performance Intensive Stuff Goes Below Here
@@ -353,6 +368,10 @@ void SyncTimer::start(int bpm) {
     if (d->midiMessageQueues.contains(0)) {
         d->nextMidiMessages = d->midiMessageQueues.take(0);
     }
+#ifdef DEBUG_SYNCTIMER_TIMING
+    d->intervals.clear();
+    d->lastRound = frame_clock::now();
+#endif
     d->timerThread->resume();
 }
 
@@ -385,6 +404,9 @@ void SyncTimer::stop() {
     d->cumulativeBeat = 0;
     d->midiMessageQueues.clear();
     d->nextMidiMessages.clear();
+#ifdef DEBUG_SYNCTIMER_TIMING
+    qDebug() << d->intervals;
+#endif
 }
 
 int SyncTimer::getInterval(int bpm) {
