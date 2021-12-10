@@ -13,9 +13,11 @@ add_subdirectory(tracktion_engine/modules/juce)
 add_subdirectory(tracktion_engine/modules)
 include_directories(tracktion_engine/modules/)
 
+set(ENV{PKG_CONFIG_PATH} "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig")
 find_package (PkgConfig REQUIRED)
 pkg_check_modules (W2GTK4 REQUIRED webkit2gtk-4.0)
 pkg_check_modules(RTMIDI REQUIRED rtmidi)
+pkg_check_modules(Jack REQUIRED jack)
 
 include_directories (${W2GTK4_INCLUDE_DIRS})
 link_directories (${W2GTK4_LIBRARY_DIRS})
@@ -66,6 +68,7 @@ target_link_libraries(libzl
     PRIVATE
         ${RTMIDI_LIBRARIES}
         ${W2GTK4_LIBRARIES}
+        ${Jack_LIBRARIES}
         tracktion::tracktion_engine
         tracktion::tracktion_graph
         juce::juce_core
@@ -91,6 +94,7 @@ target_link_libraries(libzl
 target_include_directories(libzl
     PRIVATE
         ${RTMIDI_INCLUDE_DIRS}
+        ${Jack_INCLUDE_DIRS}
     INTERFACE
         $<TARGET_PROPERTY:libzl,INCLUDE_DIRECTORIES>)
 
