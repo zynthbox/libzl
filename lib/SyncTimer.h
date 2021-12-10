@@ -12,6 +12,7 @@ namespace juce {
     class MidiBuffer;
 }
 class ClipAudioSource;
+class SyncTimerPrivate;
 class SyncTimer : public QObject {
   // HighResolutionTimer facade
   Q_OBJECT
@@ -77,6 +78,5 @@ public:
   bool timerRunning();
   Q_SIGNAL void timerRunningChanged();
 private:
-  class Private;
-  Private *d = nullptr;
+  SyncTimerPrivate *d = nullptr;
 };
