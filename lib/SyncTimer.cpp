@@ -353,11 +353,10 @@ public:
                 jackMostRecentlyPlayedTime = current_usecs - subbeatLengthInMicroseconds;
             }
 
-            jack_time_t adjustedMostRecentPlayedTime = jack_time_t(qint64(jackMostRecentlyPlayedTime) + (timerThread->getAdjustment() / 1000));
+            const jack_time_t adjustmentWithSubbeat{jack_time_t(timerThread->getAdjustment() / 1000) + subbeatLengthInMicroseconds};
+            jack_time_t nextPlaybackPosition = jackMostRecentlyPlayedTime + adjustmentWithSubbeat;
             jack_nframes_t relativePosition{0};
-            while (adjustedMostRecentPlayedTime + subbeatLengthInMicroseconds < next_usecs) {
-                // If the notes are within our current frame, schedule those notes to the appropriate time if there are any for that position, and increase the playhead position
-                const jack_time_t nextPlaybackPosition = adjustedMostRecentPlayedTime + subbeatLengthInMicroseconds;
+            while (nextPlaybackPosition < next_usecs) {
                 if (midiMessageQueues.contains(jackPlayhead)) {
                     // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
                     if (nextPlaybackPosition <= current_usecs) {
@@ -389,7 +388,7 @@ public:
 #endif
                 }
                 jackMostRecentlyPlayedTime += subbeatLengthInMicroseconds;
-                adjustedMostRecentPlayedTime = jack_time_t(qint64(jackMostRecentlyPlayedTime) + (timerThread->getAdjustment() / 1000));
+                nextPlaybackPosition = jackMostRecentlyPlayedTime + adjustmentWithSubbeat;
                 ++jackPlayhead;
 #ifdef DEBUG_SYNCTIMER_JACK
                 ++stepCount;
