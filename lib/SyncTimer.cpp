@@ -62,16 +62,13 @@ public:
     }
 
     void run() override {
-        auto start = frame_clock::now();
-        quint64 count{0};
-        quint64 minuteCount{0};
-        std::chrono::nanoseconds nanosecondsPerMinute{NanosecondsPerMinute};
+        startTime = frame_clock::now();
         std::chrono::time_point< std::chrono::_V2::steady_clock, std::chrono::duration< long long unsigned int, std::ratio< 1, NanosecondsPerSecond > > > nextMinute;
         while (true) {
             if (aborted) {
                 break;
             }
-            nextMinute = start + ((minuteCount + 1) * nanosecondsPerMinute);
+            nextMinute = startTime + ((minuteCount + 1) * nanosecondsPerMinute);
             while (count < bpm * BeatSubdivisions) {
                 mutex.lock();
                 if (paused)
@@ -85,10 +82,11 @@ public:
                     param.sched_priority = sched_get_priority_max(SCHED_FIFO);
                     sched_setscheduler(0, SCHED_FIFO, &param);
 
+                    adjustment = 0;
                     count = 0;
                     minuteCount = 0;
-                    start = frame_clock::now();
-                    nextMinute = start + nanosecondsPerMinute;
+                    startTime = frame_clock::now();
+                    nextMinute = startTime + nanosecondsPerMinute;
                 }
                 mutex.unlock();
                 if (aborted) {
@@ -96,7 +94,7 @@ public:
                 }
                 Q_EMIT timeout(); // Do the thing!
                 ++count;
-                waitTill(frame_clock::duration(adjustment) + start + (nanosecondsPerMinute * minuteCount) + (interval * count));
+                waitTill(frame_clock::duration(adjustment) + startTime + (nanosecondsPerMinute * minuteCount) + (interval * count));
             }
 #ifdef DEBUG_SYNCTIMER_TIMING
             qDebug() << "Sync timer reached minute:" << minuteCount << "with interval" << interval.count();
@@ -111,7 +109,7 @@ public:
 
     void setBPM(quint64 bpm) {
         this->bpm = bpm;
-        interval = chrono::high_resolution_clock::duration(subbeatCountToNanoseconds(bpm, 1));
+        interval = frame_clock::duration(subbeatCountToNanoseconds(bpm, 1));
     }
     const quint64 getBpm() const {
         return bpm;
@@ -146,8 +144,24 @@ public:
         adjustment += (NanosecondsPerSecond * seconds);
         mutex.unlock();
     }
+    const qint64 getAdjustment() const {
+        return adjustment;
+    }
+
+    const frame_clock::time_point adjustedCumulativeRuntime() const {
+        return frame_clock::duration(adjustment) + startTime + (nanosecondsPerMinute * minuteCount) + (interval * count);
+    }
+    const frame_clock::time_point adjustedRuntimeForTick(const quint64 tick) const {
+        return frame_clock::duration(adjustment) + startTime + (interval * tick);
+    }
+    const frame_clock::time_point getStartTime() const {
+        return startTime;
+    }
 private:
     qint64 adjustment{0};
+    quint64 count{0};
+    quint64 minuteCount{0};
+    frame_clock::time_point startTime;
 
     quint64 bpm{120};
     std::chrono::nanoseconds interval;
@@ -159,6 +173,7 @@ private:
 
     // This is equivalent to .1 ms
     const frame_clock::duration spinTime{frame_clock::duration(100000)};
+    const std::chrono::nanoseconds nanosecondsPerMinute{NanosecondsPerMinute};
 };
 
 class SyncTimerPrivate {
@@ -291,7 +306,6 @@ public:
                         // qDebug() << "Clip thinks its duration is" << clip->getDuration();
                         // qDebug() << "Adjusting playback position, deviation was at" << timeOffset - playhead->getPosition() << " changing from" << playhead->getPosition() << "to" << timeOffset;
                         timerThread->addAdjustmentBySeconds(timeOffset - playhead->getPosition());
-                        xrunDelay += (timeOffset - playhead->getPosition()) / 1000000;
                     } else {
                         qWarning() << "Ow, no playhead...";
                     }
@@ -312,7 +326,6 @@ public:
     jack_port_t* jackPort{nullptr};
     quint64 jackPlayhead{0};
     jack_time_t jackMostRecentlyPlayedTime{0};
-    double xrunDelay{0};
     int process(jack_nframes_t nframes) {
         if (!timerThread->isPaused()) {
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -338,18 +351,13 @@ public:
             if (jackPlayhead == 0) {
                 // first run, make sure the most recent playback is one beat in the past so the rest can be generic
                 jackMostRecentlyPlayedTime = current_usecs - subbeatLengthInMicroseconds;
-                xrunDelay = 0;
-            }
-            const double flooredDelay{std::floor(xrunDelay)};
-            if (flooredDelay != 0) {
-                jackMostRecentlyPlayedTime -= flooredDelay;
-                xrunDelay = xrunDelay - flooredDelay;
             }
 
+            jack_time_t adjustedMostRecentPlayedTime = jack_time_t(qint64(jackMostRecentlyPlayedTime) + (timerThread->getAdjustment() / 1000));
             jack_nframes_t relativePosition{0};
-            while (jackMostRecentlyPlayedTime + subbeatLengthInMicroseconds < next_usecs) {
+            while (adjustedMostRecentPlayedTime + subbeatLengthInMicroseconds < next_usecs) {
                 // If the notes are within our current frame, schedule those notes to the appropriate time if there are any for that position, and increase the playhead position
-                const jack_time_t nextPlaybackPosition = jackMostRecentlyPlayedTime + subbeatLengthInMicroseconds;
+                const jack_time_t nextPlaybackPosition = adjustedMostRecentPlayedTime + subbeatLengthInMicroseconds;
                 if (midiMessageQueues.contains(jackPlayhead)) {
                     // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
                     if (nextPlaybackPosition <= current_usecs) {
@@ -380,7 +388,8 @@ public:
                     frameSteps << jackPlayhead;
 #endif
                 }
-                jackMostRecentlyPlayedTime = nextPlaybackPosition;
+                jackMostRecentlyPlayedTime += subbeatLengthInMicroseconds;
+                adjustedMostRecentPlayedTime = jack_time_t(qint64(jackMostRecentlyPlayedTime) + (timerThread->getAdjustment() / 1000));
                 ++jackPlayhead;
 #ifdef DEBUG_SYNCTIMER_JACK
                 ++stepCount;
@@ -391,7 +400,7 @@ public:
                     qDebug() << "Lost some notes:" << lost;
                 }
 #ifdef DEBUG_SYNCTIMER_JACK
-                qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "for time" << jackMostRecentlyPlayedTime << "and we filled up jack with" << eventCount << "events" << nframes << subbeatLengthInMicroseconds << frameSteps << framePositions << commandValues << noteValues << velocities;
+                qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "for time" << jackMostRecentlyPlayedTime << "(adjusted to" << adjustedMostRecentPlayedTime << ")and we filled up jack with" << eventCount << "events" << nframes << subbeatLengthInMicroseconds << frameSteps << framePositions << commandValues << noteValues << velocities;
             } else {
                 qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and scheduled no notes";
 #endif
@@ -401,7 +410,7 @@ public:
     }
 #ifdef DEBUG_SYNCTIMER_JACK
     int xrun() {
-        qDebug() << "SyncTimer detected XRun. Delay is now:" << xrunDelay;
+        qDebug() << "SyncTimer detected XRun.";
         return 0;
     }
 #endif
