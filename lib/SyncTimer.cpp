@@ -359,7 +359,7 @@ public:
                 // be further ahead or behind than might reasonably fit inside of two buffers, so...
                 const quint64 maxPlayheadDeviation{qMax(quint64(1), ((next_usecs - current_usecs) * 2) / subbeatLengthInMicroseconds)};
                 if (cumulativeBeat > jackPlayhead && cumulativeBeat - jackPlayhead > maxPlayheadDeviation) {
-                    for (quint64 i = 0; i < cumulativeBeat - jackPlayhead; ++i) {
+                    while (cumulativeBeat > jackPlayhead) {
                         ++jackPlayhead;
                         const juce::MidiBuffer &juceBuffer = midiMessageQueues[jackPlayhead];
                         if (!juceBuffer.isEmpty()) {
