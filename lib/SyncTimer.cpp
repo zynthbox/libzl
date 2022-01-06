@@ -315,6 +315,7 @@ public:
     jack_time_t jackMostRecentNextUsecs{0};
     jack_time_t jackUsecDeficit{0};
     jack_time_t jackStartTime{0};
+    quint64 skipHowMany{0};
     int process(jack_nframes_t nframes) {
         if (!timerThread->isPaused()) {
             QMutexLocker locker(&mutex);
@@ -342,6 +343,7 @@ public:
                 // first run for this playback session, let's do a touch of setup
                 jackStartTime = current_usecs;
                 jackUsecDeficit = 0;
+                skipHowMany = 0;
             } else {
                 if (jackMostRecentNextUsecs < current_usecs) {
                     // That means we have skipped some cycles somehow - let's work out what to do about that!
@@ -349,19 +351,28 @@ public:
                     jackUsecDeficit += quint64(adjustment);
                     timerThread->addAdjustmentByMicroseconds(adjustment);
                     qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds";
+                } else {
+                    const quint64 maxPlayheadDeviation = ((next_usecs - current_usecs) / subbeatLengthInMicroseconds) + 1;
+                    if (((jackPlayhead + skipHowMany) > cumulativeBeat && (jackPlayhead + skipHowMany) - cumulativeBeat > maxPlayheadDeviation)) {
+                        qDebug() << "We are ahead of the timer by - our playback position is at" << (jackPlayhead + skipHowMany) << "and the most recent tick of the timer is" << cumulativeBeat << "with maximum deviation" << maxPlayheadDeviation;
+                        // This will cause a short pause in playback, which should hopefully
+                        // be imperceptible, and help make the playback stay in sync. Why this
+                        // happens, i have no idea, but here we are.
+                        skipHowMany += maxPlayheadDeviation;
+                    } else if ((cumulativeBeat > (jackPlayhead + skipHowMany) && cumulativeBeat - (jackPlayhead + skipHowMany) > maxPlayheadDeviation)) {
+                        qDebug() << "The timer is ahead of us - our playback position is at" << (jackPlayhead + skipHowMany) << "and the most recent tick of the timer is" << cumulativeBeat << "with maximum deviation" << maxPlayheadDeviation;
+                        // This will cause a short pause in playback, which should hopefully
+                        // be imperceptible, and help make the playback stay in sync. Why this
+                        // happens, i have no idea, but here we are.
+                        if (skipHowMany >= maxPlayheadDeviation) {
+                            skipHowMany -= maxPlayheadDeviation;
+                        }
+                    }
                 }
             }
             jackMostRecentNextUsecs = next_usecs;
 
-            const quint64 maxPlayheadDeviation = ((next_usecs - current_usecs) / subbeatLengthInMicroseconds) + 1;
-            if ((jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) || (cumulativeBeat > jackPlayhead && cumulativeBeat - jackPlayhead > maxPlayheadDeviation)) {
-                // If this happens without also having a cycle skip adjustment done,
-                // we likely have some kind of bigger issue. On the other hand, it is
-                // essentially to be expected after a sufficiently large adjustment.
-                qDebug() << "Our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat << "with maximum deviation" << maxPlayheadDeviation;
-            }
-
-            jack_time_t nextPlaybackPosition = jackStartTime + (timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), jackPlayhead) / 1000);
+            jack_time_t nextPlaybackPosition = jackStartTime + (timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), jackPlayhead + skipHowMany) / 1000);
             jack_nframes_t firstAvailableFrame{0};
             jack_nframes_t relativePosition{0};
             // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
