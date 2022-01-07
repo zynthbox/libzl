@@ -352,22 +352,15 @@ public:
                     timerThread->addAdjustmentByMicroseconds(adjustment);
                     qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds";
                 } else {
-                    const quint64 maxPlayheadDeviation = ((next_usecs - current_usecs) / subbeatLengthInMicroseconds) + 1;
-                    if (((jackPlayhead + skipHowMany) > cumulativeBeat && (jackPlayhead + skipHowMany) - cumulativeBeat > maxPlayheadDeviation)) {
-                        qDebug() << "We are ahead of the timer - our playback position is at" << (jackPlayhead + skipHowMany) << "and the most recent tick of the timer is" << cumulativeBeat << "with maximum deviation" << maxPlayheadDeviation;
-                        // This will cause a short pause in playback, which should hopefully
-                        // be imperceptible, and help make the playback stay in sync. Why this
-                        // happens, i have no idea, but here we are.
-                        if (skipHowMany >= maxPlayheadDeviation) {
-                            skipHowMany -= maxPlayheadDeviation;
-                        }
-                    } else if ((cumulativeBeat > (jackPlayhead + skipHowMany) && cumulativeBeat - (jackPlayhead + skipHowMany) > maxPlayheadDeviation)) {
-                        qDebug() << "The timer is ahead of us - our playback position is at" << (jackPlayhead + skipHowMany) << "and the most recent tick of the timer is" << cumulativeBeat << "with maximum deviation" << maxPlayheadDeviation;
-                        // This will cause a short pause in playback, which should hopefully
-                        // be imperceptible, and help make the playback stay in sync. Why this
-                        // happens, i have no idea, but here we are.
-                        skipHowMany += maxPlayheadDeviation;
+                    static const quint64 maxPlayheadDeviation = 1;
+                    if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
+                        qDebug() << "We are ahead of the timer - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat;
+                        // This will cause a short pause in playback, which at 1 subbeat (less
+                        // than 4ms at 120bpm) should be imperceptible, and help make the playback
+                        // stay in sync. Why this happens, i have no idea, but here we are.
+                        skipHowMany += 1;
                     }
+                    // No need to handle being behind, the while loop below handles that already
                 }
             }
             jackMostRecentNextUsecs = next_usecs;
