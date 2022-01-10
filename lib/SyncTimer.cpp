@@ -143,17 +143,24 @@ public:
 
     void addAdjustmentByMicroseconds(qint64 microSeconds) {
         mutex.lock();
+        if (adjustment == 0) {
+            currentExtraTick = 0;
+        }
         adjustment += (1000 * microSeconds);
         // When we adjust past another "there should have been a beat here" amount for
         // the adjustment, schedule an extra run of the logic in the timer callback
         while (nextExtraTickAt < adjustment) {
             QMetaObject::invokeMethod(this, "timeout", Qt::QueuedConnection);
-            nextExtraTickAt += interval.count();
+            ++currentExtraTick;
+            nextExtraTickAt = qint64(subbeatCountToNanoseconds(bpm, currentExtraTick));
         }
         mutex.unlock();
     }
     const qint64 getAdjustment() const {
         return adjustment;
+    }
+    const quint64 getExtraTickCount() const {
+        return currentExtraTick;
     }
 
     const frame_clock::time_point adjustedCumulativeRuntime() const {
@@ -167,6 +174,7 @@ public:
     }
 private:
     qint64 nextExtraTickAt{0};
+    quint64 currentExtraTick{0};
     qint64 adjustment{0};
     quint64 count{0};
     quint64 cumulativeCount{0};
@@ -350,7 +358,7 @@ public:
                     const qint64 adjustment = qint64(current_usecs - jackMostRecentNextUsecs);
                     jackUsecDeficit += quint64(adjustment);
                     timerThread->addAdjustmentByMicroseconds(adjustment);
-                    qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds";
+                    qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds and the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
                 } else {
                     static const quint64 maxPlayheadDeviation = 1;
                     if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
