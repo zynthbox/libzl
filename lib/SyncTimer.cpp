@@ -272,7 +272,6 @@ public:
         intervals << (thisRound - lastRound).count();
         lastRound = thisRound;
 #endif
-        QMutexLocker locker(&mutex);
         /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
         ///      Performance Intensive Stuff Goes Below Here
         /// avoid allocations, list changes, etc if at all possible
@@ -314,7 +313,9 @@ public:
         // Finally, remove old queues that are sufficiently far behind us in
         // time. If our latency is big enough that a tail this long causes problems,
         // then there's not a lot we can reasonably do without eating all the memory.
+        mutex.lock();
         midiMessageQueues.remove(cumulativeBeat - 16);
+        mutex.unlock();
     }
 
     jack_client_t* jackClient{nullptr};
@@ -326,7 +327,6 @@ public:
     quint64 skipHowMany{0};
     int process(jack_nframes_t nframes) {
         if (!timerThread->isPaused()) {
-            QMutexLocker locker(&mutex);
 #ifdef DEBUG_SYNCTIMER_JACK
             quint64 stepCount = 0;
             QList<int> commandValues;
@@ -337,104 +337,111 @@ public:
 #endif
             quint64 eventCount = 0;
 
-            auto buffer = jack_port_get_buffer(jackPort, nframes);
-            jack_midi_clear_buffer(buffer);
             jack_nframes_t current_frames;
             jack_time_t current_usecs;
             jack_time_t next_usecs;
             float period_usecs;
             jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
 
-            const jack_time_t subbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
-            const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
-            if (jackPlayhead == 0) {
-                // first run for this playback session, let's do a touch of setup
-                jackStartTime = current_usecs;
-                jackUsecDeficit = 0;
-                skipHowMany = 0;
-            } else {
-                if (jackMostRecentNextUsecs < current_usecs) {
-                    // That means we have skipped some cycles somehow - let's work out what to do about that!
-                    const qint64 adjustment = qint64(current_usecs - jackMostRecentNextUsecs);
-                    jackUsecDeficit += quint64(adjustment);
-                    timerThread->addAdjustmentByMicroseconds(adjustment);
-                    qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds and the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
-                } else {
-                    // TODO We will need to treat Jack as the canonical time reference or risk
-                    // ending in in more trouble. In short, we are going to have to never skip
-                    // anything here, but rather ask SyncTimer to adjust itself, and then also
-                    // ensure that Juce's playback is synchronised with Jack's position, not
-                    // the other way around. Since we are recording through jack, that is the
-                    // time that is actually important (otherwise the recording will be unsynced,
-                    // which is the more critical path). The code below makes Jack synchronise
-                    // to the real-time timer, but the problem with doing that is we will end
-                    // up with incorrect timing in any recorded data, which is not what we want.
-                    // So, adjust Juce /and/ SyncTimerThread here, not Jack.
-                    static const quint64 maxPlayheadDeviation = 1;
-                    if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
-                        qDebug() << "We are ahead of the timer - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat;
-                        // This will cause a short pause in playback, which at 1 subbeat (less
-                        // than 4ms at 120bpm) should be imperceptible, and help make the playback
-                        // stay in sync. Why this happens, i have no idea, but here we are.
-                        skipHowMany += 1;
-                    }
-                    // No need to handle being behind, the while loop below handles that already
-                }
-            }
-            jackMostRecentNextUsecs = next_usecs;
+            // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
+            if (mutex.tryLock(period_usecs / 4000)) {
+                auto buffer = jack_port_get_buffer(jackPort, nframes);
+                jack_midi_clear_buffer(buffer);
 
-            jack_time_t nextPlaybackPosition = jackStartTime + (timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), jackPlayhead + skipHowMany) / 1000);
-            jack_nframes_t firstAvailableFrame{0};
-            jack_nframes_t relativePosition{0};
-            // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
-            while (nextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
-                const juce::MidiBuffer &juceBuffer = midiMessageQueues[jackPlayhead];
-                if (!juceBuffer.isEmpty()) {
-                    // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
-                    if (nextPlaybackPosition <= current_usecs) {
-                        relativePosition = firstAvailableFrame;
-                        ++firstAvailableFrame;
+                const jack_time_t subbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
+                const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
+                if (jackPlayhead == 0) {
+                    // first run for this playback session, let's do a touch of setup
+                    jackStartTime = current_usecs;
+                    jackUsecDeficit = 0;
+                    skipHowMany = 0;
+                } else {
+                    if (jackMostRecentNextUsecs < current_usecs) {
+                        // That means we have skipped some cycles somehow - let's work out what to do about that!
+                        const qint64 adjustment = qint64(current_usecs - jackMostRecentNextUsecs);
+                        jackUsecDeficit += quint64(adjustment);
+                        timerThread->addAdjustmentByMicroseconds(adjustment);
+                        qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds and the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
                     } else {
-                        relativePosition = std::clamp<jack_nframes_t>((nextPlaybackPosition - current_usecs) / microsecondsPerFrame, firstAvailableFrame, nframes - 1);
-                        firstAvailableFrame = relativePosition + 1;
-                    }
-                    for (const juce::MidiMessageMetadata &juceMessage : juceBuffer) {
-                        if (jack_midi_event_write(
-                            buffer,
-                            relativePosition,
-                            const_cast<jack_midi_data_t*>(juceMessage.data), // this might seems odd, but it's really only because juce's internal store is const here, and the data types are otherwise the same
-                            size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
-                        ) == ENOBUFS) {
-                            qWarning() << "Ran out of space while writing events!";
-                        } else {
-                            ++eventCount;
-#ifdef DEBUG_SYNCTIMER_JACK
-                            commandValues << juceMessage.data[0];
-                            noteValues << juceMessage.data[1];
-                            velocities << juceMessage.data[2];
-#endif
+                        // TODO We will need to treat Jack as the canonical time reference or risk
+                        // ending in in more trouble. In short, we are going to have to never skip
+                        // anything here, but rather ask SyncTimer to adjust itself, and then also
+                        // ensure that Juce's playback is synchronised with Jack's position, not
+                        // the other way around. Since we are recording through jack, that is the
+                        // time that is actually important (otherwise the recording will be unsynced,
+                        // which is the more critical path). The code below makes Jack synchronise
+                        // to the real-time timer, but the problem with doing that is we will end
+                        // up with incorrect timing in any recorded data, which is not what we want.
+                        // So, adjust Juce /and/ SyncTimerThread here, not Jack.
+                        static const quint64 maxPlayheadDeviation = 1;
+                        if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
+                            qDebug() << "We are ahead of the timer - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat;
+                            // This will cause a short pause in playback, which at 1 subbeat (less
+                            // than 4ms at 120bpm) should be imperceptible, and help make the playback
+                            // stay in sync. Why this happens, i have no idea, but here we are.
+                            skipHowMany += 1;
                         }
+                        // No need to handle being behind, the while loop below handles that already
+                    }
+                }
+                jackMostRecentNextUsecs = next_usecs;
+
+                jack_time_t nextPlaybackPosition = jackStartTime + (timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), jackPlayhead + skipHowMany) / 1000);
+                jack_nframes_t firstAvailableFrame{0};
+                jack_nframes_t relativePosition{0};
+                // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
+                while (nextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
+                    const juce::MidiBuffer &juceBuffer = midiMessageQueues[jackPlayhead];
+                    if (!juceBuffer.isEmpty()) {
+                        // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
+                        if (nextPlaybackPosition <= current_usecs) {
+                            relativePosition = firstAvailableFrame;
+                            ++firstAvailableFrame;
+                        } else {
+                            relativePosition = std::clamp<jack_nframes_t>((nextPlaybackPosition - current_usecs) / microsecondsPerFrame, firstAvailableFrame, nframes - 1);
+                            firstAvailableFrame = relativePosition + 1;
+                        }
+                        for (const juce::MidiMessageMetadata &juceMessage : juceBuffer) {
+                            if (jack_midi_event_write(
+                                buffer,
+                                relativePosition,
+                                const_cast<jack_midi_data_t*>(juceMessage.data), // this might seems odd, but it's really only because juce's internal store is const here, and the data types are otherwise the same
+                                size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
+                            ) == ENOBUFS) {
+                                qWarning() << "Ran out of space while writing events!";
+                            } else {
+                                ++eventCount;
+#ifdef DEBUG_SYNCTIMER_JACK
+                                commandValues << juceMessage.data[0];
+                                noteValues << juceMessage.data[1];
+                                velocities << juceMessage.data[2];
+#endif
+                            }
+                        }
+#ifdef DEBUG_SYNCTIMER_JACK
+                        framePositions << relativePosition;
+                        frameSteps << jackPlayhead;
+#endif
+                    }
+                    ++jackPlayhead;
+                    nextPlaybackPosition += subbeatLengthInMicroseconds;
+#ifdef DEBUG_SYNCTIMER_JACK
+                    ++stepCount;
+#endif
+                }
+                if (eventCount > 0) {
+                    if (uint32_t lost = jack_midi_get_lost_event_count(buffer)) {
+                        qDebug() << "Lost some notes:" << lost;
                     }
 #ifdef DEBUG_SYNCTIMER_JACK
-                    framePositions << relativePosition;
-                    frameSteps << jackPlayhead;
+                    qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and we filled up jack with" << eventCount << "events" << nframes << subbeatLengthInMicroseconds << frameSteps << framePositions << commandValues << noteValues << velocities;
+                } else {
+                    qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and scheduled no notes";
 #endif
                 }
-                ++jackPlayhead;
-                nextPlaybackPosition += subbeatLengthInMicroseconds;
-#ifdef DEBUG_SYNCTIMER_JACK
-                ++stepCount;
-#endif
-            }
-            if (eventCount > 0) {
-                if (uint32_t lost = jack_midi_get_lost_event_count(buffer)) {
-                    qDebug() << "Lost some notes:" << lost;
-                }
-#ifdef DEBUG_SYNCTIMER_JACK
-                qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and we filled up jack with" << eventCount << "events" << nframes << subbeatLengthInMicroseconds << frameSteps << framePositions << commandValues << noteValues << velocities;
+                mutex.unlock();
             } else {
-                qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and scheduled no notes";
-#endif
+                qDebug() << "Failed to lock for reading in reasonable time, postponing until next run, waited for" << period_usecs / 4000 << "ms";
             }
         }
         return 0;
@@ -569,6 +576,7 @@ void SyncTimer::start(int bpm) {
 void SyncTimer::stop() {
     cerr << "#### Stopping timer" << endl;
 
+    QMutexLocker locker(&d->mutex);
     if(!d->timerThread->isPaused()) {
         d->timerThread->pause();
     }
@@ -630,6 +638,7 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
     note[1] = midiNote;
     note[2] = velocity;
     const int onOrOff = setOn ? 1 : 0;
+    d->mutex.lock();
     if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
         d->midiMessageQueues[d->cumulativeBeat + delay].addEvent(note, 3, onOrOff);
     } else {
@@ -637,6 +646,7 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
         buffer.addEvent(note, 3, onOrOff);
         d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
     }
+    d->mutex.unlock();
     if (setOn && duration > 0) {
         // Schedule an off note for that position
         scheduleNote(midiNote, midiChannel, false, 64, 0, delay + duration);
@@ -645,8 +655,13 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
 
 void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay)
 {
-    if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
+    d->mutex.lock();
+    const bool queueContainsPosition{d->midiMessageQueues.contains(d->cumulativeBeat + delay)};
+    d->mutex.unlock();
+    if (queueContainsPosition) {
+        d->mutex.lock();
         juce::MidiBuffer &addToThis = d->midiMessageQueues[d->cumulativeBeat + delay];
+        d->mutex.unlock();
         for (const juce::MidiMessageMetadata &newMeta : buffer) {
             bool alreadyExists{false};
             for (const juce::MidiMessageMetadata &existingMeta : addToThis) {
@@ -670,7 +685,9 @@ void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay
             }
         }
     } else {
+        d->mutex.lock();
         d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
+        d->mutex.unlock();
     }
 }
 
