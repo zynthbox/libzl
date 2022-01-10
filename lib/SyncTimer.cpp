@@ -360,6 +360,16 @@ public:
                     timerThread->addAdjustmentByMicroseconds(adjustment);
                     qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds and the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
                 } else {
+                    // TODO We will need to treat Jack as the canonical time reference or risk
+                    // ending in in more trouble. In short, we are going to have to never skip
+                    // anything here, but rather ask SyncTimer to adjust itself, and then also
+                    // ensure that Juce's playback is synchronised with Jack's position, not
+                    // the other way around. Since we are recording through jack, that is the
+                    // time that is actually important (otherwise the recording will be unsynced,
+                    // which is the more critical path). The code below makes Jack synchronise
+                    // to the real-time timer, but the problem with doing that is we will end
+                    // up with incorrect timing in any recorded data, which is not what we want.
+                    // So, adjust Juce /and/ SyncTimerThread here, not Jack.
                     static const quint64 maxPlayheadDeviation = 1;
                     if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
                         qDebug() << "We are ahead of the timer - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat;
