@@ -553,7 +553,8 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
             d->clipsStartQueue.removeOne(c);
         }
     }
-    d->clipsStopQueue.enqueue(clip);
+    // Immediately stop clips when queued to stop
+    clip->stop();
 }
 
 void SyncTimer::start(int bpm) {
