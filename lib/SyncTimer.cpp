@@ -279,12 +279,6 @@ public:
         /// {
 
         if (beat == 0) {
-            for (ClipAudioSource *clip : clipsStopQueue) {
-                clip->stop();
-            }
-        }
-
-        if (beat == 0) {
             for (ClipAudioSource *clip : clipsStartQueue) {
                 clip->play();
             }
@@ -298,7 +292,7 @@ public:
 
         // Now that we're done doing performance intensive things, we can clean up
         if (beat == 0) {
-            clipsStopQueue.clear();
+//            clipsStopQueue.clear();
             clipsStartQueue.clear();
         }
 
@@ -580,6 +574,11 @@ void SyncTimer::stop() {
     if(!d->timerThread->isPaused()) {
         d->timerThread->pause();
     }
+
+    for (ClipAudioSource *clip : d->clipsStopQueue) {
+        clip->stop();
+    }
+
     if (d->juceMidiOut) {
         for (const auto &message : qAsConst(d->nextMidiMessages)) {
             // We have designated position 0 as off notes, so turn all those off
@@ -603,6 +602,7 @@ void SyncTimer::stop() {
 #ifdef DEBUG_SYNCTIMER_TIMING
     qDebug() << d->intervals;
 #endif
+    d->clipsStopQueue.clear();
 }
 
 int SyncTimer::getInterval(int bpm) {
