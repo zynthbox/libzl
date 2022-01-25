@@ -11,6 +11,7 @@
 #include "libzl.h"
 
 #include <iostream>
+#include <jack/jack.h>
 
 #include "ClipAudioSource.h"
 #include "Helper.h"
@@ -22,6 +23,9 @@ using namespace std;
 
 ScopedJuceInitialiser_GUI *initializer = nullptr;
 SyncTimer *syncTimer = new SyncTimer();
+jack_client_t* zlJackClient{nullptr};
+jack_status_t zlJackStatus{};
+jack_port_t* capturePortA{nullptr}, capturePortB{nullptr};
 
 class JuceEventLoopThread : public Thread {
 public:
@@ -175,6 +179,33 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
 void initJuce() {
   cerr << "### INIT JUCE\n";
   elThread.startThread();
+
+  zlJackClient = jack_client_open(
+    "zynthiloops_client",
+    JackNullOption,
+    &zlJackStatus
+  );
+
+  if (zlJackClient) {
+    cerr << "Initialized Jack Client zynthiloops_client";
+
+    capturePortA = jack_port_register(
+        zlJackClient,
+        "capture_port_a",
+        JACK_DEFAULT_AUDIO_TYPE,
+        JackPortIsInput,
+        0
+    );
+    capturePortB = jack_port_register(
+        zlJackClient,
+        "capture_port_b",
+        JACK_DEFAULT_AUDIO_TYPE,
+        JackPortIsInput,
+        0
+    );
+  } else {
+    cerr << "Error initializing Jack Client zynthiloops_client";
+  }
 }
 
 void shutdownJuce() {
