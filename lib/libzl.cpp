@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <jack/jack.h>
+#include <QDebug>
 
 #include "ClipAudioSource.h"
 #include "Helper.h"
@@ -25,7 +26,10 @@ ScopedJuceInitialiser_GUI *initializer = nullptr;
 SyncTimer *syncTimer = new SyncTimer();
 jack_client_t* zlJackClient{nullptr};
 jack_status_t zlJackStatus{};
-jack_port_t* capturePortA{nullptr}, capturePortB{nullptr};
+jack_port_t* capturePortA{nullptr};
+jack_port_t* capturePortB{nullptr};
+float db;
+void (*recordingAudioLevelCallback)(float leveldB) = nullptr;
 
 class JuceEventLoopThread : public Thread {
 public:
@@ -176,6 +180,55 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
 /// END SyncTimer API Bridge
 //////////////
 
+float convertTodbFS(float raw) {
+  if (raw <= 0) {
+      return -200;
+  }
+
+  float fValue = 20 * log10f(raw);
+  if (fValue < -200) {
+      return -200;
+  }
+
+  return fValue;
+}
+
+float peakdBFSFromJackOutput(jack_port_t* port, jack_nframes_t nframes) {
+  jack_default_audio_sample_t *buf;
+  float peak = 0.0f;
+  int i;
+
+  buf = (jack_default_audio_sample_t *)jack_port_get_buffer(port, nframes);
+
+  for (i=0; i<nframes; i++) {
+      const float sample = fabs(buf[i]) * 0.2;
+      if (sample > peak) {
+          peak = sample;
+      }
+  }
+
+  return convertTodbFS(peak);
+}
+
+static int _zlJackProcessCb(jack_nframes_t nframes, void* arg) {
+  Q_UNUSED(arg)
+
+  float dbLeft = peakdBFSFromJackOutput(capturePortA, nframes);
+  float dbRight = peakdBFSFromJackOutput(capturePortB, nframes);
+
+  if (dbLeft <= -200 && dbRight <= -200) {
+    db = -200;
+  } else {
+    db = 10 * log10f(pow(10, dbLeft/10) + pow(10, dbRight/10));
+  }
+
+  if (recordingAudioLevelCallback != nullptr) {
+    recordingAudioLevelCallback(db);
+  }
+
+  return 0;
+}
+
 void initJuce() {
   cerr << "### INIT JUCE\n";
   elThread.startThread();
@@ -187,24 +240,40 @@ void initJuce() {
   );
 
   if (zlJackClient) {
-    cerr << "Initialized Jack Client zynthiloops_client";
+    cerr << "Initialized ZL Jack Client zynthiloops_client";
 
     capturePortA = jack_port_register(
-        zlJackClient,
-        "capture_port_a",
-        JACK_DEFAULT_AUDIO_TYPE,
-        JackPortIsInput,
-        0
+      zlJackClient,
+      "capture_port_a",
+      JACK_DEFAULT_AUDIO_TYPE,
+      JackPortIsInput,
+      0
     );
     capturePortB = jack_port_register(
-        zlJackClient,
-        "capture_port_b",
-        JACK_DEFAULT_AUDIO_TYPE,
-        JackPortIsInput,
-        0
+      zlJackClient,
+      "capture_port_b",
+      JACK_DEFAULT_AUDIO_TYPE,
+      JackPortIsInput,
+      0
     );
+
+    if (
+      jack_set_process_callback(
+        zlJackClient,
+        _zlJackProcessCb,
+        nullptr
+      ) != 0
+    ) {
+      cerr << "Failed to set the ZL Jack Client processing callback" << endl;
+    } else {
+      if (jack_activate(zlJackClient) == 0) {
+        cerr << "Successfully created and set up the ZL Jack client" << endl;
+      } else {
+        cerr << "Failed to activate ZL Jack client" << endl;
+      }
+    }
   } else {
-    cerr << "Error initializing Jack Client zynthiloops_client";
+    cerr << "Error initializing ZL Jack Client zynthiloops_client" << endl;
   }
 }
 
@@ -222,3 +291,7 @@ void stopClips(int size, ClipAudioSource **clips) {
 }
 
 float dBFromVolume(float vol) { return te::volumeFaderPositionToDB(vol); }
+
+void setRecordingAudioLevelCallback(void (*functionPtr)(float)) {
+  recordingAudioLevelCallback = functionPtr;
+}
