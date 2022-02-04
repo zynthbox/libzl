@@ -172,6 +172,9 @@ public:
     const frame_clock::time_point getStartTime() const {
         return startTime;
     }
+    const std::chrono::nanoseconds getInterval() {
+        return interval;
+    }
 private:
     qint64 nextExtraTickAt{0};
     quint64 currentExtraTick{0};
@@ -307,9 +310,14 @@ public:
         // Finally, remove old queues that are sufficiently far behind us in
         // time. If our latency is big enough that a tail this long causes problems,
         // then there's not a lot we can reasonably do without eating all the memory.
-        mutex.lock();
-        midiMessageQueues.remove(cumulativeBeat - 16);
-        mutex.unlock();
+        if (mutex.tryLock(timerThread->getInterval().count() / 5000000)) {
+            quint64 i{16};
+            while (midiMessageQueues.contains(cumulativeBeat - i)) {
+                midiMessageQueues.remove(cumulativeBeat - i);
+                ++i;
+            }
+            mutex.unlock();
+        }
     }
 
     jack_client_t* jackClient{nullptr};
