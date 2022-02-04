@@ -13,6 +13,7 @@
 #include <iostream>
 #include <jack/jack.h>
 #include <QDebug>
+#include <QTimer>
 
 #include "ClipAudioSource.h"
 #include "Helper.h"
@@ -180,7 +181,7 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
 /// END SyncTimer API Bridge
 //////////////
 
-float convertTodbFS(float raw) {
+inline float convertTodbFS(float raw) {
   if (raw <= 0) {
       return -200;
   }
@@ -193,14 +194,11 @@ float convertTodbFS(float raw) {
   return fValue;
 }
 
-float peakdBFSFromJackOutput(jack_port_t* port, jack_nframes_t nframes) {
-  jack_default_audio_sample_t *buf;
-  float peak = 0.0f;
-  int i;
+inline float peakdBFSFromJackOutput(jack_port_t* port, jack_nframes_t nframes) {
+  float peak{0.0f};
+  jack_default_audio_sample_t *buf = (jack_default_audio_sample_t *)jack_port_get_buffer(port, nframes);
 
-  buf = (jack_default_audio_sample_t *)jack_port_get_buffer(port, nframes);
-
-  for (i=0; i<nframes; i++) {
+  for (jack_nframes_t i=0; i<nframes; i++) {
       const float sample = fabs(buf[i]) * 0.2;
       if (sample > peak) {
           peak = sample;
@@ -212,19 +210,33 @@ float peakdBFSFromJackOutput(jack_port_t* port, jack_nframes_t nframes) {
 
 static int _zlJackProcessCb(jack_nframes_t nframes, void* arg) {
   Q_UNUSED(arg)
-
-  float dbLeft = peakdBFSFromJackOutput(capturePortA, nframes);
-  float dbRight = peakdBFSFromJackOutput(capturePortB, nframes);
-
-  if (dbLeft <= -200 && dbRight <= -200) {
-    db = -200;
-  } else {
-    db = 10 * log10f(pow(10, dbLeft/10) + pow(10, dbRight/10));
+  static float dbLeft, dbRight;
+  static QTimer* callbackCaller{nullptr};
+  if (!callbackCaller) {
+    // To avoid potentially causing Jack xruns, we put everything that is
+    // not directly required to be done during the jack call into a timer,
+    // which lives on the app's main thread. If it turns out to be heavy
+    // on that thread, we can move it elsewhere, but given it /is/ a ui
+    // update situation, it seems reasonable to put it there. A courteous
+    // check says it has no measurable impact on the main thread's
+    // processing cost.
+    callbackCaller = new QTimer(qApp);
+    callbackCaller->moveToThread(qApp->thread());
+    callbackCaller->setInterval(10);
+    QObject::connect(callbackCaller, &QTimer::timeout, callbackCaller, [&]() {
+      float db{-200};
+      if (dbLeft > -200 || dbRight > -200) {
+        db = 10 * log10f(pow(10, dbLeft/10) + pow(10, dbRight/10));
+      }
+      if (recordingAudioLevelCallback != nullptr) {
+        recordingAudioLevelCallback(db);
+      }
+    });
+    QMetaObject::invokeMethod(callbackCaller, "start", Qt::QueuedConnection);
   }
 
-  if (recordingAudioLevelCallback != nullptr) {
-    recordingAudioLevelCallback(db);
-  }
+  dbLeft = peakdBFSFromJackOutput(capturePortA, nframes);
+  dbRight = peakdBFSFromJackOutput(capturePortB, nframes);
 
   return 0;
 }
