@@ -10,6 +10,7 @@
 
 #include "libzl.h"
 
+#include <unistd.h>
 #include <iostream>
 #include <jack/jack.h>
 #include <QDebug>
@@ -20,6 +21,7 @@
 #include "JUCEHeaders.h"
 #include "SyncTimer.h"
 #include "WaveFormItem.h"
+#include "AudioLevels.h"
 
 using namespace std;
 
@@ -31,6 +33,7 @@ jack_port_t* capturePortA{nullptr};
 jack_port_t* capturePortB{nullptr};
 float db;
 void (*recordingAudioLevelCallback)(float leveldB) = nullptr;
+AudioLevels *audioLevels = nullptr;
 
 class JuceEventLoopThread : public Thread {
 public:
@@ -181,6 +184,18 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
 /// END SyncTimer API Bridge
 //////////////
 
+//static QObject *audioLevelsSingletonProvider(QQmlEngine *engine, QJSEngine *scriptEngine) {
+//    Q_UNUSED(engine)
+//    Q_UNUSED(scriptEngine)
+
+//    if (audioLevels == nullptr) {
+//        audioLevels = new AudioLevels();
+//    }
+
+//    return audioLevels;
+//}
+
+
 inline float convertTodbFS(float raw) {
   if (raw <= 0) {
       return -200;
@@ -245,6 +260,11 @@ void initJuce() {
   cerr << "### INIT JUCE\n";
   elThread.startThread();
 
+//  // Initialize AudioLevels after a 100ms delay after starting JUCE Event loop
+//  // as AudioLevels class depend on a timer to report back audio levels
+//  usleep(100000);
+//  audioLevels = new AudioLevels();
+
   zlJackClient = jack_client_open(
     "zynthiloops_client",
     JackNullOption,
@@ -294,8 +314,9 @@ void shutdownJuce() {
   initializer = nullptr;
 }
 
-void registerGraphicTypes() {
+void registerQmlTypes() {
   qmlRegisterType<WaveFormItem>("JuceGraphics", 1, 0, "WaveFormItem");
+  qmlRegisterType<AudioLevels>("libzl", 1, 0, "AudioLevels");
 }
 
 void stopClips(int size, ClipAudioSource **clips) {

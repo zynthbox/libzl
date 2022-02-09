@@ -58,7 +58,7 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip);
 
 void initJuce();
 void shutdownJuce();
-void registerGraphicTypes();
+void registerQmlTypes();
 void stopClips(int size, ClipAudioSource **clips);
 float dBFromVolume(float vol);
 void setRecordingAudioLevelCallback(void (*functionPtr)(float));
