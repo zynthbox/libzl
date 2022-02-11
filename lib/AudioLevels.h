@@ -21,6 +21,8 @@ class AudioLevels : public QObject,
 Q_OBJECT
     Q_PROPERTY(float captureA MEMBER captureA NOTIFY audioLevelsChanged)
     Q_PROPERTY(float captureB MEMBER captureB NOTIFY audioLevelsChanged)
+    Q_PROPERTY(float synthA MEMBER synthA NOTIFY audioLevelsChanged)
+    Q_PROPERTY(float synthB MEMBER synthB NOTIFY audioLevelsChanged)
     Q_PROPERTY(float playbackA MEMBER playbackA NOTIFY audioLevelsChanged)
     Q_PROPERTY(float playbackB MEMBER playbackB NOTIFY audioLevelsChanged)
 
@@ -42,10 +44,20 @@ private:
     jack_status_t audioLevelsJackStatus{};
     jack_port_t* capturePortA{nullptr};
     jack_port_t* capturePortB{nullptr};
+    jack_port_t* synthPortA{nullptr};
+    jack_port_t* synthPortB{nullptr};
     jack_port_t* playbackPortA{nullptr};
     jack_port_t* playbackPortB{nullptr};
 
+    float capturePeakA{0.0f},
+          capturePeakB{0.0f},
+          synthPeakA{0.0f},
+          synthPeakB{0.0f},
+          playbackPeakA{0.0f},
+          playbackPeakB{0.0f};
+
     float captureA{-200.0f}, captureB{-200.0f};
+    float synthA{-200.0f}, synthB{-200.0f};
     float playbackA{-200.0f}, playbackB{-200.0f};
 
     void timerCallback() override;
