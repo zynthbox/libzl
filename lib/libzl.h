@@ -61,5 +61,5 @@ void shutdownJuce();
 void registerQmlTypes();
 void stopClips(int size, ClipAudioSource **clips);
 float dBFromVolume(float vol);
-void setRecordingAudioLevelCallback(void (*functionPtr)(float));
+//void setRecordingAudioLevelCallback(void (*functionPtr)(float));
 }

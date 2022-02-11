@@ -19,12 +19,17 @@
 class AudioLevels : public QObject,
                     public juce::Timer {
 Q_OBJECT
-    Q_PROPERTY(float capture1 MEMBER capture1 NOTIFY audioLevelsChanged)
-    Q_PROPERTY(float capture2 MEMBER capture2 NOTIFY audioLevelsChanged)
+    Q_PROPERTY(float captureA MEMBER captureA NOTIFY audioLevelsChanged)
+    Q_PROPERTY(float captureB MEMBER captureB NOTIFY audioLevelsChanged)
+    Q_PROPERTY(float playbackA MEMBER playbackA NOTIFY audioLevelsChanged)
+    Q_PROPERTY(float playbackB MEMBER playbackB NOTIFY audioLevelsChanged)
 
 public:
     AudioLevels(QObject *parent = nullptr);
     int _audioLevelsJackProcessCb(jack_nframes_t nframes);
+
+public slots:
+    float add(float db1, float db2);
 
 Q_SIGNALS:
     void audioLevelsChanged();
@@ -37,9 +42,11 @@ private:
     jack_status_t audioLevelsJackStatus{};
     jack_port_t* capturePortA{nullptr};
     jack_port_t* capturePortB{nullptr};
+    jack_port_t* playbackPortA{nullptr};
+    jack_port_t* playbackPortB{nullptr};
 
-    float capture1{};
-    float capture2{};
+    float captureA{-200.0f}, captureB{-200.0f};
+    float playbackA{-200.0f}, playbackB{-200.0f};
 
     void timerCallback() override;
 };

@@ -42,6 +42,21 @@ AudioLevels::AudioLevels(QObject *parent) : QObject(parent) {
         0
       );
 
+      playbackPortA = jack_port_register(
+        audioLevelsJackClient,
+        "playback_port_a",
+        JACK_DEFAULT_AUDIO_TYPE,
+        JackPortIsInput,
+        0
+      );
+      playbackPortB = jack_port_register(
+        audioLevelsJackClient,
+        "playback_port_b",
+        JACK_DEFAULT_AUDIO_TYPE,
+        JackPortIsInput,
+        0
+      );
+
       if (
         jack_set_process_callback(
           audioLevelsJackClient,
@@ -81,7 +96,7 @@ inline float AudioLevels::convertTodbFS(float raw) {
         return -200;
     }
 
-    float fValue = 20 * log10f(raw);
+    const float fValue = 20 * log10f(raw);
     if (fValue < -200) {
         return -200;
     }
@@ -94,28 +109,50 @@ void AudioLevels::timerCallback() {
 }
 
 int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
-    float peakA{0.0f}, peakB{0.0f};
-    float dbA, dbB;
-    jack_default_audio_sample_t *bufA = (jack_default_audio_sample_t *)jack_port_get_buffer(capturePortA, nframes);
-    jack_default_audio_sample_t *bufB = (jack_default_audio_sample_t *)jack_port_get_buffer(capturePortB, nframes);
+    float capturePeakA{0.0f},
+          capturePeakB{0.0f},
+          playbackPeakA{0.0f},
+          playbackPeakB{0.0f};
+
+    jack_default_audio_sample_t *captureBufA{(jack_default_audio_sample_t *)jack_port_get_buffer(capturePortA, nframes)},
+                                *captureBufB{(jack_default_audio_sample_t *)jack_port_get_buffer(capturePortB, nframes)},
+                                *playbackBufA{(jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortA, nframes)},
+                                *playbackBufB{(jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortB, nframes)};
 
     for (jack_nframes_t i=0; i<nframes; i++) {
-        const float sampleA = fabs(bufA[i]) * 0.2;
-        const float sampleB = fabs(bufB[i]) * 0.2;
+        const float captureSampleA = fabs(captureBufA[i]) * 0.2,
+                    captureSampleB = fabs(captureBufB[i]) * 0.2,
+                    playbackSampleA = fabs(playbackBufA[i]) * 0.2,
+                    playbackSampleB = fabs(playbackBufB[i]) * 0.2;
 
-        if (sampleA > peakA) {
-            peakA = sampleA;
+        if (captureSampleA > capturePeakA) {
+            capturePeakA = captureSampleA;
         }
-        if (sampleB > peakB) {
-            peakB = sampleB;
+        if (captureSampleB > capturePeakB) {
+            capturePeakB = captureSampleB;
+        }
+
+        if (playbackSampleA > playbackPeakA) {
+            playbackPeakA = playbackSampleA;
+        }
+        if (playbackSampleB > playbackPeakB) {
+            playbackPeakB = playbackSampleB;
         }
     }
 
-    dbA = convertTodbFS(peakA);
-    dbB = convertTodbFS(peakB);
+    const float captureDbA{convertTodbFS(capturePeakA)},
+                captureDbB{convertTodbFS(capturePeakB)},
+                playbackDbA{convertTodbFS(playbackPeakA)},
+                playbackDbB{convertTodbFS(playbackPeakB)};
 
-    capture1 = dbA <= -200 ? -200 : dbA;
-    capture2 = dbB <= -200 ? -200 : dbB;
+    captureA = captureDbA <= -200 ? -200 : captureDbA;
+    captureB = captureDbB <= -200 ? -200 : captureDbB;
+    playbackA = playbackDbA <= -200 ? -200 : playbackDbA;
+    playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
 
     return 0;
+}
+
+float AudioLevels::add(float db1, float db2) {
+    return 10 * log10f(pow(10, db1/10) + pow(10, db2/10));
 }

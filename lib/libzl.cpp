@@ -27,12 +27,12 @@ using namespace std;
 
 ScopedJuceInitialiser_GUI *initializer = nullptr;
 SyncTimer *syncTimer = new SyncTimer();
-jack_client_t* zlJackClient{nullptr};
-jack_status_t zlJackStatus{};
-jack_port_t* capturePortA{nullptr};
-jack_port_t* capturePortB{nullptr};
-float db;
-void (*recordingAudioLevelCallback)(float leveldB) = nullptr;
+//jack_client_t* zlJackClient{nullptr};
+//jack_status_t zlJackStatus{};
+//jack_port_t* capturePortA{nullptr};
+//jack_port_t* capturePortB{nullptr};
+//float db;
+//void (*recordingAudioLevelCallback)(float leveldB) = nullptr;
 AudioLevels *audioLevels = nullptr;
 
 class JuceEventLoopThread : public Thread {
@@ -196,65 +196,65 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
 //}
 
 
-inline float convertTodbFS(float raw) {
-  if (raw <= 0) {
-      return -200;
-  }
+//inline float convertTodbFS(float raw) {
+//  if (raw <= 0) {
+//      return -200;
+//  }
 
-  float fValue = 20 * log10f(raw);
-  if (fValue < -200) {
-      return -200;
-  }
+//  float fValue = 20 * log10f(raw);
+//  if (fValue < -200) {
+//      return -200;
+//  }
 
-  return fValue;
-}
+//  return fValue;
+//}
 
-inline float peakdBFSFromJackOutput(jack_port_t* port, jack_nframes_t nframes) {
-  float peak{0.0f};
-  jack_default_audio_sample_t *buf = (jack_default_audio_sample_t *)jack_port_get_buffer(port, nframes);
+//inline float peakdBFSFromJackOutput(jack_port_t* port, jack_nframes_t nframes) {
+//  float peak{0.0f};
+//  jack_default_audio_sample_t *buf = (jack_default_audio_sample_t *)jack_port_get_buffer(port, nframes);
 
-  for (jack_nframes_t i=0; i<nframes; i++) {
-      const float sample = fabs(buf[i]) * 0.2;
-      if (sample > peak) {
-          peak = sample;
-      }
-  }
+//  for (jack_nframes_t i=0; i<nframes; i++) {
+//      const float sample = fabs(buf[i]) * 0.2;
+//      if (sample > peak) {
+//          peak = sample;
+//      }
+//  }
 
-  return convertTodbFS(peak);
-}
+//  return convertTodbFS(peak);
+//}
 
-static int _zlJackProcessCb(jack_nframes_t nframes, void* arg) {
-  Q_UNUSED(arg)
-  static float dbLeft, dbRight;
-  static QTimer* callbackCaller{nullptr};
-  if (!callbackCaller) {
-    // To avoid potentially causing Jack xruns, we put everything that is
-    // not directly required to be done during the jack call into a timer,
-    // which lives on the app's main thread. If it turns out to be heavy
-    // on that thread, we can move it elsewhere, but given it /is/ a ui
-    // update situation, it seems reasonable to put it there. A courteous
-    // check says it has no measurable impact on the main thread's
-    // processing cost.
-    callbackCaller = new QTimer(qApp);
-    callbackCaller->moveToThread(qApp->thread());
-    callbackCaller->setInterval(10);
-    QObject::connect(callbackCaller, &QTimer::timeout, callbackCaller, [&]() {
-      float db{-200};
-      if (dbLeft > -200 || dbRight > -200) {
-        db = 10 * log10f(pow(10, dbLeft/10) + pow(10, dbRight/10));
-      }
-      if (recordingAudioLevelCallback != nullptr) {
-        recordingAudioLevelCallback(db);
-      }
-    });
-    QMetaObject::invokeMethod(callbackCaller, "start", Qt::QueuedConnection);
-  }
+//static int _zlJackProcessCb(jack_nframes_t nframes, void* arg) {
+//  Q_UNUSED(arg)
+//  static float dbLeft, dbRight;
+//  static QTimer* callbackCaller{nullptr};
+//  if (!callbackCaller) {
+//    // To avoid potentially causing Jack xruns, we put everything that is
+//    // not directly required to be done during the jack call into a timer,
+//    // which lives on the app's main thread. If it turns out to be heavy
+//    // on that thread, we can move it elsewhere, but given it /is/ a ui
+//    // update situation, it seems reasonable to put it there. A courteous
+//    // check says it has no measurable impact on the main thread's
+//    // processing cost.
+//    callbackCaller = new QTimer(qApp);
+//    callbackCaller->moveToThread(qApp->thread());
+//    callbackCaller->setInterval(10);
+//    QObject::connect(callbackCaller, &QTimer::timeout, callbackCaller, [&]() {
+//      float db{-200};
+//      if (dbLeft > -200 || dbRight > -200) {
+//        db = 10 * log10f(pow(10, dbLeft/10) + pow(10, dbRight/10));
+//      }
+//      if (recordingAudioLevelCallback != nullptr) {
+//        recordingAudioLevelCallback(db);
+//      }
+//    });
+//    QMetaObject::invokeMethod(callbackCaller, "start", Qt::QueuedConnection);
+//  }
 
-  dbLeft = peakdBFSFromJackOutput(capturePortA, nframes);
-  dbRight = peakdBFSFromJackOutput(capturePortB, nframes);
+//  dbLeft = peakdBFSFromJackOutput(capturePortA, nframes);
+//  dbRight = peakdBFSFromJackOutput(capturePortB, nframes);
 
-  return 0;
-}
+//  return 0;
+//}
 
 void initJuce() {
   cerr << "### INIT JUCE\n";
@@ -265,48 +265,48 @@ void initJuce() {
 //  usleep(100000);
 //  audioLevels = new AudioLevels();
 
-  zlJackClient = jack_client_open(
-    "zynthiloops_client",
-    JackNullOption,
-    &zlJackStatus
-  );
+//  zlJackClient = jack_client_open(
+//    "zynthiloops_client",
+//    JackNullOption,
+//    &zlJackStatus
+//  );
 
-  if (zlJackClient) {
-    cerr << "Initialized ZL Jack Client zynthiloops_client";
+//  if (zlJackClient) {
+//    cerr << "Initialized ZL Jack Client zynthiloops_client";
 
-    capturePortA = jack_port_register(
-      zlJackClient,
-      "capture_port_a",
-      JACK_DEFAULT_AUDIO_TYPE,
-      JackPortIsInput,
-      0
-    );
-    capturePortB = jack_port_register(
-      zlJackClient,
-      "capture_port_b",
-      JACK_DEFAULT_AUDIO_TYPE,
-      JackPortIsInput,
-      0
-    );
+//    capturePortA = jack_port_register(
+//      zlJackClient,
+//      "capture_port_a",
+//      JACK_DEFAULT_AUDIO_TYPE,
+//      JackPortIsInput,
+//      0
+//    );
+//    capturePortB = jack_port_register(
+//      zlJackClient,
+//      "capture_port_b",
+//      JACK_DEFAULT_AUDIO_TYPE,
+//      JackPortIsInput,
+//      0
+//    );
 
-    if (
-      jack_set_process_callback(
-        zlJackClient,
-        _zlJackProcessCb,
-        nullptr
-      ) != 0
-    ) {
-      cerr << "Failed to set the ZL Jack Client processing callback" << endl;
-    } else {
-      if (jack_activate(zlJackClient) == 0) {
-        cerr << "Successfully created and set up the ZL Jack client" << endl;
-      } else {
-        cerr << "Failed to activate ZL Jack client" << endl;
-      }
-    }
-  } else {
-    cerr << "Error initializing ZL Jack Client zynthiloops_client" << endl;
-  }
+//    if (
+//      jack_set_process_callback(
+//        zlJackClient,
+//        _zlJackProcessCb,
+//        nullptr
+//      ) != 0
+//    ) {
+//      cerr << "Failed to set the ZL Jack Client processing callback" << endl;
+//    } else {
+//      if (jack_activate(zlJackClient) == 0) {
+//        cerr << "Successfully created and set up the ZL Jack client" << endl;
+//      } else {
+//        cerr << "Failed to activate ZL Jack client" << endl;
+//      }
+//    }
+//  } else {
+//    cerr << "Error initializing ZL Jack Client zynthiloops_client" << endl;
+//  }
 }
 
 void shutdownJuce() {
@@ -325,6 +325,6 @@ void stopClips(int size, ClipAudioSource **clips) {
 
 float dBFromVolume(float vol) { return te::volumeFaderPositionToDB(vol); }
 
-void setRecordingAudioLevelCallback(void (*functionPtr)(float)) {
-  recordingAudioLevelCallback = functionPtr;
-}
+//void setRecordingAudioLevelCallback(void (*functionPtr)(float)) {
+//  recordingAudioLevelCallback = functionPtr;
+//}
