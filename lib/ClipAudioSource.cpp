@@ -99,6 +99,19 @@ void ClipAudioSource::syncProgress() {
   }
 }
 
+void ClipAudioSource::setLooping(bool looping) {
+  auto &transport = edit->getTransport();
+  if (transport.looping != looping) {
+    transport.looping = looping;
+  }
+}
+
+bool ClipAudioSource::getLooping() const
+{
+  const auto &transport = edit->getTransport();
+  return transport.looping;
+}
+
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   this->startPositionInSeconds = jmax(0.0f, startPositionInSeconds);
   cerr << "Setting Start Position to " << this->startPositionInSeconds << endl;

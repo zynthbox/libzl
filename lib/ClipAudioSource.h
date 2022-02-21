@@ -27,6 +27,8 @@ public:
   void setProgressCallback(void (*functionPtr)(float));
   void syncProgress();
   void setStartPosition(float startPositionInSeconds);
+  void setLooping(bool looping);
+  bool getLooping() const;
   void setLength(int beat, int bpm);
   void setPitch(float pitchChange);
   void setSpeedRatio(float speedRatio);
