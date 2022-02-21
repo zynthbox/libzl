@@ -41,6 +41,22 @@ public:
   quint64 cumulativeBeat() const;
 
   /**
+   * \brief Schedule an audio clip to start playing on the next tick of the timer
+   * If the clip is already scheduled at the position you're attempting to schedule it into, this function will not add multiple
+   * @note If you want the clip to loop (or not), set this on the clip itself along with the other clip properties
+   * @param clip The audio clip you wish to start playback of
+   * @param delay A delay in number of timer ticks counting from the current position
+   */
+  void scheduleClipToStart(ClipAudioSource *clip, quint64 delay);
+  /**
+   * \brief Schedule an audio clip to stop on the next tick of the timer
+   * If the clip is already scheduled at the position you're attempting to schedule it into, this function will not add multiple
+   * @param clip The audio clip you wish to stop playback of
+   * @param delay A delay in number of timer ticks counting from the current position
+   */
+  void scheduleClipToStop(ClipAudioSource *clip, quint64 delay);
+
+  /**
    * \brief Schedule a note message to be sent on the next tick of the timer
    * @note This is not thread-safe in itself - when the timer is running, don't call this function outside of a callback
    * @param midiNote The note you wish to change the state of

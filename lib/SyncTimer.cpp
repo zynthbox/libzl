@@ -255,6 +255,8 @@ public:
     int playingClipsCount = 0;
     int beat = 0;
     QList<void (*)(int)> callbacks;
+    QHash<quint64, QList<ClipAudioSource *> > clipStartQueues;
+    QHash<quint64, QList<ClipAudioSource *> > clipStopQueues;
     QQueue<ClipAudioSource *> clipsStartQueue;
     QQueue<ClipAudioSource *> clipsStopQueue;
 
@@ -286,6 +288,18 @@ public:
                 clip->play();
             }
         }
+        if (clipStartQueues.contains(cumulativeBeat)) {
+            const QList<ClipAudioSource *> &clips = clipStartQueues[cumulativeBeat];
+            for (ClipAudioSource *clip : clips) {
+                clip->play(clip->getLooping());
+            }
+        }
+        if (clipStopQueues.contains(cumulativeBeat)) {
+            const QList<ClipAudioSource *> &clips = clipStopQueues[cumulativeBeat];
+            for (ClipAudioSource *clip : clips) {
+                clip->stop();
+            }
+        }
 
         /// }
         /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
@@ -297,6 +311,8 @@ public:
         if (beat == 0) {
 //            clipsStopQueue.clear();
             clipsStartQueue.clear();
+            clipStartQueues.remove(cumulativeBeat);
+            clipStopQueues.remove(cumulativeBeat);
         }
 
         // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
@@ -588,6 +604,14 @@ void SyncTimer::stop() {
         clip->stop();
     }
 
+    QHashIterator<quint64, QList<ClipAudioSource *> > iterator(d->clipStopQueues);
+    while (iterator.hasNext()) {
+        iterator.next();
+        for (ClipAudioSource *clip : iterator.value()) {
+            clip->stop();
+        }
+    }
+
     if (d->juceMidiOut) {
         for (const auto &message : qAsConst(d->nextMidiMessages)) {
             // We have designated position 0 as off notes, so turn all those off
@@ -608,6 +632,8 @@ void SyncTimer::stop() {
     d->cumulativeBeat = 0;
     d->midiMessageQueues.clear();
     d->nextMidiMessages.clear();
+    d->clipStartQueues.clear();
+    d->clipStopQueues.clear();
 #ifdef DEBUG_SYNCTIMER_TIMING
     qDebug() << d->intervals;
 #endif
@@ -634,6 +660,32 @@ int SyncTimer::beat() const {
 
 quint64 SyncTimer::cumulativeBeat() const {
     return d->cumulativeBeat;
+}
+
+void SyncTimer::scheduleClipToStart(ClipAudioSource *clip, quint64 delay)
+{
+    d->mutex.lock();
+    if (!d->clipStartQueues.contains(d->cumulativeBeat + delay)) {
+        d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipAudioSource*>{};
+    }
+    QList<ClipAudioSource*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
+    if (clips.contains(clip)) {
+        clips << clip;
+    }
+    d->mutex.unlock();
+}
+
+void SyncTimer::scheduleClipToStop(ClipAudioSource *clip, quint64 delay)
+{
+    d->mutex.lock();
+    if (!d->clipStopQueues.contains(d->cumulativeBeat + delay)) {
+        d->clipStopQueues[d->cumulativeBeat + delay] = QList<ClipAudioSource*>{};
+    }
+    QList<ClipAudioSource*> &clips = d->clipStopQueues[d->cumulativeBeat + delay];
+    if (clips.contains(clip)) {
+        clips << clip;
+    }
+    d->mutex.unlock();
 }
 
 void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay)
