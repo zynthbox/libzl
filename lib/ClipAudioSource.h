@@ -12,13 +12,13 @@
 
 #include <iostream>
 
-#include "JUCEHeaders.h"
+#include <juce_events/juce_events.h>
 
 class SyncTimer;
 using namespace std;
 
 //==============================================================================
-class ClipAudioSource : public Timer {
+class ClipAudioSource : public juce::Timer {
 public:
   ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
                   bool muted = false);
@@ -40,30 +40,10 @@ public:
   float getDuration();
   const char *getFileName();
   void updateTempoAndPitch();
-  te::WaveAudioClip::Ptr getClip();
-  const te::Engine &getEngine() const { return engine; };
 
 private:
   void timerCallback();
-
-  te::Engine engine{"libzl"};
-  std::unique_ptr<te::Edit> edit;
-
-  SyncTimer *syncTimer;
-  void (*progressChangedCallback)(float progress) = nullptr;
-  void (*audioLevelChangedCallback)(float leveldB) = nullptr;
-
-  juce::String chosenPath;
-  juce::String fileName;
-
-  te::LevelMeasurer::Client levelClient;
-
-  float startPositionInSeconds = 0;
-  float lengthInSeconds = -1;
-  float pitchChange = 0;
-  float speedRatio = 1.0;
-  double currentLeveldB{0.0};
-  double prevLeveldB{0.0};
-
+  class Private;
+  Private *d;
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ClipAudioSource)
 };

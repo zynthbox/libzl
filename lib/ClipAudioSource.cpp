@@ -12,11 +12,45 @@
 
 #include <unistd.h>
 
+#include "JUCEHeaders.h"
 #include "../tracktion_engine/examples/common/Utilities.h"
 #include "Helper.h"
 #include "SyncTimer.h"
 
 using namespace std;
+
+class ClipAudioSource::Private {
+public:
+  Private(ClipAudioSource *qq) : q(qq) {};
+  ClipAudioSource *q;
+  const te::Engine &getEngine() const { return engine; };
+  te::WaveAudioClip::Ptr getClip() {
+    if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0))
+        if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0]))
+        return *clip;
+
+    return {};
+  }
+
+  te::Engine engine{"libzl"};
+  std::unique_ptr<te::Edit> edit;
+
+  SyncTimer *syncTimer;
+  void (*progressChangedCallback)(float progress) = nullptr;
+  void (*audioLevelChangedCallback)(float leveldB) = nullptr;
+
+  juce::String chosenPath;
+  juce::String fileName;
+
+  te::LevelMeasurer::Client levelClient;
+
+  float startPositionInSeconds = 0;
+  float lengthInSeconds = -1;
+  float pitchChange = 0;
+  float speedRatio = 1.0;
+  double currentLeveldB{0.0};
+  double prevLeveldB{0.0};
+};
 
 class ClipProgress : public ValueTree::Listener {
 public:
@@ -37,9 +71,10 @@ private:
 
 ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
                                  bool muted)
-    : syncTimer(syncTimer) {
-  engine.getDeviceManager().initialise(0, 2);
-  engine.getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
+    : d(new Private(this)) {
+  d->syncTimer = syncTimer;
+  d->engine.getDeviceManager().initialise(0, 2);
+  d->engine.getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
 
   cerr << "Opening file : " << filepath << endl;
 
@@ -47,14 +82,14 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
 
   const File editFile = File::createTempFile("editFile");
 
-  edit = te::createEmptyEdit(engine, editFile);
-  auto clip = Helper::loadAudioFileAsClip(*edit, file);
-  auto &transport = edit->getTransport();
+  d->edit = te::createEmptyEdit(d->engine, editFile);
+  auto clip = Helper::loadAudioFileAsClip(*d->edit, file);
+  auto &transport = d->edit->getTransport();
 
   transport.ensureContextAllocated(true);
 
-  this->fileName = file.getFileName();
-  this->lengthInSeconds = edit->getLength();
+  d->fileName = file.getFileName();
+  d->lengthInSeconds = d->edit->getLength();
 
   if (clip) {
     clip->setAutoTempo(false);
@@ -63,11 +98,11 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
   }
 
   transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-      startPositionInSeconds, lengthInSeconds));
+      d->startPositionInSeconds, d->lengthInSeconds));
   transport.looping = true;
   transport.state.addListener(new ClipProgress(this));
 
-  auto track = Helper::getOrInsertAudioTrackAt(*edit, 0);
+  auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
 
   if (muted) {
     cerr << "Clip marked to be muted" << endl;
@@ -75,32 +110,32 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
   }
 
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
-  levelMeasurerPlugin->measurer.addClient(levelClient);
+  levelMeasurerPlugin->measurer.addClient(d->levelClient);
   startTimerHz(30);
 }
 
 ClipAudioSource::~ClipAudioSource() {
   cerr << "Destroying Clip" << endl;
   stop();
-  auto track = Helper::getOrInsertAudioTrackAt(*edit, 0);
+  auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
-  levelMeasurerPlugin->measurer.removeClient(levelClient);
-  edit.reset();
+  levelMeasurerPlugin->measurer.removeClient(d->levelClient);
+  d->edit.reset();
   stopTimer();
 }
 
 void ClipAudioSource::setProgressCallback(void (*functionPtr)(float)) {
-  progressChangedCallback = functionPtr;
+  d->progressChangedCallback = functionPtr;
 }
 
 void ClipAudioSource::syncProgress() {
-  if (progressChangedCallback != nullptr) {
-    progressChangedCallback(edit->getTransport().getCurrentPosition());
+  if (d->progressChangedCallback != nullptr) {
+    d->progressChangedCallback(d->edit->getTransport().getCurrentPosition());
   }
 }
 
 void ClipAudioSource::setLooping(bool looping) {
-  auto &transport = edit->getTransport();
+  auto &transport = d->edit->getTransport();
   if (transport.looping != looping) {
     transport.looping = looping;
   }
@@ -108,63 +143,63 @@ void ClipAudioSource::setLooping(bool looping) {
 
 bool ClipAudioSource::getLooping() const
 {
-  const auto &transport = edit->getTransport();
+  const auto &transport = d->edit->getTransport();
   return transport.looping;
 }
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
-  this->startPositionInSeconds = jmax(0.0f, startPositionInSeconds);
-  cerr << "Setting Start Position to " << this->startPositionInSeconds << endl;
+  d->startPositionInSeconds = jmax(0.0f, startPositionInSeconds);
+  cerr << "Setting Start Position to " << d->startPositionInSeconds << endl;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setPitch(float pitchChange) {
   cerr << "Setting Pitch to " << pitchChange << endl;
-  this->pitchChange = pitchChange;
+  d->pitchChange = pitchChange;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setSpeedRatio(float speedRatio) {
   cerr << "Setting Speed to " << speedRatio << endl;
-  this->speedRatio = speedRatio;
+  d->speedRatio = speedRatio;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setGain(float db) {
-  if (auto clip = getClip()) {
+  if (auto clip = d->getClip()) {
     cerr << "Setting gain : " << db;
     clip->setGainDB(db);
   }
 }
 
 void ClipAudioSource::setVolume(float vol) {
-  if (auto clip = getClip()) {
+  if (auto clip = d->getClip()) {
     cerr << "Setting volume : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
   }
 }
 
 void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
-  audioLevelChangedCallback = functionPtr;
+  d->audioLevelChangedCallback = functionPtr;
 }
 
 void ClipAudioSource::setLength(int beat, int bpm) {
-  cerr << "Interval : " << syncTimer->getInterval(bpm) << endl;
-  float lengthInSeconds = syncTimer->subbeatCountToSeconds(
-      (quint64)bpm, (quint64)(beat * syncTimer->getMultiplier()));
+  cerr << "Interval : " << d->syncTimer->getInterval(bpm) << endl;
+  float lengthInSeconds = d->syncTimer->subbeatCountToSeconds(
+      (quint64)bpm, (quint64)(beat * d->syncTimer->getMultiplier()));
   cerr << "Setting Length to " << lengthInSeconds << endl;
-  this->lengthInSeconds = lengthInSeconds;
+  d->lengthInSeconds = lengthInSeconds;
   updateTempoAndPitch();
 }
 
-float ClipAudioSource::getDuration() { return edit->getLength(); }
+float ClipAudioSource::getDuration() { return d->edit->getLength(); }
 
 const char *ClipAudioSource::getFileName() {
-  return static_cast<const char *>(fileName.toUTF8());
+  return static_cast<const char *>(d->fileName.toUTF8());
 }
 
 void ClipAudioSource::updateTempoAndPitch() {
-  if (auto clip = getClip()) {
+  if (auto clip = d->getClip()) {
     auto &transport = clip->edit.getTransport();
     bool isPlaying = transport.isPlaying();
 
@@ -172,61 +207,53 @@ void ClipAudioSource::updateTempoAndPitch() {
       transport.stop(false, false);
     }
 
-    cerr << "Updating speedRatio(" << this->speedRatio << ") and pitch("
-         << this->pitchChange << ")" << endl;
+    cerr << "Updating speedRatio(" << d->speedRatio << ") and pitch("
+         << d->pitchChange << ")" << endl;
 
-    clip->setSpeedRatio(this->speedRatio);
-    clip->setPitchChange(this->pitchChange);
+    clip->setSpeedRatio(d->speedRatio);
+    clip->setPitchChange(d->pitchChange);
 
-    cerr << "Setting loop range : " << startPositionInSeconds << " to "
-         << (startPositionInSeconds + lengthInSeconds) << endl;
+    cerr << "Setting loop range : " << d->startPositionInSeconds << " to "
+         << (d->startPositionInSeconds + d->lengthInSeconds) << endl;
 
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-        startPositionInSeconds, lengthInSeconds));
+        d->startPositionInSeconds, d->lengthInSeconds));
     transport.setCurrentPosition(transport.loopPoint1);
 
     if (isPlaying) {
-      syncTimer->queueClipToStart(this);
+      d->syncTimer->queueClipToStart(this);
     }
   }
 }
 
-te::WaveAudioClip::Ptr ClipAudioSource::getClip() {
-  if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0))
-    if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0]))
-      return *clip;
-
-  return {};
-}
-
 void ClipAudioSource::timerCallback() {
-  prevLeveldB = currentLeveldB;
+  d->prevLeveldB = d->currentLeveldB;
 
-  currentLeveldB = levelClient.getAndClearAudioLevel(0).dB;
+  d->currentLeveldB = d->levelClient.getAndClearAudioLevel(0).dB;
 
   // Now we give the level bar fading charcteristics.
   // And, the below coversions, decibelsToGain and gainToDecibels,
   // take care of 0dB, which will never fade!...but a gain of 1.0 (0dB) will.
 
-  const auto prevLevel{Decibels::decibelsToGain(prevLeveldB)};
+  const auto prevLevel{Decibels::decibelsToGain(d->prevLeveldB)};
 
-  if (prevLeveldB > currentLeveldB)
-    currentLeveldB = Decibels::gainToDecibels(prevLevel * 0.94);
+  if (d->prevLeveldB > d->currentLeveldB)
+    d->currentLeveldB = Decibels::gainToDecibels(prevLevel * 0.94);
 
   // the test below may save some unnecessary paints
-  if (currentLeveldB != prevLeveldB && audioLevelChangedCallback != nullptr) {
+  if (d->currentLeveldB != d->prevLeveldB && d->audioLevelChangedCallback != nullptr) {
     // Callback
-    audioLevelChangedCallback(currentLeveldB);
+    d->audioLevelChangedCallback(d->currentLeveldB);
   }
 }
 
 void ClipAudioSource::play(bool loop) {
-  auto clip = getClip();
+  auto clip = d->getClip();
   if (!clip) {
     return;
   }
 
-  auto &transport = getClip()->edit.getTransport();
+  auto &transport = d->getClip()->edit.getTransport();
 
   transport.stop(false, false);
   transport.setCurrentPosition(transport.loopPoint1);
@@ -235,12 +262,12 @@ void ClipAudioSource::play(bool loop) {
     transport.play(false);
   } else {
     transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(
-        startPositionInSeconds, lengthInSeconds));
+        d->startPositionInSeconds, d->lengthInSeconds));
   }
 }
 
 void ClipAudioSource::stop() {
   cerr << "libzl : Stopping clip " << this << endl;
 
-  edit->getTransport().stop(false, false);
+  d->edit->getTransport().stop(false, false);
 }
