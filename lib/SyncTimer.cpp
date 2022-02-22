@@ -288,16 +288,16 @@ public:
                 clip->play();
             }
         }
-        if (clipStartQueues.contains(cumulativeBeat)) {
-            const QList<ClipAudioSource *> &clips = clipStartQueues[cumulativeBeat];
-            for (ClipAudioSource *clip : clips) {
-                clip->play(clip->getLooping());
-            }
-        }
         if (clipStopQueues.contains(cumulativeBeat)) {
             const QList<ClipAudioSource *> &clips = clipStopQueues[cumulativeBeat];
             for (ClipAudioSource *clip : clips) {
                 clip->stop();
+            }
+        }
+        if (clipStartQueues.contains(cumulativeBeat)) {
+            const QList<ClipAudioSource *> &clips = clipStartQueues[cumulativeBeat];
+            for (ClipAudioSource *clip : clips) {
+                clip->play(clip->getLooping());
             }
         }
 
