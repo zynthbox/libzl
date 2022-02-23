@@ -669,7 +669,7 @@ void SyncTimer::scheduleClipToStart(ClipAudioSource *clip, quint64 delay)
         d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipAudioSource*>{};
     }
     QList<ClipAudioSource*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
-    if (clips.contains(clip)) {
+    if (!clips.contains(clip)) {
         clips << clip;
     }
     d->mutex.unlock();
@@ -682,7 +682,7 @@ void SyncTimer::scheduleClipToStop(ClipAudioSource *clip, quint64 delay)
         d->clipStopQueues[d->cumulativeBeat + delay] = QList<ClipAudioSource*>{};
     }
     QList<ClipAudioSource*> &clips = d->clipStopQueues[d->cumulativeBeat + delay];
-    if (clips.contains(clip)) {
+    if (!clips.contains(clip)) {
         clips << clip;
     }
     d->mutex.unlock();
