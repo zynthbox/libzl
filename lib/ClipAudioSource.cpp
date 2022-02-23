@@ -17,6 +17,9 @@
 #include "Helper.h"
 #include "SyncTimer.h"
 
+#define DEBUG_CLIP false
+#define IF_DEBUG_CLIP if (DEBUG_CLIP)
+
 using namespace std;
 
 class ClipAudioSource::Private {
@@ -76,7 +79,7 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
   d->engine.getDeviceManager().initialise(0, 2);
   d->engine.getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
 
-  cerr << "Opening file : " << filepath << endl;
+  IF_DEBUG_CLIP cerr << "Opening file : " << filepath << endl;
 
   juce::File file(filepath);
 
@@ -105,7 +108,7 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
   auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
 
   if (muted) {
-    cerr << "Clip marked to be muted" << endl;
+    IF_DEBUG_CLIP cerr << "Clip marked to be muted" << endl;
     setVolume(-100.0f);
   }
 
@@ -115,7 +118,7 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
 }
 
 ClipAudioSource::~ClipAudioSource() {
-  cerr << "Destroying Clip" << endl;
+  IF_DEBUG_CLIP cerr << "Destroying Clip" << endl;
   stop();
   auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
@@ -149,32 +152,32 @@ bool ClipAudioSource::getLooping() const
 
 void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   d->startPositionInSeconds = jmax(0.0f, startPositionInSeconds);
-  cerr << "Setting Start Position to " << d->startPositionInSeconds << endl;
+  IF_DEBUG_CLIP cerr << "Setting Start Position to " << d->startPositionInSeconds << endl;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setPitch(float pitchChange) {
-  cerr << "Setting Pitch to " << pitchChange << endl;
+  IF_DEBUG_CLIP cerr << "Setting Pitch to " << pitchChange << endl;
   d->pitchChange = pitchChange;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setSpeedRatio(float speedRatio) {
-  cerr << "Setting Speed to " << speedRatio << endl;
+  IF_DEBUG_CLIP cerr << "Setting Speed to " << speedRatio << endl;
   d->speedRatio = speedRatio;
   updateTempoAndPitch();
 }
 
 void ClipAudioSource::setGain(float db) {
   if (auto clip = d->getClip()) {
-    cerr << "Setting gain : " << db;
+    IF_DEBUG_CLIP cerr << "Setting gain : " << db;
     clip->setGainDB(db);
   }
 }
 
 void ClipAudioSource::setVolume(float vol) {
   if (auto clip = d->getClip()) {
-    cerr << "Setting volume : " << vol << endl;
+    IF_DEBUG_CLIP cerr << "Setting volume : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
   }
 }
@@ -184,10 +187,10 @@ void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
 }
 
 void ClipAudioSource::setLength(int beat, int bpm) {
-  cerr << "Interval : " << d->syncTimer->getInterval(bpm) << endl;
+  IF_DEBUG_CLIP cerr << "Interval : " << d->syncTimer->getInterval(bpm) << endl;
   float lengthInSeconds = d->syncTimer->subbeatCountToSeconds(
       (quint64)bpm, (quint64)(beat * d->syncTimer->getMultiplier()));
-  cerr << "Setting Length to " << lengthInSeconds << endl;
+  IF_DEBUG_CLIP cerr << "Setting Length to " << lengthInSeconds << endl;
   d->lengthInSeconds = lengthInSeconds;
   updateTempoAndPitch();
 }
@@ -207,13 +210,13 @@ void ClipAudioSource::updateTempoAndPitch() {
       transport.stop(false, false);
     }
 
-    cerr << "Updating speedRatio(" << d->speedRatio << ") and pitch("
+    IF_DEBUG_CLIP cerr << "Updating speedRatio(" << d->speedRatio << ") and pitch("
          << d->pitchChange << ")" << endl;
 
     clip->setSpeedRatio(d->speedRatio);
     clip->setPitchChange(d->pitchChange);
 
-    cerr << "Setting loop range : " << d->startPositionInSeconds << " to "
+    IF_DEBUG_CLIP cerr << "Setting loop range : " << d->startPositionInSeconds << " to "
          << (d->startPositionInSeconds + d->lengthInSeconds) << endl;
 
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
@@ -248,6 +251,7 @@ void ClipAudioSource::timerCallback() {
 }
 
 void ClipAudioSource::play(bool loop) {
+  IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << " in a looping manner?" << loop << endl;
   auto clip = d->getClip();
   if (!clip) {
     return;
@@ -267,7 +271,7 @@ void ClipAudioSource::play(bool loop) {
 }
 
 void ClipAudioSource::stop() {
-  cerr << "libzl : Stopping clip " << this << endl;
+  IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << endl;
 
   d->edit->getTransport().stop(false, false);
 }
