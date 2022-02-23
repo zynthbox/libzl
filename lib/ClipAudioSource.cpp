@@ -44,6 +44,7 @@ public:
 
   juce::String chosenPath;
   juce::String fileName;
+  juce::String filePath;
 
   te::LevelMeasurer::Client levelClient;
 
@@ -92,6 +93,7 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
   transport.ensureContextAllocated(true);
 
   d->fileName = file.getFileName();
+  d->filePath = filepath;
   d->lengthInSeconds = d->edit->getLength();
 
   if (clip) {
@@ -197,8 +199,12 @@ void ClipAudioSource::setLength(int beat, int bpm) {
 
 float ClipAudioSource::getDuration() { return d->edit->getLength(); }
 
-const char *ClipAudioSource::getFileName() {
+const char *ClipAudioSource::getFileName() const {
   return static_cast<const char *>(d->fileName.toUTF8());
+}
+
+const char *ClipAudioSource::getFilePath() const {
+    return static_cast<const char*>(d->filePath.toUTF8());
 }
 
 void ClipAudioSource::updateTempoAndPitch() {

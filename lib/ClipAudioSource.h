@@ -38,7 +38,8 @@ public:
   void play(bool loop = true);
   void stop();
   float getDuration();
-  const char *getFileName();
+  const char *getFileName() const;
+  const char *getFilePath() const;
   void updateTempoAndPitch();
 
 private:
