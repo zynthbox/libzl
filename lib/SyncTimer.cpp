@@ -297,7 +297,7 @@ public:
         if (clipStartQueues.contains(cumulativeBeat)) {
             const QList<ClipAudioSource *> &clips = clipStartQueues[cumulativeBeat];
             for (ClipAudioSource *clip : clips) {
-                clip->play(clip->getLooping());
+                clip->play();
             }
         }
 
