@@ -17,7 +17,7 @@
 #include "Helper.h"
 #include "SyncTimer.h"
 
-#define DEBUG_CLIP false
+#define DEBUG_CLIP true
 #define IF_DEBUG_CLIP if (DEBUG_CLIP)
 
 using namespace std;
@@ -257,8 +257,8 @@ void ClipAudioSource::timerCallback() {
 }
 
 void ClipAudioSource::play(bool loop) {
-  IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << " in a looping manner?" << loop << endl;
   auto clip = d->getClip();
+  IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
   if (!clip) {
     return;
   }
