@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <QObject>
+
 #include <iostream>
 
 #include <juce_events/juce_events.h>
@@ -18,11 +20,12 @@ class SyncTimer;
 using namespace std;
 
 //==============================================================================
-class ClipAudioSource : public juce::Timer {
+class ClipAudioSource : public QObject, public juce::Timer {
+    Q_OBJECT
 public:
-  ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
-                  bool muted = false);
-  ~ClipAudioSource();
+  explicit ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
+                  bool muted = false, QObject *parent = nullptr);
+  ~ClipAudioSource() override;
 
   void setProgressCallback(void (*functionPtr)(float));
   void syncProgress();
@@ -43,7 +46,7 @@ public:
   void updateTempoAndPitch();
 
 private:
-  void timerCallback();
+  void timerCallback() override;
   class Private;
   Private *d;
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ClipAudioSource)

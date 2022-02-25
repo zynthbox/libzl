@@ -74,8 +74,9 @@ private:
 };
 
 ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
-                                 bool muted)
-    : d(new Private(this)) {
+                                 bool muted, QObject *parent)
+    : QObject(parent)
+    , d(new Private(this)) {
   d->syncTimer = syncTimer;
   d->engine.getDeviceManager().initialise(0, 2);
   d->engine.getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
