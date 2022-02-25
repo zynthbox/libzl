@@ -537,20 +537,20 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
         }
 
     }
-    if (!d->juceMidiOut) {
-        QTimer::singleShot(1, this, [this](){
-            qDebug() << "Attempting to create a special midi out for SyncTimer";
-            d->juceMidiOut = MidiOutput::createNewDevice("SyncTimer Out");
-            if (!d->juceMidiOut) {
-                qWarning() << "Failed to create SyncTimer's Juce-based midi-out";
-            } else {
-                // Start our midi bridge - we could do it earlier, but it also needs
-                // to happen /after/ ZynMidiRouter is initialised, and so we might as
-                // well wait until now to do it.
-                d->midiBridge->start();
-            }
-        });
-    }
+//     if (!d->juceMidiOut) {
+//         QTimer::singleShot(1, this, [this](){
+//             qDebug() << "Attempting to create a special midi out for SyncTimer";
+//             d->juceMidiOut = MidiOutput::createNewDevice("SyncTimer Out");
+//             if (!d->juceMidiOut) {
+//                 qWarning() << "Failed to create SyncTimer's Juce-based midi-out";
+//             } else {
+//                 // Start our midi bridge - we could do it earlier, but it also needs
+//                 // to happen /after/ ZynMidiRouter is initialised, and so we might as
+//                 // well wait until now to do it.
+//                 d->midiBridge->start();
+//             }
+//         });
+//     }
 }
 
 void SyncTimer::removeCallback(void (*functionPtr)(int)) {
