@@ -22,6 +22,7 @@ using namespace std;
 //==============================================================================
 class ClipAudioSource : public QObject, public juce::Timer {
     Q_OBJECT
+    Q_PROPERTY(int id READ id WRITE setId NOTIFY idChanged)
 public:
   explicit ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
                   bool muted = false, QObject *parent = nullptr);
@@ -45,6 +46,9 @@ public:
   const char *getFilePath() const;
   void updateTempoAndPitch();
 
+  int id() const;
+  void setId(int id);
+  Q_SIGNAL void idChanged();
 private:
   void timerCallback() override;
   class Private;

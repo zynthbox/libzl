@@ -25,6 +25,7 @@ using namespace std;
 
 ScopedJuceInitialiser_GUI *initializer = nullptr;
 SyncTimer *syncTimer = new SyncTimer();
+QList<ClipAudioSource*> createdClips;
 jack_client_t* zlJackClient{nullptr};
 jack_status_t zlJackStatus{};
 jack_port_t* capturePortA{nullptr};
@@ -84,12 +85,36 @@ JuceEventLoopThread elThread;
 //////////////
 /// ClipAudioSource API Bridge
 //////////////
+ClipAudioSource *ClipAudioSource_byID(int id) {
+    ClipAudioSource *clip{nullptr};
+    for (ClipAudioSource *needle : createdClips) {
+        if (needle->id() == id) {
+            clip = needle;
+            break;
+        }
+    }
+    return clip;
+}
+
 ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted) {
   ClipAudioSource *sClip;
 
   Helper::callFunctionOnMessageThread(
       [&]() { sClip = new ClipAudioSource(syncTimer, filepath, muted); }, true);
 
+  sClip->setParent(qApp);
+  QObject::connect(sClip, &QObject::destroyed, qApp, [=](QObject* obj){
+    ClipAudioSource *clip = qobject_cast<ClipAudioSource*>(obj);
+    if (clip) {
+      createdClips.removeAll(clip);
+    }
+  });
+
+  static int clipID{1};
+  sClip->setId(clipID);
+  ++clipID;
+
+  createdClips << sClip;
   return sClip;
 }
 
@@ -147,6 +172,8 @@ void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
 }
 
 void ClipAudioSource_destroy(ClipAudioSource *c) { elThread.destroyClip(c); }
+
+int ClipAudioSource_id(ClipAudioSource *c) { return c->id(); }
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////

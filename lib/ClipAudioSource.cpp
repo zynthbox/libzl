@@ -54,6 +54,7 @@ public:
   float speedRatio = 1.0;
   double currentLeveldB{0.0};
   double prevLeveldB{0.0};
+  int id{0};
 };
 
 class ClipProgress : public ValueTree::Listener {
@@ -281,4 +282,17 @@ void ClipAudioSource::stop() {
   IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << endl;
 
   d->edit->getTransport().stop(false, false);
+}
+
+int ClipAudioSource::id() const
+{
+    return d->id;
+}
+
+void ClipAudioSource::setId(int id)
+{
+    if (d->id != id) {
+        d->id = id;
+        Q_EMIT idChanged();
+    }
 }

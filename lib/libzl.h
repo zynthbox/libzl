@@ -20,6 +20,7 @@ extern "C" {
 //////////////
 /// ClipAudioSource API Bridge
 //////////////
+ClipAudioSource *ClipAudioSource_byID(int id);
 ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted = false);
 void ClipAudioSource_setProgressCallback(ClipAudioSource *c,
                                          void (*functionPtr)(float));
@@ -38,6 +39,7 @@ void ClipAudioSource_setVolume(ClipAudioSource *c, float vol);
 void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
                                                   void (*functionPtr)(float));
 void ClipAudioSource_destroy(ClipAudioSource *c);
+int ClipAudioSource_id(ClipAudioSource *c);
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////
