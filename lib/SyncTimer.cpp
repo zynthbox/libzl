@@ -255,7 +255,7 @@ public:
     int playingClipsCount = 0;
     int beat = 0;
     QList<void (*)(int)> callbacks;
-    QHash<quint64, QList<ClipAudioSource *> > clipStartQueues;
+    QHash<quint64, QList<ClipCommand *> > clipStartQueues;
     QHash<quint64, QList<ClipAudioSource *> > clipStopQueues;
     QQueue<ClipAudioSource *> clipsStartQueue;
     QQueue<ClipAudioSource *> clipsStopQueue;
@@ -295,9 +295,27 @@ public:
             }
         }
         if (clipStartQueues.contains(cumulativeBeat)) {
-            const QList<ClipAudioSource *> &clips = clipStartQueues[cumulativeBeat];
-            for (ClipAudioSource *clip : clips) {
-                clip->play();
+            const QList<ClipCommand *> &clips = clipStartQueues[cumulativeBeat];
+            for (ClipCommand *clipCommand : clips) {
+                ClipAudioSource *clipSource = clipCommand->clip;
+                if (clipCommand->changePitch) {
+                    clipSource->setPitch(clipCommand->pitchChange, true);
+                }
+                if (clipCommand->changeLooping) {
+                    clipSource->setLooping(clipCommand->looping);
+                }
+                if (clipCommand->changeSpeed) {
+                    clipSource->setSpeedRatio(clipCommand->speedRatio, true);
+                }
+                if (clipCommand->changeGainDb) {
+                    clipSource->setGain(clipCommand->gainDb);
+                }
+                if (clipCommand->changeVolume) {
+                    clipSource->setVolumeAbsolute(clipCommand->volume);
+                }
+                if (clipCommand->startPlayback) {
+                    clipSource->play();
+                }
             }
         }
 
@@ -311,8 +329,9 @@ public:
         if (beat == 0) {
 //            clipsStopQueue.clear();
             clipsStartQueue.clear();
-            clipStartQueues.remove(cumulativeBeat);
             clipStopQueues.remove(cumulativeBeat);
+            QList<ClipCommand *> startQueue = clipStartQueues.take(cumulativeBeat);
+            qDeleteAll(startQueue);
         }
 
         // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
@@ -632,6 +651,9 @@ void SyncTimer::stop() {
     d->cumulativeBeat = 0;
     d->midiMessageQueues.clear();
     d->nextMidiMessages.clear();
+    for (QList<ClipCommand *> startQueue : d->clipStartQueues) {
+        qDeleteAll(startQueue);
+    }
     d->clipStartQueues.clear();
     d->clipStopQueues.clear();
 #ifdef DEBUG_SYNCTIMER_TIMING
@@ -662,15 +684,46 @@ quint64 SyncTimer::cumulativeBeat() const {
     return d->cumulativeBeat;
 }
 
-void SyncTimer::scheduleClipToStart(ClipAudioSource *clip, quint64 delay)
+void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
 {
     d->mutex.lock();
     if (!d->clipStartQueues.contains(d->cumulativeBeat + delay)) {
-        d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipAudioSource*>{};
+        d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipCommand*>{};
     }
-    QList<ClipAudioSource*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
-    if (!clips.contains(clip)) {
+    QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
+    bool foundExisting{false};
+    for (ClipCommand *clipCommand : clips) {
+        if (clipCommand->clip == clip->clip) {
+            if (clip->changeLooping) {
+                clipCommand->looping = clip->looping;
+                clipCommand->changeLooping = true;
+            }
+            if (clip->changePitch) {
+                clipCommand->pitchChange = clip->pitchChange;
+                clipCommand->changePitch = true;
+            }
+            if (clip->changeSpeed) {
+                clipCommand->speedRatio = clip->speedRatio;
+                clipCommand->changeSpeed = true;
+            }
+            if (clip->changeGainDb) {
+                clipCommand->gainDb = clip->gainDb;
+                clipCommand->changeGainDb = true;
+            }
+            if (clip->changeVolume) {
+                clipCommand->volume = clip->volume;
+                clipCommand->changeVolume = true;
+            }
+            if (clip->startPlayback) {
+                clipCommand->startPlayback = true;
+            }
+            foundExisting = true;
+        }
+    }
+    if (foundExisting) {
         clips << clip;
+    } else {
+        delete clip;
     }
     d->mutex.unlock();
 }

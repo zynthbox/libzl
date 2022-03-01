@@ -4,14 +4,33 @@
 #include <QList>
 #include <QQueue>
 
-// #include "ClipAudioSource.h"
+class ClipAudioSource;
 
 using namespace std;
+
+/**
+ * \brief Used to schedule clips into the timer's playback queue
+ *
+ * Roughly equivalent to a midi message, but for clips
+ */
+struct ClipCommand {
+    ClipAudioSource* clip{nullptr};
+    bool startPlayback{false};
+    bool changeLooping{false};
+    bool looping{false};
+    bool changePitch{false};
+    float pitchChange{0.0f};
+    bool changeSpeed{false};
+    float speedRatio{0.0f};
+    bool changeGainDb{false};
+    float gainDb{0.0f};
+    bool changeVolume{false};
+    float volume{0.0f};
+};
 
 namespace juce {
     class MidiBuffer;
 }
-class ClipAudioSource;
 class SyncTimerPrivate;
 class SyncTimer : public QObject {
   // HighResolutionTimer facade
@@ -41,13 +60,16 @@ public:
   quint64 cumulativeBeat() const;
 
   /**
-   * \brief Schedule an audio clip to start playing on the next tick of the timer
-   * If the clip is already scheduled at the position you're attempting to schedule it into, this function will not add multiple
+   * \brief Schedule an audio clip to have one or more commands run on it on the next tick of the timer
+   * If a command with the associated clip is already scheduled at the position you're attempting to schedule it into,
+   * this function will change the existing to match any new settings (that is, things marked to be done on the command
+   * will be marked to be done on the existing command).
+   * @note This function will take ownership of the command, and you should expect it to no longer exist after (especially if the above happens)
    * @note If you want the clip to loop (or not), set this on the clip itself along with the other clip properties
-   * @param clip The audio clip you wish to start playback of
+   * @param clip The audio clip command you wish to use for playback start
    * @param delay A delay in number of timer ticks counting from the current position
    */
-  void scheduleClipToStart(ClipAudioSource *clip, quint64 delay);
+  void scheduleClipCommand(ClipCommand *clip, quint64 delay);
   /**
    * \brief Schedule an audio clip to stop on the next tick of the timer
    * If the clip is already scheduled at the position you're attempting to schedule it into, this function will not add multiple
