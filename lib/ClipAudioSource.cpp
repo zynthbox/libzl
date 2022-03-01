@@ -28,9 +28,11 @@ public:
   ClipAudioSource *q;
   const te::Engine &getEngine() const { return engine; };
   te::WaveAudioClip::Ptr getClip() {
-    if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0))
-        if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0]))
+    if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0)) {
+      if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0])) {
         return *clip;
+      }
+    }
 
     return {};
   }
@@ -160,16 +162,28 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   updateTempoAndPitch();
 }
 
-void ClipAudioSource::setPitch(float pitchChange) {
+void ClipAudioSource::setPitch(float pitchChange, bool immediate) {
   IF_DEBUG_CLIP cerr << "Setting Pitch to " << pitchChange << endl;
   d->pitchChange = pitchChange;
-  updateTempoAndPitch();
+  if (immediate) {
+    if (auto clip = d->getClip()) {
+      clip->setPitchChange(d->pitchChange);
+    }
+  } else {
+    updateTempoAndPitch();
+  }
 }
 
-void ClipAudioSource::setSpeedRatio(float speedRatio) {
+void ClipAudioSource::setSpeedRatio(float speedRatio, bool immediate) {
   IF_DEBUG_CLIP cerr << "Setting Speed to " << speedRatio << endl;
   d->speedRatio = speedRatio;
-  updateTempoAndPitch();
+  if (immediate) {
+    if (auto clip = d->getClip()) {
+      clip->setSpeedRatio(d->speedRatio);
+    }
+  } else {
+    updateTempoAndPitch();
+  }
 }
 
 void ClipAudioSource::setGain(float db) {
@@ -183,6 +197,14 @@ void ClipAudioSource::setVolume(float vol) {
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
+  }
+}
+
+void ClipAudioSource::setVolumeAbsolute(float vol)
+{
+  if (auto clip = d->getClip()) {
+    IF_DEBUG_CLIP cerr << "Setting volume absolutely : " << vol << endl;
+    clip->edit.setMasterVolumeSliderPos(qMax(0.0f, qMin(vol, 1.0f)));
   }
 }
 

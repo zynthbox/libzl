@@ -34,10 +34,15 @@ public:
   void setLooping(bool looping);
   bool getLooping() const;
   void setLength(float beat, int bpm);
-  void setPitch(float pitchChange);
-  void setSpeedRatio(float speedRatio);
+  void setPitch(float pitchChange, bool immediate = false);
+  void setSpeedRatio(float speedRatio, bool immediate = false);
   void setGain(float db);
   void setVolume(float vol);
+  /**
+   * \brief Set the volume by "slider position" (0.0 through 1.0)
+   * @param vol The volume you wish to set, using tracktion's slider position notation (0.0 through 1.0)
+   */
+  void setVolumeAbsolute(float vol);
   void setAudioLevelChangedCallback(void (*functionPtr)(float));
   void play(bool loop = true);
   void stop();
