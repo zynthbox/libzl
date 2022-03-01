@@ -190,7 +190,7 @@ void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
   d->audioLevelChangedCallback = functionPtr;
 }
 
-void ClipAudioSource::setLength(int beat, int bpm) {
+void ClipAudioSource::setLength(float beat, int bpm) {
   IF_DEBUG_CLIP cerr << "Interval : " << d->syncTimer->getInterval(bpm) << endl;
   float lengthInSeconds = d->syncTimer->subbeatCountToSeconds(
       (quint64)bpm, (quint64)(beat * d->syncTimer->getMultiplier()));

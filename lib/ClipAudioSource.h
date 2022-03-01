@@ -33,7 +33,7 @@ public:
   void setStartPosition(float startPositionInSeconds);
   void setLooping(bool looping);
   bool getLooping() const;
-  void setLength(int beat, int bpm);
+  void setLength(float beat, int bpm);
   void setPitch(float pitchChange);
   void setSpeedRatio(float speedRatio);
   void setGain(float db);
