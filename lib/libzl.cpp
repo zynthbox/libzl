@@ -103,12 +103,6 @@ ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted) {
       [&]() { sClip = new ClipAudioSource(syncTimer, filepath, muted); }, true);
 
   sClip->setParent(qApp);
-  QObject::connect(sClip, &QObject::destroyed, qApp, [=](QObject* obj){
-    ClipAudioSource *clip = qobject_cast<ClipAudioSource*>(obj);
-    if (clip) {
-      createdClips.removeAll(clip);
-    }
-  });
 
   static int clipID{1};
   sClip->setId(clipID);
@@ -171,7 +165,13 @@ void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
   c->setAudioLevelChangedCallback(functionPtr);
 }
 
-void ClipAudioSource_destroy(ClipAudioSource *c) { elThread.destroyClip(c); }
+void ClipAudioSource_destroy(ClipAudioSource *c) {
+  ClipAudioSource *clip = qobject_cast<ClipAudioSource*>(c);
+  if (clip) {
+    createdClips.removeAll(clip);
+  }
+  elThread.destroyClip(c);
+}
 
 int ClipAudioSource_id(ClipAudioSource *c) { return c->id(); }
 //////////////
