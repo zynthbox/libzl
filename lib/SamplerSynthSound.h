@@ -16,8 +16,8 @@ public:
                                double releaseTimeSecs,
                                double maxSampleLengthSeconds);
     ~SamplerSynthSound() override;
-    bool appliesToChannel ( int midiChannel ) override { return true; };
-    bool appliesToNote ( int midiNoteNumber ) override { return true; };
+    bool appliesToChannel ( int /*midiChannel*/ ) override { return true; };
+    bool appliesToNote ( int /*midiNoteNumber*/ ) override { return true; };
 private:
     std::unique_ptr<SamplerSynthSoundPrivate> d;
 };
