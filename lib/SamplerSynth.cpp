@@ -14,18 +14,8 @@ using namespace juce;
 class SamplerSynthImpl : public juce::Synthesiser {
 public:
     void startNote(int midiNoteNumber, float velocity, SynthesiserSound* sound, SynthesiserVoice* voice) {
-        if (soundNotes.contains(sound)) {
-            soundNotes[sound].append(midiNoteNumber);
-        } else {
-            QList<int> notes{midiNoteNumber};
-            soundNotes[sound] = notes;
-        }
         startVoice(voice, sound, 0, midiNoteNumber, velocity);
     }
-    void stopNote(int midiNoteNumber, SynthesiserSound *sound, SynthesiserVoice *voice) {
-    }
-private:
-    QHash<SynthesiserSound*, QList<int> > soundNotes;
 };
 
 class SamplerSynthPrivate : public juce::AudioProcessor {
@@ -58,13 +48,6 @@ public:
     template <typename Element>
     void process (AudioBuffer<Element>& buffer, MidiBuffer& midiMessages)
     {
-//         juce::ScopedNoDenormals noDenormals;
-//         auto totalNumInputChannels  = getTotalNumInputChannels();
-//         auto totalNumOutputChannels = getTotalNumOutputChannels();
-
-//         for (auto i = 0; i < totalNumInputChannels; ++i)
-//             buffer.clear(i, 0, buffer.getNumSamples());
-
         synth.renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
     }
 
