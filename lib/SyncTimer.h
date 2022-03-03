@@ -15,7 +15,9 @@ using namespace std;
  */
 struct ClipCommand {
     ClipAudioSource* clip{nullptr};
+    int midiNote{-1};
     bool startPlayback{false};
+    bool stopPlayback{false};
     bool changeLooping{false};
     bool looping{false};
     bool changePitch{false};
@@ -61,12 +63,12 @@ public:
 
   /**
    * \brief Schedule an audio clip to have one or more commands run on it on the next tick of the timer
-   * If a command with the associated clip is already scheduled at the position you're attempting to schedule it into,
+   * If a command with the associated clip is already scheduled at the position and the given midiNote you're attempting to schedule it into,
    * this function will change the existing to match any new settings (that is, things marked to be done on the command
    * will be marked to be done on the existing command).
    * @note This function will take ownership of the command, and you should expect it to no longer exist after (especially if the above happens)
    * @note If you want the clip to loop (or not), set this on the clip itself along with the other clip properties
-   * @param clip The audio clip command you wish to use for playback start
+   * @param clip The audio clip command you wish to fire on at the specified time
    * @param delay A delay in number of timer ticks counting from the current position
    */
   void scheduleClipCommand(ClipCommand *clip, quint64 delay);

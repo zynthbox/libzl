@@ -3,6 +3,7 @@
 #include "ClipAudioSource.h"
 #include "libzl.h"
 #include "Helper.h"
+#include "SamplerSynth.h"
 
 #include <QDebug>
 #include <QHash>
@@ -202,6 +203,7 @@ public:
     SyncTimerPrivate(SyncTimer *q)
         : timerThread(new SyncTimerThread(q))
     {
+        samplerSynth = SamplerSynth::instance();
         // Dangerzone - direct connection from another thread. Yes, dangerous, but also we need the precision, so we need to dill whit it
         QObject::connect(timerThread, &SyncTimerThread::timeout, q, [this](){ hiResTimerCallback(); }, Qt::DirectConnection);
         QObject::connect(timerThread, &QThread::started, q, [q](){ Q_EMIT q->timerRunningChanged(); });
@@ -250,6 +252,7 @@ public:
             jack_client_close(jackClient);
         }
     }
+    SamplerSynth *samplerSynth{nullptr};
     SyncTimerThread *timerThread;
     QProcess *midiBridge;
     int playingClipsCount = 0;
@@ -297,25 +300,7 @@ public:
         if (clipStartQueues.contains(cumulativeBeat)) {
             const QList<ClipCommand *> &clips = clipStartQueues[cumulativeBeat];
             for (ClipCommand *clipCommand : clips) {
-                ClipAudioSource *clipSource = clipCommand->clip;
-                if (clipCommand->changePitch) {
-                    clipSource->setPitch(clipCommand->pitchChange, true);
-                }
-                if (clipCommand->changeLooping) {
-                    clipSource->setLooping(clipCommand->looping);
-                }
-                if (clipCommand->changeSpeed) {
-                    clipSource->setSpeedRatio(clipCommand->speedRatio, true);
-                }
-                if (clipCommand->changeGainDb) {
-                    clipSource->setGain(clipCommand->gainDb);
-                }
-                if (clipCommand->changeVolume) {
-                    clipSource->setVolumeAbsolute(clipCommand->volume);
-                }
-                if (clipCommand->startPlayback) {
-                    clipSource->play();
-                }
+                samplerSynth->handleClipCommand(clipCommand);
             }
         }
 
@@ -693,7 +678,7 @@ void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
     QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
     bool foundExisting{false};
     for (ClipCommand *clipCommand : clips) {
-        if (clipCommand->clip == clip->clip) {
+        if (clipCommand->clip == clip->clip && clipCommand->midiNote == clip->midiNote) {
             if (clip->changeLooping) {
                 clipCommand->looping = clip->looping;
                 clipCommand->changeLooping = true;
