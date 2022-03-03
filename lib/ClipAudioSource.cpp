@@ -15,6 +15,7 @@
 #include "JUCEHeaders.h"
 #include "../tracktion_engine/examples/common/Utilities.h"
 #include "Helper.h"
+#include "SamplerSynth.h"
 #include "SyncTimer.h"
 
 #define DEBUG_CLIP true
@@ -26,7 +27,7 @@ class ClipAudioSource::Private {
 public:
   Private(ClipAudioSource *qq) : q(qq) {};
   ClipAudioSource *q;
-  const te::Engine &getEngine() const { return engine; };
+  const te::Engine &getEngine() const { return *engine; };
   te::WaveAudioClip::Ptr getClip() {
     if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0)) {
       if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0])) {
@@ -37,7 +38,7 @@ public:
     return {};
   }
 
-  te::Engine engine{"libzl"};
+  te::Engine *engine{nullptr};
   std::unique_ptr<te::Edit> edit;
 
   SyncTimer *syncTimer;
@@ -76,13 +77,14 @@ private:
   ClipAudioSource *m_source = nullptr;
 };
 
-ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
+ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *syncTimer, const char *filepath,
                                  bool muted, QObject *parent)
     : QObject(parent)
     , d(new Private(this)) {
   d->syncTimer = syncTimer;
-  d->engine.getDeviceManager().initialise(0, 2);
-  d->engine.getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
+  d->engine = engine;
+  d->engine->getDeviceManager().initialise(0, 2);
+  d->engine->getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
 
   IF_DEBUG_CLIP cerr << "Opening file : " << filepath << endl;
 
@@ -90,7 +92,7 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
 
   const File editFile = File::createTempFile("editFile");
 
-  d->edit = te::createEmptyEdit(d->engine, editFile);
+  d->edit = te::createEmptyEdit(*d->engine, editFile);
   auto clip = Helper::loadAudioFileAsClip(*d->edit, file);
   auto &transport = d->edit->getTransport();
 
@@ -121,10 +123,12 @@ ClipAudioSource::ClipAudioSource(SyncTimer *syncTimer, const char *filepath,
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
   levelMeasurerPlugin->measurer.addClient(d->levelClient);
   startTimerHz(30);
+  SamplerSynth::instance()->registerClip(this);
 }
 
 ClipAudioSource::~ClipAudioSource() {
   IF_DEBUG_CLIP cerr << "Destroying Clip" << endl;
+  SamplerSynth::instance()->unregisterClip(this);
   stop();
   auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
