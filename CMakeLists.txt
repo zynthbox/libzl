@@ -35,6 +35,8 @@ target_sources(libzl
     PRIVATE
         lib/libzl.cpp
         lib/ClipAudioSource.cpp
+        lib/SamplerSynth.cpp
+        lib/SamplerSynthSound.cpp
         lib/SyncTimer.cpp
         lib/Helper.cpp
         lib/QPainterContext.cpp
@@ -45,6 +47,7 @@ set(libzl_headers
 set(libzl_subheaders
     lib/JUCEHeaders.h
     lib/ClipAudioSource.h
+    lib/SamplerSynth.h
     lib/SyncTimer.h)
 
 target_compile_definitions(libzl
