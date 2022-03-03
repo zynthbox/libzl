@@ -17,6 +17,7 @@
 #include <juce_events/juce_events.h>
 
 class SyncTimer;
+class ClipAudioSourcePositionsModel;
 namespace tracktion_engine {
     class Engine;
 }
@@ -26,6 +27,7 @@ using namespace std;
 class ClipAudioSource : public QObject, public juce::Timer {
     Q_OBJECT
     Q_PROPERTY(int id READ id WRITE setId NOTIFY idChanged)
+    Q_PROPERTY(QObject* playbackPositions READ playbackPositions CONSTANT)
 public:
   explicit ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *syncTimer, const char *filepath,
                   bool muted = false, QObject *parent = nullptr);
@@ -34,6 +36,8 @@ public:
   void setProgressCallback(void (*functionPtr)(float));
   void syncProgress();
   void setStartPosition(float startPositionInSeconds);
+  float getStartPosition() const;
+  float getStopPosition() const;
   void setLooping(bool looping);
   bool getLooping() const;
   void setLength(float beat, int bpm);
@@ -53,6 +57,9 @@ public:
   const char *getFileName() const;
   const char *getFilePath() const;
   void updateTempoAndPitch();
+
+  QObject *playbackPositions();
+  ClipAudioSourcePositionsModel *playbackPositionsModel();
 
   int id() const;
   void setId(int id);

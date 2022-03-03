@@ -9,6 +9,7 @@
 */
 
 #include "ClipAudioSource.h"
+#include "ClipAudioSourcePositionsModel.h"
 
 #include <unistd.h>
 
@@ -58,6 +59,7 @@ public:
   double currentLeveldB{0.0};
   double prevLeveldB{0.0};
   int id{0};
+  ClipAudioSourcePositionsModel *positionsModel{nullptr};
 };
 
 class ClipProgress : public ValueTree::Listener {
@@ -164,6 +166,16 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   d->startPositionInSeconds = jmax(0.0f, startPositionInSeconds);
   IF_DEBUG_CLIP cerr << "Setting Start Position to " << d->startPositionInSeconds << endl;
   updateTempoAndPitch();
+}
+
+float ClipAudioSource::getStartPosition() const
+{
+    return d->startPositionInSeconds;
+}
+
+float ClipAudioSource::getStopPosition() const
+{
+    return d->startPositionInSeconds + d->lengthInSeconds;
 }
 
 void ClipAudioSource::setPitch(float pitchChange, bool immediate) {
@@ -308,6 +320,22 @@ void ClipAudioSource::stop() {
   IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << endl;
 
   d->edit->getTransport().stop(false, false);
+}
+
+QObject *ClipAudioSource::playbackPositions()
+{
+    if (!d->positionsModel) {
+        d->positionsModel = new ClipAudioSourcePositionsModel(this);
+    }
+    return d->positionsModel;
+}
+
+ClipAudioSourcePositionsModel *ClipAudioSource::playbackPositionsModel()
+{
+    if (!d->positionsModel) {
+        d->positionsModel = new ClipAudioSourcePositionsModel(this);
+    }
+    return d->positionsModel;
 }
 
 int ClipAudioSource::id() const
