@@ -35,8 +35,10 @@ target_sources(libzl
     PRIVATE
         lib/libzl.cpp
         lib/ClipAudioSource.cpp
+        lib/ClipAudioSourcePositionsModel.cpp
         lib/SamplerSynth.cpp
         lib/SamplerSynthSound.cpp
+        lib/SamplerSynthVoice.cpp
         lib/SyncTimer.cpp
         lib/Helper.cpp
         lib/QPainterContext.cpp
