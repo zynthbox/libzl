@@ -18,6 +18,7 @@
 #include "ClipAudioSource.h"
 #include "Helper.h"
 #include "JUCEHeaders.h"
+#include "SamplerSynth.h"
 #include "SyncTimer.h"
 #include "WaveFormItem.h"
 
@@ -25,6 +26,7 @@ using namespace std;
 
 ScopedJuceInitialiser_GUI *initializer = nullptr;
 SyncTimer *syncTimer = new SyncTimer();
+te::Engine *tracktionEngine{nullptr};
 QList<ClipAudioSource*> createdClips;
 jack_client_t* zlJackClient{nullptr};
 jack_status_t zlJackStatus{};
@@ -100,7 +102,7 @@ ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted) {
   ClipAudioSource *sClip;
 
   Helper::callFunctionOnMessageThread(
-      [&]() { sClip = new ClipAudioSource(syncTimer, filepath, muted); }, true);
+      [&]() { sClip = new ClipAudioSource(tracktionEngine, syncTimer, filepath, muted); }, true);
 
   sClip->setParent(qApp);
 
@@ -271,6 +273,17 @@ static int _zlJackProcessCb(jack_nframes_t nframes, void* arg) {
 void initJuce() {
   cerr << "### INIT JUCE\n";
   elThread.startThread();
+
+  Helper::callFunctionOnMessageThread([&](){
+    qDebug() << "Getting us an engine";
+    tracktionEngine = new te::Engine("libzl");
+    qDebug() << "Initialising device manager";
+    tracktionEngine->getDeviceManager().initialise(0, 2);
+    qDebug() << "Setting device type to JACK";
+    tracktionEngine->getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
+    qDebug() << "Initialising SamplerSynth";
+    SamplerSynth::instance()->initialize(tracktionEngine);
+  }, true);
 
   zlJackClient = jack_client_open(
     "zynthiloops_client",
