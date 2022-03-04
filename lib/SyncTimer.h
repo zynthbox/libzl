@@ -18,6 +18,9 @@ struct ClipCommand {
     int midiNote{-1};
     bool startPlayback{false};
     bool stopPlayback{false};
+    // Which slice to use (-1 means no slice, play normal)
+    bool changeSlice{false};
+    int slice{-1};
     bool changeLooping{false};
     bool looping{false};
     bool changePitch{false};
