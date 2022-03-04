@@ -3,6 +3,7 @@
 #include "JUCEHeaders.h"
 #include <memory>
 
+class ClipCommand;
 class SamplerSynthVoicePrivate;
 class SamplerSynthVoice : public juce::SamplerVoice
 {
@@ -12,6 +13,7 @@ public:
 
     bool canPlaySound (SynthesiserSound*) override;
 
+    void setCurrentCommand(ClipCommand *clipCommand);
     void startNote (int midiNoteNumber, float velocity, SynthesiserSound*, int pitchWheel) override;
     void stopNote (float velocity, bool allowTailOff) override;
 

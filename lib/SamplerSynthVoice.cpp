@@ -1,12 +1,14 @@
 #include "SamplerSynthVoice.h"
 
 #include "SamplerSynthSound.h"
+#include "SyncTimer.h"
 #include "ClipAudioSourcePositionsModel.h"
 
 class SamplerSynthVoicePrivate {
 public:
     SamplerSynthVoicePrivate() {}
 
+    ClipCommand *clipCommand{nullptr};
     ClipAudioSource *clip{nullptr};
     int clipPositionId{-1};
     double pitchRatio = 0;
@@ -29,6 +31,11 @@ SamplerSynthVoice::~SamplerSynthVoice()
 bool SamplerSynthVoice::canPlaySound (SynthesiserSound* sound)
 {
     return dynamic_cast<const SamplerSynthSound*> (sound) != nullptr;
+}
+
+void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
+{
+    d->clipCommand = clipCommand;
 }
 
 void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, SynthesiserSound* s, int /*currentPitchWheelPosition*/)
@@ -66,9 +73,11 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
     {
         clearCurrentNote();
         d->adsr.reset();
+        d->clip->playbackPositionsModel()->removePosition(d->clipPositionId);
+        d->clip = nullptr;
+        delete d->clipCommand;
+        d->clipCommand = nullptr;
     }
-    d->clip->playbackPositionsModel()->removePosition(d->clipPositionId);
-    d->clip = nullptr;
 }
 
 void SamplerSynthVoice::pitchWheelMoved (int /*newValue*/) {}
@@ -115,8 +124,13 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
 
             if (d->sourceSamplePosition > playingSound->stopPosition())
             {
-                stopNote (0.0f, false);
-                break;
+                if (d->clipCommand->looping) {
+                    // TODO Switch start position for the loop position here
+                    d->sourceSamplePosition = (int) (d->clip->getStartPosition() * playingSound->sourceSampleRate());
+                } else {
+                    stopNote (0.0f, false);
+                    break;
+                }
             }
         }
         // Because it might have gone away after being stopped above, so let's try and not crash
