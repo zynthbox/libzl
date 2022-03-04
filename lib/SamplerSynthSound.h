@@ -17,8 +17,8 @@ public:
     bool appliesToNote ( int /*midiNoteNumber*/ ) override { return true; };
     AudioBuffer<float>* audioData() const noexcept;
     int length() const;
-    int startPosition() const;
-    int stopPosition() const;
+    int startPosition(int slice = 0) const;
+    int stopPosition(int slice = 0) const;
     int rootMidiNote() const;
     double sourceSampleRate() const;
     ADSR::Parameters &params() const;

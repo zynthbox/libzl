@@ -55,14 +55,14 @@ int SamplerSynthSound::length() const
     return d->length;
 }
 
-int SamplerSynthSound::startPosition() const
+int SamplerSynthSound::startPosition(int slice) const
 {
-    return d->clip->getStartPosition() * d->sourceSampleRate;
+    return d->clip->getStartPosition(slice) * d->sourceSampleRate;
 }
 
-int SamplerSynthSound::stopPosition() const
+int SamplerSynthSound::stopPosition(int slice) const
 {
-    return d->clip->getStopPosition() * d->sourceSampleRate;
+    return d->clip->getStopPosition(slice) * d->sourceSampleRate;
 }
 
 int SamplerSynthSound::rootMidiNote() const

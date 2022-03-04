@@ -170,14 +170,22 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
   updateTempoAndPitch();
 }
 
-float ClipAudioSource::getStartPosition() const
+float ClipAudioSource::getStartPosition(int slice) const
 {
-    return d->startPositionInSeconds;
+    if (slice > -1) {
+        return d->startPositionInSeconds;
+    } else {
+        return d->startPositionInSeconds;
+    }
 }
 
-float ClipAudioSource::getStopPosition() const
+float ClipAudioSource::getStopPosition(int slice) const
 {
-    return d->startPositionInSeconds + d->lengthInSeconds;
+    if (slice > -1) {
+        return d->startPositionInSeconds + d->lengthInSeconds;
+    } else {
+        return d->startPositionInSeconds + d->lengthInSeconds;
+    }
 }
 
 void ClipAudioSource::setPitch(float pitchChange, bool immediate) {

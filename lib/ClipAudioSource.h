@@ -36,8 +36,8 @@ public:
   void setProgressCallback(void (*functionPtr)(float));
   void syncProgress();
   void setStartPosition(float startPositionInSeconds);
-  float getStartPosition() const;
-  float getStopPosition() const;
+  float getStartPosition(int slice = -1) const;
+  float getStopPosition(int slice = -1) const;
   void setLooping(bool looping);
   bool getLooping() const;
   void setLength(float beat, int bpm);
