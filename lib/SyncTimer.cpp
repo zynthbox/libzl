@@ -315,8 +315,7 @@ public:
 //            clipsStopQueue.clear();
             clipsStartQueue.clear();
             clipStopQueues.remove(cumulativeBeat);
-            QList<ClipCommand *> startQueue = clipStartQueues.take(cumulativeBeat);
-            qDeleteAll(startQueue);
+            clipStartQueues.remove(cumulativeBeat);
         }
 
         // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
