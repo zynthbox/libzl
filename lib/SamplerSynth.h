@@ -25,6 +25,11 @@ public:
     void registerClip(ClipAudioSource *clip);
     void unregisterClip(ClipAudioSource *clip);
 
+    /**
+     * \brief This function will act on the given command (play, stop, set clip settings, etc)
+     * @note This will take ownership of the command and handle its deletion once the command has been completed
+     * @param clipCommand The command you wish to act on
+     */
     void handleClipCommand(ClipCommand *clipCommand);
 
 private:

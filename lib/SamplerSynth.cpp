@@ -12,34 +12,26 @@
 
 using namespace juce;
 
-class SamplerSynthImpl : public juce::Synthesiser {
-public:
-    void startNote(int midiNoteNumber, float velocity, SynthesiserSound* sound, SynthesiserVoice* voice) {
-        startVoice(voice, sound, 0, midiNoteNumber, velocity);
-    }
-};
-
+class SamplerSynthImpl;
 class SamplerSynthPrivate : public juce::AudioProcessor {
 public:
     SamplerSynthPrivate()
         : juce::AudioProcessor(BusesProperties()
             .withInput("Input", AudioChannelSet::stereo(), true)
             .withOutput("Output", AudioChannelSet::stereo(), true))
-    {}
+    {
+    }
 
     const juce::String getName() const override { return "ZynthiloopsSamplerSynth"; }
 
-    SamplerSynthImpl synth;
+    SamplerSynthImpl *synth{nullptr};
     QList<SamplerSynthVoice *> voices;
     AudioFormatManager formatManager;
     static const int numVoices{16};
 
     QHash<ClipAudioSource*, SamplerSynthSound*> clipSounds;
 
-    void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override {
-        Q_UNUSED(maximumExpectedSamplesPerBlock)
-        synth.setCurrentPlaybackSampleRate(sampleRate);
-    }
+    void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void processBlock(AudioBuffer<double> &buffer, juce::MidiBuffer &midiMessages) override {
         process(buffer, midiMessages);
     }
@@ -47,10 +39,7 @@ public:
         process(buffer, midiMessages);
     }
     template <typename Element>
-    void process (AudioBuffer<Element>& buffer, MidiBuffer& midiMessages)
-    {
-        synth.renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
-    }
+    void process (AudioBuffer<Element>& buffer, MidiBuffer& midiMessages);
 
     bool hasEditor() const override { return false; }
     bool acceptsMidi() const override { return true; }
@@ -90,6 +79,44 @@ public:
     te::Engine *engine{nullptr};
 };
 
+class SamplerSynthImpl : public juce::Synthesiser {
+public:
+    void handleCommand(ClipCommand *clipCommand) {
+        if (d->clipSounds.contains(clipCommand->clip)) {
+            SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
+            if (clipCommand->stopPlayback) {
+                for (SamplerSynthVoice * voice : d->voices) {
+                    if (voice->getCurrentlyPlayingSound().get() == sound && voice->getCurrentlyPlayingNote() == clipCommand->midiNote) {
+                        voice->stopNote(0.0f, false);
+                    }
+                }
+            }
+            if (clipCommand->startPlayback) {
+                for (SamplerSynthVoice *voice : d->voices) {
+                    if (!voice->isVoiceActive()) {
+                        voice->setCurrentCommand(clipCommand);
+                        startVoice(voice, sound, 0, clipCommand->midiNote, clipCommand->volume);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    SamplerSynthPrivate *d{nullptr};
+};
+
+void SamplerSynthPrivate::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock)
+{
+    Q_UNUSED(maximumExpectedSamplesPerBlock)
+    synth->setCurrentPlaybackSampleRate(sampleRate);
+}
+
+template<typename Element>
+void SamplerSynthPrivate::process(AudioBuffer<Element> &buffer, juce::MidiBuffer &midiMessages)
+{
+    synth->renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
+}
+
 SamplerSynth *SamplerSynth::instance()  {
     static SamplerSynth *instance{nullptr};
     if (!instance) {
@@ -102,11 +129,14 @@ SamplerSynth::SamplerSynth(QObject *parent)
     : QObject(parent)
     , d(new SamplerSynthPrivate)
 {
+    d->synth = new SamplerSynthImpl();
+    d->synth->d = d.get();
     d->formatManager.registerBasicFormats();
 }
 
 SamplerSynth::~SamplerSynth()
 {
+    delete d->synth;
 }
 
 void SamplerSynth::initialize(tracktion_engine::Engine *engine)
@@ -122,7 +152,7 @@ void SamplerSynth::initialize(tracktion_engine::Engine *engine)
     for (int i = 0; i < d->numVoices; ++i) {
         SamplerSynthVoice *voice = new SamplerSynthVoice();
         d->voices << voice;
-        d->synth.addVoice(voice);
+        d->synth->addVoice(voice);
     }
 }
 
@@ -133,7 +163,7 @@ void SamplerSynth::registerClip(ClipAudioSource *clip)
         if (format) {
             SamplerSynthSound *sound = new SamplerSynthSound(clip, "Sound Clip", *format, 60);
             d->clipSounds[clip] = sound;
-            d->synth.addSound(sound);
+            d->synth->addSound(sound);
             delete format;
         } else {
             qWarning() << "Failed to create a format reader for" << clip->getFilePath();
@@ -150,22 +180,5 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
 {
-    if (d->clipSounds.contains(clipCommand->clip)) {
-        SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
-        if (clipCommand->stopPlayback) {
-            for (SamplerSynthVoice * voice : d->voices) {
-                if (voice->getCurrentlyPlayingSound().get() == sound && voice->getCurrentlyPlayingNote() == clipCommand->midiNote) {
-                    voice->stopNote(0.0f, false);
-                }
-            }
-        }
-        if (clipCommand->startPlayback) {
-            for (SamplerSynthVoice *voice : d->voices) {
-                if (!voice->isVoiceActive()) {
-                    d->synth.startNote(clipCommand->midiNote, clipCommand->volume, sound, voice);
-                    break;
-                }
-            }
-        }
-    }
+    d->synth->handleCommand(clipCommand);
 }
