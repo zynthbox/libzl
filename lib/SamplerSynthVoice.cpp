@@ -35,7 +35,43 @@ bool SamplerSynthVoice::canPlaySound (SynthesiserSound* sound)
 
 void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
 {
-    d->clipCommand = clipCommand;
+    if (d->clipCommand) {
+        // This means we're changing what we should be doing in playback, and we need to delete the old one
+        if (clipCommand->changeLooping) {
+            d->clipCommand->looping = clipCommand->looping;
+            d->clipCommand->changeLooping = true;
+        }
+        if (clipCommand->changePitch) {
+            d->clipCommand->pitchChange = clipCommand->pitchChange;
+            d->clipCommand->changePitch = true;
+        }
+        if (clipCommand->changeSpeed) {
+            d->clipCommand->speedRatio = clipCommand->speedRatio;
+            d->clipCommand->changeSpeed = true;
+        }
+        if (clipCommand->changeGainDb) {
+            d->clipCommand->gainDb = clipCommand->gainDb;
+            d->clipCommand->changeGainDb = true;
+        }
+        if (clipCommand->changeVolume) {
+            d->clipCommand->volume = clipCommand->volume;
+            d->clipCommand->changeVolume = true;
+            d->lgain = d->clipCommand->volume;
+            d->rgain = d->clipCommand->volume;
+        }
+        if (clipCommand->changeSlice) {
+            d->clipCommand->slice = clipCommand->slice;
+        }
+        if (clipCommand->startPlayback) {
+            // This should be interpreted as "restart playback" in this case, so... reset the current position
+            if (auto* playingSound = static_cast<SamplerSynthSound*> (getCurrentlyPlayingSound().get())) {
+                d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
+            }
+        }
+        delete clipCommand;
+    } else {
+        d->clipCommand = clipCommand;
+    }
 }
 
 void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, SynthesiserSound* s, int /*currentPitchWheelPosition*/)
@@ -47,7 +83,7 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
 
         d->clip = sound->clip();
         d->sourceSampleLength = d->clip->getDuration() * sound->sourceSampleRate();
-        d->sourceSamplePosition = (int) (d->clip->getStartPosition() * sound->sourceSampleRate());
+        d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * sound->sourceSampleRate());
         d->clipPositionId = d->clip->playbackPositionsModel()->createPositionID(d->sourceSamplePosition / d->sourceSampleLength);
         d->lgain = velocity;
         d->rgain = velocity;
@@ -122,11 +158,11 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
 
             d->sourceSamplePosition += d->pitchRatio;
 
-            if (d->sourceSamplePosition > playingSound->stopPosition())
+            if (d->sourceSamplePosition > playingSound->stopPosition(d->clipCommand->slice))
             {
                 if (d->clipCommand->looping) {
                     // TODO Switch start position for the loop position here
-                    d->sourceSamplePosition = (int) (d->clip->getStartPosition() * playingSound->sourceSampleRate());
+                    d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
                 } else {
                     stopNote (0.0f, false);
                     break;
