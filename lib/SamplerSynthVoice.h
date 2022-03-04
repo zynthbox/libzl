@@ -3,7 +3,7 @@
 #include "JUCEHeaders.h"
 #include <memory>
 
-class ClipCommand;
+struct ClipCommand;
 class SamplerSynthVoicePrivate;
 class SamplerSynthVoice : public juce::SamplerVoice
 {
