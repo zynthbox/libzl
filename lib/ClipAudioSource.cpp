@@ -125,6 +125,8 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
   levelMeasurerPlugin->measurer.addClient(d->levelClient);
   startTimerHz(30);
+
+  d->positionsModel = new ClipAudioSourcePositionsModel(this);
   SamplerSynth::instance()->registerClip(this);
 }
 
@@ -324,17 +326,11 @@ void ClipAudioSource::stop() {
 
 QObject *ClipAudioSource::playbackPositions()
 {
-    if (!d->positionsModel) {
-        d->positionsModel = new ClipAudioSourcePositionsModel(this);
-    }
     return d->positionsModel;
 }
 
 ClipAudioSourcePositionsModel *ClipAudioSource::playbackPositionsModel()
 {
-    if (!d->positionsModel) {
-        d->positionsModel = new ClipAudioSourcePositionsModel(this);
-    }
     return d->positionsModel;
 }
 
