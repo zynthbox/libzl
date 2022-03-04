@@ -84,19 +84,28 @@ public:
     void handleCommand(ClipCommand *clipCommand) {
         if (d->clipSounds.contains(clipCommand->clip)) {
             SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
-            if (clipCommand->stopPlayback) {
-                for (SamplerSynthVoice * voice : d->voices) {
-                    if (voice->getCurrentlyPlayingSound().get() == sound && voice->getCurrentlyPlayingNote() == clipCommand->midiNote) {
-                        voice->stopNote(0.0f, false);
+            if (clipCommand->stopPlayback || clipCommand->startPlayback) {
+                if (clipCommand->stopPlayback) {
+                    for (SamplerSynthVoice * voice : d->voices) {
+                        if (voice->getCurrentlyPlayingSound().get() == sound && voice->getCurrentlyPlayingNote() == clipCommand->midiNote) {
+                            voice->stopNote(0.0f, false);
+                        }
                     }
                 }
-            }
-            if (clipCommand->startPlayback) {
-                for (SamplerSynthVoice *voice : d->voices) {
-                    if (!voice->isVoiceActive()) {
+                if (clipCommand->startPlayback) {
+                    for (SamplerSynthVoice *voice : d->voices) {
+                        if (!voice->isVoiceActive()) {
+                            voice->setCurrentCommand(clipCommand);
+                            startVoice(voice, sound, 0, clipCommand->midiNote, clipCommand->volume);
+                            break;
+                        }
+                    }
+                }
+            } else {
+                for (SamplerSynthVoice * voice : d->voices) {
+                    if (voice->getCurrentlyPlayingSound().get() == sound && voice->getCurrentlyPlayingNote() == clipCommand->midiNote) {
+                        // Update the voice with the new command
                         voice->setCurrentCommand(clipCommand);
-                        startVoice(voice, sound, 0, clipCommand->midiNote, clipCommand->volume);
-                        break;
                     }
                 }
             }
