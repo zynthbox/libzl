@@ -26,9 +26,7 @@ using namespace std;
 
 class ClipAudioSource::Private {
 public:
-  Private(ClipAudioSource *qq) : q(qq) {
-    q->setSlices(16);
-  };
+  Private(ClipAudioSource *qq) : q(qq) {}
   ClipAudioSource *q;
   const te::Engine &getEngine() const { return *engine; };
   te::WaveAudioClip::Ptr getClip() {
@@ -62,7 +60,7 @@ public:
   double prevLeveldB{0.0};
   int id{0};
   ClipAudioSourcePositionsModel *positionsModel{nullptr};
-  // Default is 16, but we also need to generate the positions, so that is set up in the ctor
+  // Default is 16, but we also need to generate the positions, so that is set up in the ClipAudioSource ctor
   int slices{0};
   QVariantList slicePositions;
   QList<double> slicePositionsCache;
@@ -141,6 +139,7 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
         d->slicePositionsCache << position.toDouble();
     }
   });
+  setSlices(16);
 }
 
 ClipAudioSource::~ClipAudioSource() {
@@ -392,10 +391,14 @@ void ClipAudioSource::setSlices(int slices)
             Q_EMIT slicePositionsChanged();
         } else if (d->slices < slices) {
             // Fit the new number of slices evenly into the available space
-            double positionIncrement{(1.0f - d->slicePositions.last().toDouble()) / (slices - d->slices)};
-            double newPosition{d->slicePositions.last().toDouble() + positionIncrement};
+            double lastSlicePosition{0.0f};
+            if (d->slicePositions.count() > 0) {
+                lastSlicePosition = d->slicePositions.last().toDouble();
+            }
+            double positionIncrement{(1.0f - lastSlicePosition) / (slices - d->slices)};
+            double newPosition{lastSlicePosition + positionIncrement};
             while (d->slicePositions.length() < slices) {
-                d->slicePositions << newPosition;
+                d->slicePositions << QVariant::fromValue<double>(newPosition);
                 newPosition += positionIncrement;
             }
             Q_EMIT slicePositionsChanged();
