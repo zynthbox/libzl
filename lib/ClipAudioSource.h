@@ -42,6 +42,11 @@ class ClipAudioSource : public QObject, public juce::Timer {
      * The values are double values, from 0 through 1 (usually there will not be a 1, as the last slice would then have length 0)
      */
     Q_PROPERTY(QVariantList slicePositions READ slicePositions WRITE setSlicePositions NOTIFY slicePositionsChanged)
+    /**
+     * \brief The midi note used to calculate the rotating positions of slices (this midi note will be slice 0)
+     * @default 60
+     */
+    Q_PROPERTY(int sliceBaseMidiNote READ sliceBaseMidiNote WRITE setSliceBaseMidiNote NOTIFY sliceBaseMidiNoteChanged)
 public:
   explicit ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *syncTimer, const char *filepath,
                   bool muted = false, QObject *parent = nullptr);
@@ -86,18 +91,22 @@ public:
   QVariantList slicePositions() const;
   void setSlicePositions(const QVariantList &slicePositions);
   /**
-   * \brief Set the position of a specific slice
-   * @param slice The slice you wish to change the position of (slices are 0-indexed)
-   * @param position The new position (from 0 through 1). The value will be clamped to fit inside the area available for this slice (that is, between the positions of slice - 1 and slice + 1)
-   */
-  void setSlicePosition(int slice, float position);
-  /**
    * \brief Get the position of a specific slice
    * @param slice The slice you wish to get the position of (slices are 0-indexed)
    * @return A double precision value between 0 and 1 (for an invalid slice, 0 will be returned)
    */
   double slicePosition(int slice) const;
+  /**
+   * \brief Set the position of a specific slice
+   * @param slice The slice you wish to change the position of (slices are 0-indexed)
+   * @param position The new position (from 0 through 1). The value will be clamped to fit inside the area available for this slice (that is, between the positions of slice - 1 and slice + 1)
+   */
+  void setSlicePosition(int slice, float position);
   Q_SIGNAL void slicePositionsChanged();
+
+  int sliceBaseMidiNote() const;
+  void setSliceBaseMidiNote(int sliceBaseMidiNote);
+  Q_SIGNAL void sliceBaseMidiNoteChanged();
 private:
   void timerCallback() override;
   class Private;

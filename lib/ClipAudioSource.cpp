@@ -64,6 +64,7 @@ public:
   int slices{0};
   QVariantList slicePositions;
   QList<double> slicePositionsCache;
+  int sliceBaseMidiNote{60};
 };
 
 class ClipProgress : public ValueTree::Listener {
@@ -437,5 +438,18 @@ void ClipAudioSource::setSlicePosition(int slice, float position)
     if (slice > -1 && slice < d->slicePositions.length()) {
         d->slicePositions[slice] = position;
         Q_EMIT slicePositionsChanged();
+    }
+}
+
+int ClipAudioSource::sliceBaseMidiNote() const
+{
+    return d->sliceBaseMidiNote;
+}
+
+void ClipAudioSource::setSliceBaseMidiNote(int sliceBaseMidiNote)
+{
+    if (d->sliceBaseMidiNote != sliceBaseMidiNote) {
+        d->sliceBaseMidiNote = sliceBaseMidiNote;
+        Q_EMIT sliceBaseMidiNoteChanged();
     }
 }
