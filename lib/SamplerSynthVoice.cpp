@@ -74,6 +74,11 @@ void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
     }
 }
 
+ClipCommand *SamplerSynthVoice::currentCommand() const
+{
+    return d->clipCommand;
+}
+
 void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, SynthesiserSound* s, int /*currentPitchWheelPosition*/)
 {
     if (auto* sound = dynamic_cast<const SamplerSynthSound*> (s))

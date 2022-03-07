@@ -14,6 +14,8 @@ public:
     bool canPlaySound (SynthesiserSound*) override;
 
     void setCurrentCommand(ClipCommand *clipCommand);
+    ClipCommand *currentCommand() const;
+
     void startNote (int midiNoteNumber, float velocity, SynthesiserSound*, int pitchWheel) override;
     void stopNote (float velocity, bool allowTailOff) override;
 
