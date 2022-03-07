@@ -26,7 +26,9 @@ using namespace std;
 
 class ClipAudioSource::Private {
 public:
-  Private(ClipAudioSource *qq) : q(qq) {};
+  Private(ClipAudioSource *qq) : q(qq) {
+    q->setSlices(16);
+  };
   ClipAudioSource *q;
   const te::Engine &getEngine() const { return *engine; };
   te::WaveAudioClip::Ptr getClip() {
@@ -60,6 +62,10 @@ public:
   double prevLeveldB{0.0};
   int id{0};
   ClipAudioSourcePositionsModel *positionsModel{nullptr};
+  // Default is 16, but we also need to generate the positions, so that is set up in the ctor
+  int slices{0};
+  QVariantList slicePositions;
+  QList<double> slicePositionsCache;
 };
 
 class ClipProgress : public ValueTree::Listener {
@@ -128,6 +134,13 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
 
   d->positionsModel = new ClipAudioSourcePositionsModel(this);
   SamplerSynth::instance()->registerClip(this);
+
+  connect(this, &ClipAudioSource::slicePositionsChanged, this, [&](){
+    d->slicePositionsCache.clear();
+    for (const QVariant &position : d->slicePositions) {
+        d->slicePositionsCache << position.toDouble();
+    }
+  });
 }
 
 ClipAudioSource::~ClipAudioSource() {
@@ -172,8 +185,8 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
 
 float ClipAudioSource::getStartPosition(int slice) const
 {
-    if (slice > -1) {
-        return d->startPositionInSeconds;
+    if (slice > -1 && slice < d->slicePositionsCache.length()) {
+        return d->lengthInSeconds * d->slicePositionsCache[slice];
     } else {
         return d->startPositionInSeconds;
     }
@@ -181,8 +194,12 @@ float ClipAudioSource::getStartPosition(int slice) const
 
 float ClipAudioSource::getStopPosition(int slice) const
 {
-    if (slice > -1) {
-        return d->startPositionInSeconds + d->lengthInSeconds;
+    if (slice > -1 && slice < d->slicePositionsCache.length()) {
+        if (slice + 1 == d->slicePositionsCache.length()) {
+            return d->lengthInSeconds;
+        } else {
+            return d->lengthInSeconds * d->slicePositionsCache[slice + 1];
+        }
     } else {
         return d->startPositionInSeconds + d->lengthInSeconds;
     }
@@ -332,16 +349,6 @@ void ClipAudioSource::stop() {
   d->edit->getTransport().stop(false, false);
 }
 
-QObject *ClipAudioSource::playbackPositions()
-{
-    return d->positionsModel;
-}
-
-ClipAudioSourcePositionsModel *ClipAudioSource::playbackPositionsModel()
-{
-    return d->positionsModel;
-}
-
 int ClipAudioSource::id() const
 {
     return d->id;
@@ -352,5 +359,80 @@ void ClipAudioSource::setId(int id)
     if (d->id != id) {
         d->id = id;
         Q_EMIT idChanged();
+    }
+}
+
+QObject *ClipAudioSource::playbackPositions()
+{
+    return d->positionsModel;
+}
+
+ClipAudioSourcePositionsModel *ClipAudioSource::playbackPositionsModel()
+{
+    return d->positionsModel;
+}
+
+int ClipAudioSource::slices() const
+{
+    return d->slices;
+}
+
+void ClipAudioSource::setSlices(int slices)
+{
+    if (d->slices != slices) {
+        if (slices == 0) {
+            // Special casing clearing, because simple case, why not make it fast
+            d->slicePositions.clear();
+            Q_EMIT slicePositionsChanged();
+        } else if (d->slices > slices) {
+            // Just remove the slices that are too many
+            while (d->slicePositions.length() > slices) {
+                d->slicePositions.removeLast();
+            }
+            Q_EMIT slicePositionsChanged();
+        } else if (d->slices < slices) {
+            // Fit the new number of slices evenly into the available space
+            double positionIncrement{(1.0f - d->slicePositions.last().toDouble()) / (slices - d->slices)};
+            double newPosition{d->slicePositions.last().toDouble() + positionIncrement};
+            while (d->slicePositions.length() < slices) {
+                d->slicePositions << newPosition;
+                newPosition += positionIncrement;
+            }
+            Q_EMIT slicePositionsChanged();
+        }
+        d->slices = slices;
+        Q_EMIT slicesChanged();
+    }
+}
+
+QVariantList ClipAudioSource::slicePositions() const
+{
+    return d->slicePositions;
+}
+
+void ClipAudioSource::setSlicePositions(const QVariantList &slicePositions)
+{
+    if (d->slicePositions != slicePositions) {
+        d->slicePositions = slicePositions;
+        Q_EMIT slicePositionsChanged();
+        d->slices = slicePositions.length();
+        Q_EMIT slicesChanged();
+    }
+}
+
+double ClipAudioSource::slicePosition(int slice) const
+{
+    double position{0.0f};
+    if (slice > -1 && slice < d->slicePositionsCache.length()) {
+        position = d->slicePositionsCache[slice];
+    }
+    return position;
+}
+
+void ClipAudioSource::setSlicePosition(int slice, float position)
+{
+    if (slice > -1 && slice < d->slicePositions.length()) {
+        d->slicePositions[slice] = position;
+        Q_EMIT slicePositionsChanged();
     }
 }
