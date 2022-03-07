@@ -87,7 +87,8 @@ public:
             if (clipCommand->stopPlayback || clipCommand->startPlayback) {
                 if (clipCommand->stopPlayback) {
                     for (SamplerSynthVoice * voice : d->voices) {
-                        if (voice->getCurrentlyPlayingSound().get() == sound && voice->getCurrentlyPlayingNote() == clipCommand->midiNote) {
+                        const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                        if (voice->getCurrentlyPlayingSound().get() == sound && (currentVoiceCommand->midiNote == clipCommand->midiNote || (clipCommand->changeSlice && currentVoiceCommand->slice == clipCommand->slice))) {
                             voice->stopNote(0.0f, false);
                         }
                     }
@@ -103,7 +104,8 @@ public:
                 }
             } else {
                 for (SamplerSynthVoice * voice : d->voices) {
-                    if (voice->getCurrentlyPlayingSound().get() == sound && voice->getCurrentlyPlayingNote() == clipCommand->midiNote) {
+                    const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                    if (voice->getCurrentlyPlayingSound().get() == sound && (currentVoiceCommand->midiNote == clipCommand->midiNote || (clipCommand->changeSlice && currentVoiceCommand->slice == clipCommand->slice))) {
                         // Update the voice with the new command
                         voice->setCurrentCommand(clipCommand);
                     }
