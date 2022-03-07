@@ -38,6 +38,7 @@ void ClipAudioSource_setGain(ClipAudioSource *c, float db);
 void ClipAudioSource_setVolume(ClipAudioSource *c, float vol);
 void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
                                                   void (*functionPtr)(float));
+void ClipAudioSource_setSlices(ClipAudioSource *c, int slices);
 void ClipAudioSource_destroy(ClipAudioSource *c);
 int ClipAudioSource_id(ClipAudioSource *c);
 //////////////

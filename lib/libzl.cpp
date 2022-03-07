@@ -167,6 +167,10 @@ void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
   c->setAudioLevelChangedCallback(functionPtr);
 }
 
+void ClipAudioSource_setSlices(ClipAudioSource *c, int slices) {
+    c->setSlices(slices);
+}
+
 void ClipAudioSource_destroy(ClipAudioSource *c) {
   ClipAudioSource *clip = qobject_cast<ClipAudioSource*>(c);
   if (clip) {
