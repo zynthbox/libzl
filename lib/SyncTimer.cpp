@@ -677,7 +677,7 @@ void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
     QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
     bool foundExisting{false};
     for (ClipCommand *clipCommand : clips) {
-        if (clipCommand->clip == clip->clip && clipCommand->midiNote == clip->midiNote) {
+        if (clipCommand->clip == clip->clip && (clipCommand->midiNote == clip->midiNote || (clipCommand->changeSlice && clipCommand->slice == clip->slice))) {
             if (clip->changeLooping) {
                 clipCommand->looping = clip->looping;
                 clipCommand->changeLooping = true;
