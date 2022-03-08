@@ -27,7 +27,7 @@ public:
     SamplerSynthImpl *synth{nullptr};
     QList<SamplerSynthVoice *> voices;
     AudioFormatManager formatManager;
-    static const int numVoices{16};
+    static const int numVoices{128};
 
     QHash<ClipAudioSource*, SamplerSynthSound*> clipSounds;
 
@@ -165,6 +165,11 @@ void SamplerSynth::initialize(tracktion_engine::Engine *engine)
         d->voices << voice;
         d->synth->addVoice(voice);
     }
+}
+
+tracktion_engine::Engine *SamplerSynth::engine() const
+{
+    return d->engine;
 }
 
 void SamplerSynth::registerClip(ClipAudioSource *clip)

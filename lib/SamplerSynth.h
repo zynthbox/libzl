@@ -21,6 +21,7 @@ public:
     ~SamplerSynth() override;
 
     void initialize(tracktion_engine::Engine *engine);
+    tracktion_engine::Engine *engine() const;
 
     void registerClip(ClipAudioSource *clip);
     void unregisterClip(ClipAudioSource *clip);

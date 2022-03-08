@@ -314,6 +314,9 @@ public:
         // Now that we're done doing performance intensive things, we can clean up
         if (beat == 0) {
             clipsStartQueue.clear();
+            if (samplerSynth->engine()) {
+                qDebug() << "Current tracktion/juce CPU usage:" << samplerSynth->engine()->getDeviceManager().getCpuUsage();
+            }
         }
         // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
         clipStopQueues.remove(cumulativeBeat);
