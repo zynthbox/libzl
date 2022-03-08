@@ -90,8 +90,6 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
     , d(new Private(this)) {
   d->syncTimer = syncTimer;
   d->engine = engine;
-  d->engine->getDeviceManager().initialise(0, 2);
-  d->engine->getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
 
   IF_DEBUG_CLIP cerr << "Opening file : " << filepath << endl;
 
