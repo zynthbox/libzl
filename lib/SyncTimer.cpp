@@ -313,11 +313,11 @@ public:
 
         // Now that we're done doing performance intensive things, we can clean up
         if (beat == 0) {
-//            clipsStopQueue.clear();
             clipsStartQueue.clear();
-            clipStopQueues.remove(cumulativeBeat);
-            clipStartQueues.remove(cumulativeBeat);
         }
+        // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
+        clipStopQueues.remove(cumulativeBeat);
+        clipStartQueues.remove(cumulativeBeat);
 
         // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
         for (auto cb : callbacks) {
@@ -706,9 +706,9 @@ void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
         }
     }
     if (foundExisting) {
-        clips << clip;
-    } else {
         delete clip;
+    } else {
+        clips << clip;
     }
     d->mutex.unlock();
 }
