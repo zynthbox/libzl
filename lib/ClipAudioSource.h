@@ -107,6 +107,12 @@ public:
   int sliceBaseMidiNote() const;
   void setSliceBaseMidiNote(int sliceBaseMidiNote);
   Q_SIGNAL void sliceBaseMidiNoteChanged();
+  /**
+   * \brief Get the appropriate slice for the given midi note, based on the current slice base midi note
+   * @param midiNote The midi note you wish to get a slice index for
+   * @return The slice index matching the given midi note
+   */
+  int sliceForMidiNote(int midiNote) const;
 private:
   void timerCallback() override;
   class Private;

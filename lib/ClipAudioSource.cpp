@@ -449,3 +449,8 @@ void ClipAudioSource::setSliceBaseMidiNote(int sliceBaseMidiNote)
         Q_EMIT sliceBaseMidiNoteChanged();
     }
 }
+
+int ClipAudioSource::sliceForMidiNote(int midiNote) const
+{
+    return ((d->slices - (d->sliceBaseMidiNote % d->slices)) + midiNote) % d->slices;
+}
