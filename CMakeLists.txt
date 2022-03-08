@@ -49,6 +49,7 @@ set(libzl_headers
 set(libzl_subheaders
     lib/JUCEHeaders.h
     lib/ClipAudioSource.h
+    lib/ClipCommand.h
     lib/SamplerSynth.h
     lib/SyncTimer.h)
 

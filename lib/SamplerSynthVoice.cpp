@@ -1,7 +1,7 @@
 #include "SamplerSynthVoice.h"
 
 #include "SamplerSynthSound.h"
-#include "SyncTimer.h"
+#include "ClipCommand.h"
 #include "ClipAudioSourcePositionsModel.h"
 
 class SamplerSynthVoicePrivate {

@@ -5,7 +5,7 @@
 #include "Helper.h"
 #include "SamplerSynthSound.h"
 #include "SamplerSynthVoice.h"
-#include "SyncTimer.h"
+#include "ClipCommand.h"
 
 #include <QDebug>
 #include <QHash>
@@ -88,7 +88,7 @@ public:
                 if (clipCommand->stopPlayback) {
                     for (SamplerSynthVoice * voice : d->voices) {
                         const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                        if (voice->getCurrentlyPlayingSound().get() == sound && (currentVoiceCommand->midiNote == clipCommand->midiNote || (clipCommand->changeSlice && currentVoiceCommand->slice == clipCommand->slice))) {
+                        if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                             voice->stopNote(0.0f, false);
                         }
                     }
@@ -105,7 +105,7 @@ public:
             } else {
                 for (SamplerSynthVoice * voice : d->voices) {
                     const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                    if (voice->getCurrentlyPlayingSound().get() == sound && (currentVoiceCommand->midiNote == clipCommand->midiNote || (clipCommand->changeSlice && currentVoiceCommand->slice == clipCommand->slice))) {
+                    if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                         // Update the voice with the new command
                         voice->setCurrentCommand(clipCommand);
                     }

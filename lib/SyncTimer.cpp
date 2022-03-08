@@ -1,6 +1,7 @@
 #include <sched.h>
 #include "SyncTimer.h"
 #include "ClipAudioSource.h"
+#include "ClipCommand.h"
 #include "libzl.h"
 #include "Helper.h"
 #include "SamplerSynth.h"
@@ -677,7 +678,7 @@ void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
     QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
     bool foundExisting{false};
     for (ClipCommand *clipCommand : clips) {
-        if (clipCommand->clip == clip->clip && (clipCommand->midiNote == clip->midiNote || (clipCommand->changeSlice && clipCommand->slice == clip->slice))) {
+        if (clipCommand->equivalentTo(clip)) {
             if (clip->changeLooping) {
                 clipCommand->looping = clip->looping;
                 clipCommand->changeLooping = true;
