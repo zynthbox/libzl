@@ -28,8 +28,8 @@ struct ClipCommand {
     bool equivalentTo(ClipCommand *other) const {
         return clip == other->clip
             && (
-                (changeSlice == other->changeSlice && slice == other->slice)
-                || midiNote == other->midiNote
+                (changeSlice == true && other->changeSlice == true && slice == other->slice)
+                || (changeSlice == false && other->changeSlice == false && midiNote == other->midiNote)
             );
     }
 };
