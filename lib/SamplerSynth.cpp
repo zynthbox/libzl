@@ -81,38 +81,7 @@ public:
 
 class SamplerSynthImpl : public juce::Synthesiser {
 public:
-    void handleCommand(ClipCommand *clipCommand) {
-        if (d->clipSounds.contains(clipCommand->clip)) {
-            SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
-            if (clipCommand->stopPlayback || clipCommand->startPlayback) {
-                if (clipCommand->stopPlayback) {
-                    for (SamplerSynthVoice * voice : d->voices) {
-                        const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                        if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
-                            voice->stopNote(0.0f, false);
-                        }
-                    }
-                }
-                if (clipCommand->startPlayback) {
-                    for (SamplerSynthVoice *voice : d->voices) {
-                        if (!voice->isVoiceActive()) {
-                            voice->setCurrentCommand(clipCommand);
-                            startVoice(voice, sound, 0, clipCommand->midiNote, clipCommand->volume);
-                            break;
-                        }
-                    }
-                }
-            } else {
-                for (SamplerSynthVoice * voice : d->voices) {
-                    const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                    if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
-                        // Update the voice with the new command
-                        voice->setCurrentCommand(clipCommand);
-                    }
-                }
-            }
-        }
-    }
+    void handleCommand(ClipCommand *clipCommand);
     SamplerSynthPrivate *d{nullptr};
 };
 
@@ -197,4 +166,38 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
 {
     d->synth->handleCommand(clipCommand);
+}
+
+void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
+{
+    if (d->clipSounds.contains(clipCommand->clip)) {
+        SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
+        if (clipCommand->stopPlayback || clipCommand->startPlayback) {
+            if (clipCommand->stopPlayback) {
+                for (SamplerSynthVoice * voice : d->voices) {
+                    const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                    if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
+                        voice->stopNote(0.0f, false);
+                    }
+                }
+            }
+            if (clipCommand->startPlayback) {
+                for (SamplerSynthVoice *voice : d->voices) {
+                    if (!voice->isVoiceActive()) {
+                        voice->setCurrentCommand(clipCommand);
+                        startVoice(voice, sound, 0, clipCommand->midiNote, clipCommand->volume);
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (SamplerSynthVoice * voice : d->voices) {
+                const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
+                    // Update the voice with the new command
+                    voice->setCurrentCommand(clipCommand);
+                }
+            }
+        }
+    }
 }
