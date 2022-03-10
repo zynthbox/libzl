@@ -1,4 +1,5 @@
 #include "ClipAudioSourcePositionsModel.h"
+#include <QMutex>
 
 struct PositionData {
     int id{-1};
@@ -10,6 +11,7 @@ class ClipAudioSourcePositionsModelPrivate
 public:
     ClipAudioSourcePositionsModelPrivate() {}
     QList<PositionData*> positions;
+    QMutex mutex;
 };
 
 ClipAudioSourcePositionsModel::ClipAudioSourcePositionsModel(ClipAudioSource *clip)
@@ -41,6 +43,7 @@ QVariant ClipAudioSourcePositionsModel::data(const QModelIndex &index, int role)
 {
     QVariant result;
     if (checkIndex(index)) {
+        d->mutex.tryLock();
         PositionData *position = d->positions[index.row()];
         switch (role) {
             case PositionIDRole:
@@ -52,21 +55,27 @@ QVariant ClipAudioSourcePositionsModel::data(const QModelIndex &index, int role)
             default:
                 break;
         }
+        d->mutex.unlock();
     }
     return result;
 }
 
 int ClipAudioSourcePositionsModel::createPositionID(float initialProgress)
 {
+    d->mutex.tryLock();
     PositionData *newPosition = new PositionData();
     newPosition->id = d->positions.count();
     newPosition->progress = initialProgress;
+    beginInsertRows(QModelIndex(), newPosition->id, newPosition->id);
     d->positions << newPosition;
+    endInsertRows();
+    d->mutex.unlock();
     return newPosition->id;
 }
 
 void ClipAudioSourcePositionsModel::setPositionProgress(int positionID, float progress)
 {
+    d->mutex.tryLock();
     int index{0};
     for (PositionData *position : d->positions) {
         if (position->id == positionID) {
@@ -77,10 +86,12 @@ void ClipAudioSourcePositionsModel::setPositionProgress(int positionID, float pr
         }
         ++index;
     }
+    d->mutex.unlock();
 }
 
 void ClipAudioSourcePositionsModel::removePosition(int positionID)
 {
+    d->mutex.tryLock();
     int index{0};
     for (PositionData *position : d->positions) {
         if (position->id == positionID) {
@@ -91,4 +102,5 @@ void ClipAudioSourcePositionsModel::removePosition(int positionID)
         }
         ++index;
     }
+    d->mutex.unlock();
 }
