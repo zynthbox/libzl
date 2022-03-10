@@ -26,7 +26,6 @@ public:
 
     SamplerSynthImpl *synth{nullptr};
     QList<SamplerSynthVoice *> voices;
-    AudioFormatManager formatManager;
     static const int numVoices{128};
 
     QHash<ClipAudioSource*, SamplerSynthSound*> clipSounds;
@@ -111,7 +110,6 @@ SamplerSynth::SamplerSynth(QObject *parent)
 {
     d->synth = new SamplerSynthImpl();
     d->synth->d = d.get();
-    d->formatManager.registerBasicFormats();
 }
 
 SamplerSynth::~SamplerSynth()
@@ -144,15 +142,9 @@ tracktion_engine::Engine *SamplerSynth::engine() const
 void SamplerSynth::registerClip(ClipAudioSource *clip)
 {
     if (!d->clipSounds.contains(clip)) {
-        AudioFormatReader *format = d->formatManager.createReaderFor(juce::File(clip->getFilePath()));
-        if (format) {
-            SamplerSynthSound *sound = new SamplerSynthSound(clip, "Sound Clip", *format, 60);
-            d->clipSounds[clip] = sound;
-            d->synth->addSound(sound);
-            delete format;
-        } else {
-            qWarning() << "Failed to create a format reader for" << clip->getFilePath();
-        }
+        SamplerSynthSound *sound = new SamplerSynthSound(clip);
+        d->clipSounds[clip] = sound;
+        d->synth->addSound(sound);
     }
 }
 

@@ -7,10 +7,7 @@
 class SamplerSynthSoundPrivate;
 class SamplerSynthSound : public juce::SynthesiserSound {
 public:
-    explicit SamplerSynthSound(ClipAudioSource *clip,
-                               const String& name,
-                               AudioFormatReader& source,
-                               int midiNoteForNormalPitch);
+    explicit SamplerSynthSound(ClipAudioSource *clip);
     ~SamplerSynthSound() override;
     ClipAudioSource *clip() const;
     bool appliesToChannel ( int /*midiChannel*/ ) override { return true; };
