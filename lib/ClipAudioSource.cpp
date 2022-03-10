@@ -46,6 +46,7 @@ public:
   void (*progressChangedCallback)(float progress) = nullptr;
   void (*audioLevelChangedCallback)(float leveldB) = nullptr;
 
+  juce::File givenFile;
   juce::String chosenPath;
   juce::String fileName;
   juce::String filePath;
@@ -93,17 +94,17 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
 
   IF_DEBUG_CLIP cerr << "Opening file : " << filepath << endl;
 
-  juce::File file(filepath);
+  d->givenFile = juce::File(filepath);
 
   const File editFile = File::createTempFile("editFile");
 
   d->edit = te::createEmptyEdit(*d->engine, editFile);
-  auto clip = Helper::loadAudioFileAsClip(*d->edit, file);
+  auto clip = Helper::loadAudioFileAsClip(*d->edit, d->givenFile);
   auto &transport = d->edit->getTransport();
 
   transport.ensureContextAllocated(true);
 
-  d->fileName = file.getFileName();
+  d->fileName = d->givenFile.getFileName();
   d->filePath = filepath;
   d->lengthInSeconds = d->edit->getLength();
 
@@ -266,6 +267,13 @@ const char *ClipAudioSource::getFileName() const {
 
 const char *ClipAudioSource::getFilePath() const {
     return static_cast<const char*>(d->filePath.toUTF8());
+}
+
+tracktion_engine::AudioFile ClipAudioSource::getPlaybackFile() const {
+    if (const auto& clip = d->getClip()) {
+        return clip->getAudioFile();
+    }
+    return te::AudioFile(*d->engine);
 }
 
 void ClipAudioSource::updateTempoAndPitch() {

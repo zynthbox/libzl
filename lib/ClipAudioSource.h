@@ -19,6 +19,7 @@
 class SyncTimer;
 class ClipAudioSourcePositionsModel;
 namespace tracktion_engine {
+    class AudioFile;
     class Engine;
 }
 using namespace std;
@@ -76,6 +77,9 @@ public:
   const char *getFileName() const;
   const char *getFilePath() const;
   void updateTempoAndPitch();
+
+  tracktion_engine::AudioFile getPlaybackFile() const;
+  Q_SIGNAL void playbackFileChanged();
 
   int id() const;
   void setId(int id);
