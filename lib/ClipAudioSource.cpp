@@ -400,6 +400,9 @@ void ClipAudioSource::setSlices(int slices)
             }
             double positionIncrement{(1.0f - lastSlicePosition) / (slices - d->slices)};
             double newPosition{lastSlicePosition + positionIncrement};
+            if (d->slicePositions.count() == 0) {
+                d->slicePositions << QVariant::fromValue<double>(0.0f);
+            }
             while (d->slicePositions.length() < slices) {
                 d->slicePositions << QVariant::fromValue<double>(newPosition);
                 newPosition += positionIncrement;
