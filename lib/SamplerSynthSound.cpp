@@ -16,6 +16,7 @@ public:
     ClipAudioSource *clip{nullptr};
 
     void loadSoundData() {
+        qDebug() << Q_FUNC_INFO << "Loading sound data for" << clip->getFilePath();
         AudioFormatReader *format{nullptr};
         juce::File file = clip->getPlaybackFile().getFile();
         tracktion_engine::AudioFileInfo fileInfo = clip->getPlaybackFile().getInfo();

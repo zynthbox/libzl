@@ -41,6 +41,7 @@ public:
 
   te::Engine *engine{nullptr};
   std::unique_ptr<te::Edit> edit;
+  bool isRendering{false};
 
   SyncTimer *syncTimer;
   void (*progressChangedCallback)(float progress) = nullptr;
@@ -322,6 +323,15 @@ void ClipAudioSource::timerCallback() {
   if (d->currentLeveldB != d->prevLeveldB && d->audioLevelChangedCallback != nullptr) {
     // Callback
     d->audioLevelChangedCallback(d->currentLeveldB);
+  }
+
+  if (auto clip = d->getClip()) {
+    if (clip->needsRender()) {
+        d->isRendering = true;
+    } else if (d->isRendering) {
+        d->isRendering = false;
+        Q_EMIT playbackFileChanged();
+    }
   }
 }
 
