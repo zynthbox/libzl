@@ -4,13 +4,15 @@
 #include "ClipCommand.h"
 #include "ClipAudioSourcePositionsModel.h"
 
+#include <QThread>
+
 class SamplerSynthVoicePrivate {
 public:
     SamplerSynthVoicePrivate() {}
 
     ClipCommand *clipCommand{nullptr};
     ClipAudioSource *clip{nullptr};
-    int clipPositionId{-1};
+    qint64 clipPositionId{-1};
     double pitchRatio = 0;
     double sourceSamplePosition = 0;
     double sourceSampleLength = 0;
@@ -89,7 +91,16 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
         d->clip = sound->clip();
         d->sourceSampleLength = d->clip->getDuration() * sound->sourceSampleRate();
         d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * sound->sourceSampleRate());
-        d->clipPositionId = d->clip->playbackPositionsModel()->createPositionID(d->sourceSamplePosition / d->sourceSampleLength);
+
+        // Since we may or may not be calling across thread borders here, depending on who's sending our
+        // notes to us, we need to make sure to invoke blockingly if it's across threads, and call directly
+        // otherwise, to avoid a deadlock
+        if (QThread::currentThread() == d->clip->playbackPositionsModel()->thread()) {
+            d->clipPositionId = d->clip->playbackPositionsModel()->createPositionID(d->sourceSamplePosition / d->sourceSampleLength);
+        } else {
+            QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "createPositionID", Qt::BlockingQueuedConnection, Q_RETURN_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
+        }
+
         d->lgain = velocity;
         d->rgain = velocity;
 
@@ -114,7 +125,7 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
     {
         clearCurrentNote();
         d->adsr.reset();
-        d->clip->playbackPositionsModel()->removePosition(d->clipPositionId);
+        QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "removePosition", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId));
         d->clip = nullptr;
         delete d->clipCommand;
         d->clipCommand = nullptr;
@@ -176,7 +187,7 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
         }
         // Because it might have gone away after being stopped above, so let's try and not crash
         if (d->clip) {
-            d->clip->playbackPositionsModel()->setPositionProgress(d->clipPositionId, d->sourceSamplePosition / d->sourceSampleLength);
+            QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionProgress", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
         }
     }
 }
