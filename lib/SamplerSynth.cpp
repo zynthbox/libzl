@@ -152,6 +152,16 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 {
     if (d->clipSounds.contains(clip)) {
         d->clipSounds.remove(clip);
+        for (int i = 0; i < d->synth->getNumSounds(); ++i) {
+            SynthesiserSound::Ptr sound = d->synth->getSound(i);
+            if (auto *samplerSound = static_cast<SamplerSynthSound*> (sound.get())) {
+                if (samplerSound->clip() == clip) {
+                    d->synth->removeSound(i);
+                    delete samplerSound;
+                    break;
+                }
+            }
+        }
     }
 }
 
