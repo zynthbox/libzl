@@ -21,9 +21,9 @@ public:
     int rowCount(const QModelIndex &parent) const override;
     QVariant data(const QModelIndex &index, int role) const override;
 
-    int createPositionID(float initialProgress = 0.0f);
-    void setPositionProgress(int positionID, float progress);
-    void removePosition(int positionID);
+    Q_INVOKABLE qint64 createPositionID (float initialProgress = 0.0f);
+    Q_INVOKABLE void setPositionProgress(qint64 positionID, float progress);
+    Q_INVOKABLE void removePosition(qint64 positionID);
 private:
     std::unique_ptr<ClipAudioSourcePositionsModelPrivate> d;
 };

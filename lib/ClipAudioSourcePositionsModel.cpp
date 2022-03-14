@@ -2,7 +2,7 @@
 #include <QMutex>
 
 struct PositionData {
-    int id{-1};
+    qint64 id{-1};
     float progress{0.0f};
 };
 
@@ -47,7 +47,7 @@ QVariant ClipAudioSourcePositionsModel::data(const QModelIndex &index, int role)
         PositionData *position = d->positions[index.row()];
         switch (role) {
             case PositionIDRole:
-                result.setValue<int>(position->id);
+                result.setValue<qint64>(position->id);
                 break;
             case PositionProgressRole:
                 result.setValue<float>(position->progress);
@@ -60,20 +60,22 @@ QVariant ClipAudioSourcePositionsModel::data(const QModelIndex &index, int role)
     return result;
 }
 
-int ClipAudioSourcePositionsModel::createPositionID(float initialProgress)
+qint64 ClipAudioSourcePositionsModel::createPositionID(float initialProgress)
 {
     d->mutex.tryLock();
+    static qint64 nextId{0};
     PositionData *newPosition = new PositionData();
-    newPosition->id = d->positions.count();
+    newPosition->id = nextId;
+    ++nextId;
     newPosition->progress = initialProgress;
-    beginInsertRows(QModelIndex(), newPosition->id, newPosition->id);
+    beginInsertRows(QModelIndex(), d->positions.count(), d->positions.count());
     d->positions << newPosition;
     endInsertRows();
     d->mutex.unlock();
     return newPosition->id;
 }
 
-void ClipAudioSourcePositionsModel::setPositionProgress(int positionID, float progress)
+void ClipAudioSourcePositionsModel::setPositionProgress(qint64 positionID, float progress)
 {
     d->mutex.tryLock();
     int index{0};
@@ -89,7 +91,7 @@ void ClipAudioSourcePositionsModel::setPositionProgress(int positionID, float pr
     d->mutex.unlock();
 }
 
-void ClipAudioSourcePositionsModel::removePosition(int positionID)
+void ClipAudioSourcePositionsModel::removePosition(qint64 positionID)
 {
     d->mutex.tryLock();
     int index{0};
