@@ -180,6 +180,7 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
                     const ClipCommand *currentVoiceCommand = voice->currentCommand();
                     if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                         voice->stopNote(0.0f, false);
+                        break;
                     }
                 }
             }
@@ -198,6 +199,7 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
                 if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                     // Update the voice with the new command
                     voice->setCurrentCommand(clipCommand);
+                    break;
                 }
             }
         }
