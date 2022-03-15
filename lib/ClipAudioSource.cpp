@@ -132,6 +132,7 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
   startTimerHz(30);
 
   d->positionsModel = new ClipAudioSourcePositionsModel(this);
+  d->positionsModel->moveToThread(QCoreApplication::instance()->thread());
   SamplerSynth::instance()->registerClip(this);
 
   connect(this, &ClipAudioSource::slicePositionsChanged, this, [&](){
