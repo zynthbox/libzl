@@ -1,7 +1,6 @@
 #pragma once
 
 #include "JUCEHeaders.h"
-#include <memory>
 
 struct ClipCommand;
 class SamplerSynthVoicePrivate;
@@ -25,5 +24,5 @@ public:
     void renderNextBlock (AudioBuffer<float>&, int startSample, int numSamples) override;
     using SynthesiserVoice::renderNextBlock;
 private:
-    std::unique_ptr<SamplerSynthVoicePrivate> d;
+    SamplerSynthVoicePrivate *d;
 };

@@ -28,6 +28,7 @@ SamplerSynthVoice::SamplerSynthVoice()
 
 SamplerSynthVoice::~SamplerSynthVoice()
 {
+    delete d;
 }
 
 bool SamplerSynthVoice::canPlaySound (SynthesiserSound* sound)
