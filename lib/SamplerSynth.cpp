@@ -9,6 +9,7 @@
 
 #include <QDebug>
 #include <QHash>
+#include <QMutex>
 
 using namespace juce;
 
@@ -24,6 +25,7 @@ public:
 
     const juce::String getName() const override { return "ZynthiloopsSamplerSynth"; }
 
+    QMutex synthMutex;
     SamplerSynthImpl *synth{nullptr};
     QList<SamplerSynthVoice *> voices;
     static const int numVoices{128};
@@ -93,7 +95,10 @@ void SamplerSynthPrivate::prepareToPlay(double sampleRate, int maximumExpectedSa
 template<typename Element>
 void SamplerSynthPrivate::process(AudioBuffer<Element> &buffer, juce::MidiBuffer &midiMessages)
 {
-    synth->renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
+    if (synthMutex.tryLock()) {
+        synth->renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
+        synthMutex.unlock();
+    }
 }
 
 SamplerSynth *SamplerSynth::instance()  {
@@ -167,7 +172,10 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
 {
-    d->synth->handleCommand(clipCommand);
+    if (d->synthMutex.tryLock()) {
+        d->synth->handleCommand(clipCommand);
+        d->synthMutex.unlock();
+    }
 }
 
 void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
