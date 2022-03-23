@@ -26,7 +26,9 @@ public:
   void stopClip(ClipAudioSource *clip);
   int getInterval(int bpm);
   float subbeatCountToSeconds(quint64 bpm, quint64 beats) const;
+  quint64 secondsToSubbeatCount(quint64 bpm, float seconds) const;
   int getMultiplier();
+  quint64 getBpm() const;
 
   /**
    * \brief The current beat, where that makes useful sense

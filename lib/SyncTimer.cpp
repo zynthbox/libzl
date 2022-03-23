@@ -124,6 +124,10 @@ public:
     {
         return (subBeatCount * NanosecondsPerMinute) / (bpm * BeatSubdivisions);
     };
+    float nanosecondsToSubbeatCount(const quint64 &bpm, const quint64 &nanoseconds) const
+    {
+        return nanoseconds / (NanosecondsPerMinute / (bpm * BeatSubdivisions));
+    };
     void requestAbort() {
         aborted = true;
     }
@@ -660,8 +664,18 @@ float SyncTimer::subbeatCountToSeconds(quint64 bpm, quint64 beats) const
     return d->timerThread->subbeatCountToNanoseconds(bpm, beats) / (float)1000000000;
 }
 
+quint64 SyncTimer::secondsToSubbeatCount(quint64 bpm, float seconds) const
+{
+    return d->timerThread->nanosecondsToSubbeatCount(bpm, floor(seconds * (float)1000000000));
+}
+
 int SyncTimer::getMultiplier() {
     return BeatSubdivisions;
+}
+
+quint64 SyncTimer::getBpm() const
+{
+    return d->timerThread->getBpm();
 }
 
 int SyncTimer::beat() const {
