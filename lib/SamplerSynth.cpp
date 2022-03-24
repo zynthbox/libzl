@@ -10,6 +10,7 @@
 #include <QDebug>
 #include <QHash>
 #include <QMutex>
+#include <QTimer>
 
 using namespace juce;
 
@@ -95,7 +96,7 @@ void SamplerSynthPrivate::prepareToPlay(double sampleRate, int maximumExpectedSa
 template<typename Element>
 void SamplerSynthPrivate::process(AudioBuffer<Element> &buffer, juce::MidiBuffer &midiMessages)
 {
-    if (synthMutex.tryLock()) {
+    if (synthMutex.tryLock(1)) {
         synth->renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
         synthMutex.unlock();
     }
@@ -146,15 +147,20 @@ tracktion_engine::Engine *SamplerSynth::engine() const
 
 void SamplerSynth::registerClip(ClipAudioSource *clip)
 {
+    d->synthMutex.lock();
     if (!d->clipSounds.contains(clip)) {
         SamplerSynthSound *sound = new SamplerSynthSound(clip);
         d->clipSounds[clip] = sound;
         d->synth->addSound(sound);
+    } else {
+        qDebug() << "Clip list already contains the clip up for registration" << clip << clip->getFilePath();
     }
+    d->synthMutex.unlock();
 }
 
 void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 {
+    d->synthMutex.lock();
     if (d->clipSounds.contains(clip)) {
         d->clipSounds.remove(clip);
         for (int i = 0; i < d->synth->getNumSounds(); ++i) {
@@ -162,19 +168,23 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
             if (auto *samplerSound = static_cast<SamplerSynthSound*> (sound.get())) {
                 if (samplerSound->clip() == clip) {
                     d->synth->removeSound(i);
-                    delete samplerSound;
                     break;
                 }
             }
         }
     }
+    d->synthMutex.unlock();
 }
 
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
 {
-    if (d->synthMutex.tryLock()) {
+    // Very extremely short timeout, but we do want to try and make sure it actually happens...
+    if (d->synthMutex.tryLock(1)) {
         d->synth->handleCommand(clipCommand);
         d->synthMutex.unlock();
+    } else {
+        // If we failed to lock the mutex, postpone this command until the next run of the event loop
+        QTimer::singleShot(0, this, [this, clipCommand](){ handleClipCommand(clipCommand); });
     }
 }
 
