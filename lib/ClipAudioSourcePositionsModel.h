@@ -24,6 +24,18 @@ public:
     Q_INVOKABLE qint64 createPositionID (float initialProgress = 0.0f);
     Q_INVOKABLE void setPositionProgress(qint64 positionID, float progress);
     Q_INVOKABLE void removePosition(qint64 positionID);
+    /**
+     * \brief Asynchronously request the creation of a new position. Connect to positionIDCreated to learn what the position is.
+     * @param createFor The object (or other pointer) that you wish to use as an identifier for the id (used when positionIDCreated is fired)
+     * @param initialProgress The initial progress for the newly created position
+     */
+    Q_SLOT void requestPositionID(void* createFor, float initialProgress = 0.0f);
+    /**
+     * \brief Fired when requestPositionID completes (does not fire for calls to createPositionID)
+     * @param createdFor The object (or other pointer) used when requesting the new position ID
+     * @param newPositionID The new position ID
+     */
+    Q_SIGNAL void positionIDCreated(void* createdFor, qint64 newPositionID);
 private:
     std::unique_ptr<ClipAudioSourcePositionsModelPrivate> d;
 };

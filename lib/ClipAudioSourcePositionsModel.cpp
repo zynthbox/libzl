@@ -107,3 +107,8 @@ void ClipAudioSourcePositionsModel::removePosition(qint64 positionID)
     }
     d->mutex.unlock();
 }
+
+void ClipAudioSourcePositionsModel::requestPositionID(void *createFor, float initialProgress)
+{
+    Q_EMIT positionIDCreated(createFor, createPositionID(initialProgress));
+}
