@@ -86,7 +86,7 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
 {
     if (auto* sound = dynamic_cast<const SamplerSynthSound*> (s))
     {
-        d->pitchRatio = std::pow (2.0, qMax(0, midiNoteNumber - sound->rootMidiNote()) / 12.0)
+        d->pitchRatio = std::pow (2.0, (midiNoteNumber - sound->rootMidiNote()) / 12.0)
                         * sound->sourceSampleRate() / getSampleRate();
 
         d->clip = sound->clip();
