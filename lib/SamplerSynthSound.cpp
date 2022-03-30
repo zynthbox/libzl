@@ -7,7 +7,6 @@ class SamplerSynthSoundPrivate {
 public:
     SamplerSynthSoundPrivate() {}
 
-    int midiNoteForNormalPitch{60};
     std::unique_ptr<AudioBuffer<float>> data;
     int length{0};
     double sourceSampleRate{0.0f};
@@ -46,7 +45,6 @@ SamplerSynthSound::SamplerSynthSound(ClipAudioSource *clip)
     : juce::SynthesiserSound()
     , d(new SamplerSynthSoundPrivate)
 {
-    d->midiNoteForNormalPitch = 60;
     d->clip = clip;
     d->params.attack  = static_cast<float> (0);
     d->params.release = static_cast<float> (0);
@@ -85,7 +83,7 @@ int SamplerSynthSound::stopPosition(int slice) const
 
 int SamplerSynthSound::rootMidiNote() const
 {
-    return d->midiNoteForNormalPitch;
+    return d->clip->rootNote();
 }
 
 double SamplerSynthSound::sourceSampleRate() const
