@@ -7,6 +7,7 @@ class SamplerSynthSoundPrivate {
 public:
     SamplerSynthSoundPrivate() {}
 
+    bool isValid{false};
     std::unique_ptr<AudioBuffer<float>> data;
     int length{0};
     double sourceSampleRate{0.0f};
@@ -33,6 +34,7 @@ public:
                 length = (int) format->lengthInSamples;
                 data.reset (new AudioBuffer<float> (jmin (2, (int) format->numChannels), length));
                 format->read (data.get(), 0, length, 0, true, true);
+                isValid = true;
             }
             delete format;
         } else {
@@ -59,6 +61,11 @@ SamplerSynthSound::~SamplerSynthSound()
 ClipAudioSource *SamplerSynthSound::clip() const
 {
     return d->clip;
+}
+
+bool SamplerSynthSound::isValid() const
+{
+    return d->isValid;
 }
 
 AudioBuffer<float> *SamplerSynthSound::audioData() const noexcept
