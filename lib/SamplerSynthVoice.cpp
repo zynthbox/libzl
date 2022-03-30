@@ -21,7 +21,8 @@ public:
 };
 
 SamplerSynthVoice::SamplerSynthVoice()
-    : juce::SamplerVoice()
+    : QObject()
+    , juce::SamplerVoice()
     , d(new SamplerSynthVoicePrivate)
 {
 }
@@ -93,14 +94,24 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
         d->sourceSampleLength = d->clip->getDuration() * sound->sourceSampleRate();
         d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * sound->sourceSampleRate());
 
-        // Since we may or may not be calling across thread borders here, depending on who's sending our
-        // notes to us, we need to make sure to invoke blockingly if it's across threads, and call directly
-        // otherwise, to avoid a deadlock
-        if (QThread::currentThread() == d->clip->playbackPositionsModel()->thread()) {
-            d->clipPositionId = d->clip->playbackPositionsModel()->createPositionID(d->sourceSamplePosition / d->sourceSampleLength);
-        } else {
-            QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "createPositionID", Qt::BlockingQueuedConnection, Q_RETURN_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
-        }
+        // Asynchronously request the creation of a new position ID - if we call directly (or blocking
+        // queued), we may end up in deadlocky threading trouble, so... asynchronous api it is!
+        ClipAudioSourcePositionsModel *positionsModel = d->clip->playbackPositionsModel();
+        connect(d->clip->playbackPositionsModel(), &ClipAudioSourcePositionsModel::positionIDCreated, this, [this, positionsModel](void* createdFor, qint64 newPositionID){
+            if (createdFor == this) {
+                if (d->clip && d->clip->playbackPositionsModel() == positionsModel) {
+                    if (d->clipPositionId > -1) {
+                        QMetaObject::invokeMethod(positionsModel, "removePosition", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId));
+                    }
+                    d->clipPositionId = newPositionID;
+                } else {
+                    // If we're suddenly playing something else, we didn't receive this quickly enough and should just get rid of it
+                    QMetaObject::invokeMethod(positionsModel, "removePosition", Qt::QueuedConnection, Q_ARG(qint64, newPositionID));
+                }
+                positionsModel->disconnect(this);
+            }
+        }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "requestPositionID", Qt::QueuedConnection, Q_ARG(void*, this), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
 
         d->lgain = velocity;
         d->rgain = velocity;
@@ -127,6 +138,7 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
         clearCurrentNote();
         d->adsr.reset();
         QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "removePosition", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId));
+        d->clipPositionId = -1;
         d->clip = nullptr;
         delete d->clipCommand;
         d->clipCommand = nullptr;
@@ -140,55 +152,57 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
 {
     if (auto* playingSound = static_cast<SamplerSynthSound*> (getCurrentlyPlayingSound().get()))
     {
-        auto& data = *playingSound->audioData();
-        const float* const inL = data.getReadPointer (0);
-        const float* const inR = data.getNumChannels() > 1 ? data.getReadPointer (1) : nullptr;
+        if (playingSound->isValid()) {
+            auto& data = *playingSound->audioData();
+            const float* const inL = data.getReadPointer (0);
+            const float* const inR = data.getNumChannels() > 1 ? data.getReadPointer (1) : nullptr;
 
-        float* outL = outputBuffer.getWritePointer (0, startSample);
-        float* outR = outputBuffer.getNumChannels() > 1 ? outputBuffer.getWritePointer (1, startSample) : nullptr;
+            float* outL = outputBuffer.getWritePointer (0, startSample);
+            float* outR = outputBuffer.getNumChannels() > 1 ? outputBuffer.getWritePointer (1, startSample) : nullptr;
 
-        while (--numSamples >= 0)
-        {
-            auto pos = (int) d->sourceSamplePosition;
-            auto alpha = (float) (d->sourceSamplePosition - pos);
-            auto invAlpha = 1.0f - alpha;
-
-            // just using a very simple linear interpolation here..
-            float l = (inL[pos] * invAlpha + inL[pos + 1] * alpha);
-            float r = (inR != nullptr) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha)
-                                       : l;
-
-            auto envelopeValue = d->adsr.getNextSample();
-
-            l *= d->lgain * envelopeValue;
-            r *= d->rgain * envelopeValue;
-
-            if (outR != nullptr)
+            while (--numSamples >= 0)
             {
-                *outL++ += l;
-                *outR++ += r;
-            }
-            else
-            {
-                *outL++ += (l + r) * 0.5f;
-            }
+                auto pos = (int) d->sourceSamplePosition;
+                auto alpha = (float) (d->sourceSamplePosition - pos);
+                auto invAlpha = 1.0f - alpha;
 
-            d->sourceSamplePosition += d->pitchRatio;
+                // just using a very simple linear interpolation here..
+                float l = (inL[pos] * invAlpha + inL[pos + 1] * alpha);
+                float r = (inR != nullptr) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha)
+                                        : l;
 
-            if (d->sourceSamplePosition > playingSound->stopPosition(d->clipCommand->slice))
-            {
-                if (d->clipCommand->looping) {
-                    // TODO Switch start position for the loop position here
-                    d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
-                } else {
-                    stopNote (0.0f, false);
-                    break;
+                auto envelopeValue = d->adsr.getNextSample();
+
+                l *= d->lgain * envelopeValue;
+                r *= d->rgain * envelopeValue;
+
+                if (outR != nullptr)
+                {
+                    *outL++ += l;
+                    *outR++ += r;
+                }
+                else
+                {
+                    *outL++ += (l + r) * 0.5f;
+                }
+
+                d->sourceSamplePosition += d->pitchRatio;
+
+                if (d->sourceSamplePosition > playingSound->stopPosition(d->clipCommand->slice))
+                {
+                    if (d->clipCommand->looping) {
+                        // TODO Switch start position for the loop position here
+                        d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
+                    } else {
+                        stopNote (0.0f, false);
+                        break;
+                    }
                 }
             }
-        }
-        // Because it might have gone away after being stopped above, so let's try and not crash
-        if (d->clip) {
-            QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionProgress", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
+            // Because it might have gone away after being stopped above, so let's try and not crash
+            if (d->clip && d->clipPositionId > -1) {
+                QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionProgress", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
+            }
         }
     }
 }

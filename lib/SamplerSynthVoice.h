@@ -1,11 +1,13 @@
 #pragma once
 
+#include <QObject>
 #include "JUCEHeaders.h"
 
 struct ClipCommand;
 class SamplerSynthVoicePrivate;
-class SamplerSynthVoice : public juce::SamplerVoice
+class SamplerSynthVoice : public QObject, public juce::SamplerVoice
 {
+    Q_OBJECT
 public:
     explicit SamplerSynthVoice();
     ~SamplerSynthVoice() override;
