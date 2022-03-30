@@ -39,6 +39,12 @@ void ClipAudioSource_setVolume(ClipAudioSource *c, float vol);
 void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
                                                   void (*functionPtr)(float));
 void ClipAudioSource_setSlices(ClipAudioSource *c, int slices);
+int ClipAudioSource_keyZoneStart(ClipAudioSource *c);
+void ClipAudioSource_setKeyZoneStart(ClipAudioSource *c, int keyZoneStart);
+int ClipAudioSource_keyZoneEnd(ClipAudioSource *c);
+void ClipAudioSource_setKeyZoneEnd(ClipAudioSource *c, int keyZoneEnd);
+int ClipAudioSource_rootNote(ClipAudioSource *c);
+void ClipAudioSource_setRootNote(ClipAudioSource *c, int rootNote);
 void ClipAudioSource_destroy(ClipAudioSource *c);
 int ClipAudioSource_id(ClipAudioSource *c);
 //////////////

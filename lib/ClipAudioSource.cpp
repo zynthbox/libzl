@@ -67,6 +67,9 @@ public:
   QVariantList slicePositions;
   QList<double> slicePositionsCache;
   int sliceBaseMidiNote{60};
+  int keyZoneStart{0};
+  int keyZoneEnd{127};
+  int rootNote{60};
 };
 
 class ClipProgress : public ValueTree::Listener {
@@ -473,4 +476,43 @@ void ClipAudioSource::setSliceBaseMidiNote(int sliceBaseMidiNote)
 int ClipAudioSource::sliceForMidiNote(int midiNote) const
 {
     return ((d->slices - (d->sliceBaseMidiNote % d->slices)) + midiNote) % d->slices;
+}
+
+int ClipAudioSource::keyZoneStart() const
+{
+  return d->keyZoneStart;
+}
+
+void ClipAudioSource::setKeyZoneStart(int keyZoneStart)
+{
+  if (d->keyZoneStart != keyZoneStart) {
+    d->keyZoneStart = keyZoneStart;
+    Q_EMIT keyZoneStartChanged();
+  }
+}
+
+int ClipAudioSource::keyZoneEnd() const
+{
+  return d->keyZoneEnd;
+}
+
+void ClipAudioSource::setKeyZoneEnd(int keyZoneEnd)
+{
+  if (d->keyZoneEnd != keyZoneEnd) {
+    d->keyZoneEnd = keyZoneEnd;
+    Q_EMIT keyZoneEndChanged();
+  }
+}
+
+int ClipAudioSource::rootNote() const
+{
+  return d->rootNote;
+}
+
+void ClipAudioSource::setRootNote(int rootNote)
+{
+  if (d->rootNote != rootNote) {
+    d->rootNote = rootNote;
+    Q_EMIT rootNoteChanged();
+  }
 }

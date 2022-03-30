@@ -48,6 +48,21 @@ class ClipAudioSource : public QObject, public juce::Timer {
      * @default 60
      */
     Q_PROPERTY(int sliceBaseMidiNote READ sliceBaseMidiNote WRITE setSliceBaseMidiNote NOTIFY sliceBaseMidiNoteChanged)
+    /**
+     * \brief The first midi note this clip should be used for (by default, a clip's keyzone is all midi notes)
+     * @default 0
+     */
+    Q_PROPERTY(int keyZoneStart READ keyZoneStart WRITE setKeyZoneStart NOTIFY keyZoneStartChanged)
+    /**
+     * \brief The last midi note this clip should be used for (by default, a clip's keyzone is all midi notes)
+     * @default 127
+     */
+    Q_PROPERTY(int keyZoneEnd READ keyZoneEnd WRITE setKeyZoneEnd NOTIFY keyZoneEndChanged)
+    /**
+     * \brief The midi note this clip plays at un-pitched when used by the sampler synth (only used for trig mode, not slice)
+     * @default 60
+     */
+    Q_PROPERTY(int rootNote READ rootNote WRITE setRootNote NOTIFY rootNoteChanged)
 public:
   explicit ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *syncTimer, const char *filepath,
                   bool muted = false, QObject *parent = nullptr);
@@ -117,6 +132,18 @@ public:
    * @return The slice index matching the given midi note
    */
   int sliceForMidiNote(int midiNote) const;
+
+  int keyZoneStart() const;
+  void setKeyZoneStart(int keyZoneStart);
+  Q_SIGNAL void keyZoneStartChanged();
+
+  int keyZoneEnd() const;
+  void setKeyZoneEnd(int keyZoneEnd);
+  Q_SIGNAL void keyZoneEndChanged();
+
+  int rootNote() const;
+  void setRootNote(int rootNote);
+  Q_SIGNAL void rootNoteChanged();
 private:
   void timerCallback() override;
   class Private;

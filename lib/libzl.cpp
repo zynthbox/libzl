@@ -171,6 +171,30 @@ void ClipAudioSource_setSlices(ClipAudioSource *c, int slices) {
     c->setSlices(slices);
 }
 
+int ClipAudioSource_keyZoneStart(ClipAudioSource *c) {
+  return c->keyZoneStart();
+}
+
+void ClipAudioSource_setKeyZoneStart(ClipAudioSource *c, int keyZoneStart) {
+  c->setKeyZoneStart(keyZoneStart);
+}
+
+int ClipAudioSource_keyZoneEnd(ClipAudioSource *c) {
+  return c->keyZoneEnd();
+}
+
+void ClipAudioSource_setKeyZoneEnd(ClipAudioSource *c, int keyZoneEnd) {
+  c->setKeyZoneEnd(keyZoneEnd);
+}
+
+int ClipAudioSource_rootNote(ClipAudioSource *c) {
+  return c->rootNote();
+}
+
+void ClipAudioSource_setRootNote(ClipAudioSource *c, int rootNote) {
+  c->setRootNote(rootNote);
+}
+
 void ClipAudioSource_destroy(ClipAudioSource *c) {
   ClipAudioSource *clip = qobject_cast<ClipAudioSource*>(c);
   if (clip) {
