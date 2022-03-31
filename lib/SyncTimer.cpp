@@ -206,7 +206,8 @@ private:
 class SyncTimerPrivate {
 public:
     SyncTimerPrivate(SyncTimer *q)
-        : timerThread(new SyncTimerThread(q))
+        : q(q)
+        ,timerThread(new SyncTimerThread(q))
     {
         samplerSynth = SamplerSynth::instance();
         // Dangerzone - direct connection from another thread. Yes, dangerous, but also we need the precision, so we need to dill whit it
@@ -257,6 +258,7 @@ public:
             jack_client_close(jackClient);
         }
     }
+    SyncTimer *q{nullptr};
     SamplerSynth *samplerSynth{nullptr};
     SyncTimerThread *timerThread;
     QProcess *midiBridge;
@@ -320,6 +322,13 @@ public:
             clipsStartQueue.clear();
             if (samplerSynth->engine()) {
                 qDebug() << "Current tracktion/juce CPU usage:" << samplerSynth->engine()->getDeviceManager().getCpuUsage();
+            }
+        }
+        // Make sure any listeners are aware that we've actually sent off the command they asked us to
+        if (clipStartQueues.contains(cumulativeBeat)) {
+            const QList<ClipCommand *> &clips = clipStartQueues[cumulativeBeat];
+            for (ClipCommand *clipCommand : clips) {
+                Q_EMIT q->clipCommandSent(clipCommand);
             }
         }
         // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
@@ -644,7 +653,14 @@ void SyncTimer::stop() {
     d->midiMessageQueues.clear();
     d->nextMidiMessages.clear();
     for (QList<ClipCommand *> startQueue : d->clipStartQueues) {
-        qDeleteAll(startQueue);
+        for (ClipCommand *clipCommand : startQueue) {
+            // Actually run all the commands (so we don't end up in a weird state), but also
+            // set all the volumes to 0 so we don't make the users' ears bleed
+            clipCommand->changeVolume = true;
+            clipCommand->volume = 0;
+            SamplerSynth::instance()->handleClipCommand(clipCommand);
+            Q_EMIT clipCommandSent(clipCommand);
+        }
     }
     d->clipStartQueues.clear();
     d->clipStopQueues.clear();

@@ -53,6 +53,11 @@ public:
    */
   void scheduleClipCommand(ClipCommand *clip, quint64 delay);
   /**
+    * \brief Fired whenever a scheduled clip command has been sent to SamplerSynth
+    * @param clipCommand The clip command which has just been sent to SamplerSynth
+    */
+  Q_SIGNAL void clipCommandSent(ClipCommand *clipCommand);
+  /**
    * \brief Schedule an audio clip to stop on the next tick of the timer
    * If the clip is already scheduled at the position you're attempting to schedule it into, this function will not add multiple
    * @param clip The audio clip you wish to stop playback of
