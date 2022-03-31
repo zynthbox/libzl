@@ -5,6 +5,7 @@
 #include "ClipAudioSourcePositionsModel.h"
 
 #include <QThread>
+#include <QTimer>
 
 class SamplerSynthVoicePrivate {
 public:
@@ -72,7 +73,7 @@ void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
                 d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
             }
         }
-        delete clipCommand;
+        QTimer::singleShot(1, this, [clipCommand](){ delete clipCommand; });
     } else {
         d->clipCommand = clipCommand;
     }
@@ -140,7 +141,8 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
         QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "removePosition", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId));
         d->clipPositionId = -1;
         d->clip = nullptr;
-        delete d->clipCommand;
+        ClipCommand *clipCommand = d->clipCommand;
+        QTimer::singleShot(1, this, [clipCommand](){ delete clipCommand; });
         d->clipCommand = nullptr;
     }
 }
