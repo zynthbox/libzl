@@ -162,6 +162,8 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
             float* outL = outputBuffer.getWritePointer (0, startSample);
             float* outR = outputBuffer.getNumChannels() > 1 ? outputBuffer.getWritePointer (1, startSample) : nullptr;
 
+            const int stopPosition = playingSound->stopPosition(d->clipCommand->slice);
+
             while (--numSamples >= 0)
             {
                 auto pos = (int) d->sourceSamplePosition;
@@ -190,14 +192,20 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
 
                 d->sourceSamplePosition += d->pitchRatio;
 
-                if (d->sourceSamplePosition > playingSound->stopPosition(d->clipCommand->slice))
-                {
-                    if (d->clipCommand->looping) {
+                if (d->clipCommand->looping) {
+                    if (d->sourceSamplePosition > stopPosition)
+                    {
                         // TODO Switch start position for the loop position here
                         d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
-                    } else {
+                    }
+                } else {
+                    if (d->sourceSamplePosition > stopPosition)
+                    {
                         stopNote (0.0f, false);
                         break;
+                    } else if (d->sourceSamplePosition > (stopPosition - (d->adsr.getParameters().release * playingSound->sourceSampleRate()))) {
+                        // ...really need a way of telling that this has been done already (it's not dangerous, just not pretty, there's maths in there)
+                        stopNote (0.0f, true);
                     }
                 }
             }
