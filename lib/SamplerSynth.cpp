@@ -197,7 +197,7 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
                 for (SamplerSynthVoice * voice : d->voices) {
                     const ClipCommand *currentVoiceCommand = voice->currentCommand();
                     if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
-                        voice->stopNote(0.0f, false);
+                        voice->stopNote(0.0f, true);
                         break;
                     }
                 }
