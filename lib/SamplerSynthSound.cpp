@@ -49,7 +49,7 @@ SamplerSynthSound::SamplerSynthSound(ClipAudioSource *clip)
 {
     d->clip = clip;
     d->params.attack  = static_cast<float> (0);
-    d->params.release = static_cast<float> (0);
+    d->params.release = static_cast<float> (0.05f);
     d->loadSoundData();
     QObject::connect(clip, &ClipAudioSource::playbackFileChanged, [this](){ d->loadSoundData(); });
 }
