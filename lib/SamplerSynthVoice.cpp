@@ -208,6 +208,10 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
                         stopNote (0.0f, true);
                     }
                 }
+                if (!d->adsr.isActive()) {
+                    stopNote(0.0f, false);
+                    break;
+                }
             }
             // Because it might have gone away after being stopped above, so let's try and not crash
             if (d->clip && d->clipPositionId > -1) {
