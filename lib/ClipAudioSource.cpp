@@ -190,18 +190,18 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
 float ClipAudioSource::getStartPosition(int slice) const
 {
     if (slice > -1 && slice < d->slicePositionsCache.length()) {
-        return d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice]);
+        return qMin(d->edit->getLength(), d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice]));
     } else {
-        return d->startPositionInSeconds;
+        return qMin((float)d->edit->getLength(), d->startPositionInSeconds);
     }
 }
 
 float ClipAudioSource::getStopPosition(int slice) const
 {
     if (slice > -1 && slice + 1 < d->slicePositionsCache.length()) {
-        return d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice + 1]);
+        return qMin(d->edit->getLength(), d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice + 1]));
     } else {
-        return d->startPositionInSeconds + d->lengthInSeconds;
+        return qMin((float)d->edit->getLength(), d->startPositionInSeconds + d->lengthInSeconds);
     }
 }
 
