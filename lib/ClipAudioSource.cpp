@@ -30,9 +30,11 @@ public:
   ClipAudioSource *q;
   const te::Engine &getEngine() const { return *engine; };
   te::WaveAudioClip::Ptr getClip() {
-    if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0)) {
-      if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0])) {
-        return *clip;
+    if (edit) {
+      if (auto track = Helper::getOrInsertAudioTrackAt(*edit, 0)) {
+        if (auto clip = dynamic_cast<te::WaveAudioClip *>(track->getClips()[0])) {
+          return *clip;
+        }
       }
     }
 
@@ -149,13 +151,13 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
 
 ClipAudioSource::~ClipAudioSource() {
   IF_DEBUG_CLIP cerr << "Destroying Clip" << endl;
+  stopTimer();
   SamplerSynth::instance()->unregisterClip(this);
   stop();
   auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
   auto levelMeasurerPlugin = track->getLevelMeterPlugin();
   levelMeasurerPlugin->measurer.removeClient(d->levelClient);
   d->edit.reset();
-  stopTimer();
 }
 
 void ClipAudioSource::setProgressCallback(void (*functionPtr)(float)) {
