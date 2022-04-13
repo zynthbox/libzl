@@ -5,12 +5,12 @@
 #include "ClipAudioSourcePositionsModel.h"
 
 #include <QThread>
-#include <QTimer>
 
 class SamplerSynthVoicePrivate {
 public:
     SamplerSynthVoicePrivate() {}
 
+    QList<ClipCommand*> clipCommandsForDeleting;
     ClipCommand *clipCommand{nullptr};
     ClipAudioSource *clip{nullptr};
     qint64 clipPositionId{-1};
@@ -73,7 +73,7 @@ void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
                 d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
             }
         }
-        QTimer::singleShot(1, this, [clipCommand](){ delete clipCommand; });
+        d->clipCommandsForDeleting << clipCommand;
     } else {
         d->clipCommand = clipCommand;
     }
@@ -141,8 +141,7 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
         QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "removePosition", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId));
         d->clipPositionId = -1;
         d->clip = nullptr;
-        ClipCommand *clipCommand = d->clipCommand;
-        QTimer::singleShot(1, this, [clipCommand](){ delete clipCommand; });
+        d->clipCommandsForDeleting << d->clipCommand;
         d->clipCommand = nullptr;
     }
 }
@@ -218,5 +217,9 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
                 QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionProgress", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
             }
         }
+    }
+    if (!d->clipCommandsForDeleting.isEmpty()) {
+        qDeleteAll(d->clipCommandsForDeleting);
+        d->clipCommandsForDeleting.clear();
     }
 }
