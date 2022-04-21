@@ -25,10 +25,32 @@ public:
   void stop();
   void stopClip(ClipAudioSource *clip);
   int getInterval(int bpm);
-  float subbeatCountToSeconds(quint64 bpm, quint64 beats) const;
-  quint64 secondsToSubbeatCount(quint64 bpm, float seconds) const;
-  int getMultiplier();
-  quint64 getBpm() const;
+  /**
+   * \brief Convert a number of subbeat to seconds, given a specific bpm rate
+   * @note The number of subbeats is relative to the multiplier (so a multiplier of 32 would give you 128 beats for a note)
+   * @param bpm The number of beats per minute used as the basis of the calculation
+   * @param beats The number of subbeats to convert to a duration in seconds
+   * @return A floating point precision amount of seconds for the given number of subbeats at the given bpm rate
+   */
+  Q_INVOKABLE float subbeatCountToSeconds(quint64 bpm, quint64 beats) const;
+  /**
+   * \brief Convert an amount of seconds to the nearest number of subbeats, given a specific bpm rate
+   * @note The number of subbeats is relative to the multiplier (so a multiplier of 32 would give you 128 beats for a note)
+   * @param bpm The number of beats per minute used as the basis of the calculation
+   * @param seconds The number of seconds to convert to an amount of subbeats
+   * @return The number of beats that most closely matches the given number of seconds at the given bpm rate
+   */
+  Q_INVOKABLE quint64 secondsToSubbeatCount(quint64 bpm, float seconds) const;
+  /**
+   * \brief The timer's beat multiplier (that is, the number of subbeats per quarter note)
+   * @return The number of subbeats per quarter note
+   */
+  Q_INVOKABLE int getMultiplier();
+  /**
+   * \brief The timer's current bpm rate
+   * @return The number of beats per minute currently used as the basis for the timer's operation
+   */
+  Q_INVOKABLE quint64 getBpm() const;
 
   /**
    * \brief The current beat, where that makes useful sense
