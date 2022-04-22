@@ -42,7 +42,8 @@ target_sources(libzl
         lib/SyncTimer.cpp
         lib/Helper.cpp
         lib/QPainterContext.cpp
-        lib/WaveFormItem.cpp)
+        lib/WaveFormItem.cpp
+        lib/AudioLevels.cpp)
 
 set(libzl_headers
     lib/libzl.h)
