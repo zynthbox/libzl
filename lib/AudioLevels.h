@@ -16,14 +16,52 @@
 #include <jack/jack.h>
 #include <juce_events/juce_events.h>
 
+/**
+ * @brief The AudioLevels class provides a way to read audio levels of different ports
+ *
+ * This class exposes some Q_PROPERTY which reports respective audio levels in decibel
+ * It also provides a helper method to add multiple decibel values
+ *
+ * To use this class in qml import libzl and use read the properties as follows :
+ * <code>
+ * import libzl 1.0 as ZL
+ * </code>
+ *
+ * <code>
+ * console.log(ZL.AudioLevels.synthA)
+ * </code>
+ */
 class AudioLevels : public QObject,
                     public juce::Timer {
 Q_OBJECT
+    /**
+     * \brief Left Capture channel audio level in decibels
+     */
     Q_PROPERTY(float captureA MEMBER captureA NOTIFY audioLevelsChanged)
+
+    /**
+     * \brief Right Capture channel audio level in decibels
+     */
     Q_PROPERTY(float captureB MEMBER captureB NOTIFY audioLevelsChanged)
+
+    /**
+     * \brief Left Synth playback channel audio level in decibels
+     */
     Q_PROPERTY(float synthA MEMBER synthA NOTIFY audioLevelsChanged)
+
+    /**
+     * \brief Right Synth playback channel audio level in decibels
+     */
     Q_PROPERTY(float synthB MEMBER synthB NOTIFY audioLevelsChanged)
+
+    /**
+     * \brief Left system playback channel audio level in decibels
+     */
     Q_PROPERTY(float playbackA MEMBER playbackA NOTIFY audioLevelsChanged)
+
+    /**
+     * \brief Right system playback channel audio level in decibels
+     */
     Q_PROPERTY(float playbackB MEMBER playbackB NOTIFY audioLevelsChanged)
 
 public:
@@ -31,6 +69,12 @@ public:
     int _audioLevelsJackProcessCb(jack_nframes_t nframes);
 
 public slots:
+    /**
+     * \brief Add two decibel values
+     * @param db1 Audio level in decibels
+     * @param db2 Audio level in decibels
+     * @return db1+db2
+     */
     float add(float db1, float db2);
 
 Q_SIGNALS:
