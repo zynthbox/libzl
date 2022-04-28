@@ -9,6 +9,10 @@ class ClipAudioSourcePositionsModelPrivate;
 class ClipAudioSourcePositionsModel : public QAbstractListModel
 {
     Q_OBJECT
+    /**
+     * \brief The highest gain among all positions in the model
+     */
+    Q_PROPERTY(float peakGain READ peakGain NOTIFY peakGainChanged)
 public:
     explicit ClipAudioSourcePositionsModel(ClipAudioSource *clip);
     ~ClipAudioSourcePositionsModel() override;
@@ -16,6 +20,7 @@ public:
     enum PositionRoles {
         PositionIDRole = Qt::UserRole + 1,
         PositionProgressRole,
+        PositionGainRole,
     };
     QHash<int, QByteArray> roleNames() const override;
     int rowCount(const QModelIndex &parent) const override;
@@ -23,6 +28,7 @@ public:
 
     Q_INVOKABLE qint64 createPositionID (float initialProgress = 0.0f);
     Q_INVOKABLE void setPositionProgress(qint64 positionID, float progress);
+    Q_INVOKABLE void setPositionGain(qint64 positionID, float gain);
     Q_INVOKABLE void removePosition(qint64 positionID);
     /**
      * \brief Asynchronously request the creation of a new position. Connect to positionIDCreated to learn what the position is.
@@ -36,6 +42,9 @@ public:
      * @param newPositionID The new position ID
      */
     Q_SIGNAL void positionIDCreated(void* createdFor, qint64 newPositionID);
+
+    float peakGain() const;
+    Q_SIGNAL void peakGainChanged();
 private:
     std::unique_ptr<ClipAudioSourcePositionsModelPrivate> d;
 };
