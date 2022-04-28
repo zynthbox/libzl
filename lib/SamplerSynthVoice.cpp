@@ -160,8 +160,10 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
 
             float* outL = outputBuffer.getWritePointer (0, startSample);
             float* outR = outputBuffer.getNumChannels() > 1 ? outputBuffer.getWritePointer (1, startSample) : nullptr;
+            float peakGain{0.0f};
 
             const int stopPosition = playingSound->stopPosition(d->clipCommand->slice);
+            const int sampleDuration = playingSound->length();
 
             while (--numSamples >= 0)
             {
@@ -170,9 +172,9 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
                 auto invAlpha = 1.0f - alpha;
 
                 // just using a very simple linear interpolation here..
-                float l = (inL[pos] * invAlpha + inL[pos + 1] * alpha);
-                float r = (inR != nullptr) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha)
-                                        : l;
+                float l = sampleDuration > pos ? (inL[pos] * invAlpha + inL[pos + 1] * alpha) : 0;
+                float r = (inR != nullptr && sampleDuration > pos) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha)
+                                                                   : l;
 
                 auto envelopeValue = d->adsr.getNextSample();
 
@@ -188,6 +190,7 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
                 {
                     *outL++ += (l + r) * 0.5f;
                 }
+                peakGain = qMax(peakGain, (l + r) * 0.5f);
 
                 d->sourceSamplePosition += d->pitchRatio;
 
@@ -215,6 +218,7 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
             // Because it might have gone away after being stopped above, so let's try and not crash
             if (d->clip && d->clipPositionId > -1) {
                 QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionProgress", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
+                QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionGain", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, peakGain));
             }
         }
     }
