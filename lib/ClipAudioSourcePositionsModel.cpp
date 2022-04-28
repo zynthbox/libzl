@@ -1,10 +1,13 @@
 #include "ClipAudioSourcePositionsModel.h"
+#include <QDateTime>
+#include <QDebug>
 #include <QMutex>
 
 struct PositionData {
     qint64 id{-1};
     float progress{0.0f};
     float gain{0.0f};
+    qint64 lastUpdated{0};
 };
 
 class ClipAudioSourcePositionsModelPrivate
@@ -73,6 +76,7 @@ qint64 ClipAudioSourcePositionsModel::createPositionID(float initialProgress)
     PositionData *newPosition = new PositionData();
     newPosition->id = nextId++;
     newPosition->progress = initialProgress;
+    newPosition->lastUpdated = QDateTime::currentMSecsSinceEpoch();
     d->mutex.tryLock();
     beginInsertRows(QModelIndex(), d->positions.count(), d->positions.count());
     d->positions << newPosition;
@@ -80,6 +84,7 @@ qint64 ClipAudioSourcePositionsModel::createPositionID(float initialProgress)
     endInsertRows();
     d->updatePeakGain = true;
     Q_EMIT peakGainChanged();
+    cleanUpPositions();
     return newPosition->id;
 }
 
@@ -89,7 +94,8 @@ void ClipAudioSourcePositionsModel::setPositionProgress(qint64 positionID, float
     int index{0};
     for (PositionData *position : d->positions) {
         if (position->id == positionID) {
-            position->progress = progress;
+            position->progress = qMin(1.0f, qMax(0.0f, progress));
+            position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
             const QModelIndex idx{createIndex(index, 0)};
             d->mutex.unlock();
             dataChanged(idx, idx, {PositionProgressRole});
@@ -107,6 +113,7 @@ void ClipAudioSourcePositionsModel::setPositionGain(qint64 positionID, float gai
     for (PositionData *position : d->positions) {
         if (position->id == positionID) {
             position->gain = gain;
+            position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
             const QModelIndex idx{createIndex(index, 0)};
             d->mutex.unlock();
             dataChanged(idx, idx, {PositionGainRole});
@@ -136,6 +143,7 @@ void ClipAudioSourcePositionsModel::removePosition(qint64 positionID)
         ++index;
     }
     d->mutex.unlock();
+    cleanUpPositions();
 }
 
 void ClipAudioSourcePositionsModel::requestPositionID(void *createFor, float initialProgress)
@@ -155,4 +163,28 @@ float ClipAudioSourcePositionsModel::peakGain() const
         }
     }
     return d->peakGain;
+}
+
+// This is an unpleasant hack that i'd like to not have to use
+// but without it we occasionally end up with apparently orphaned
+// positions in the model, and... less of that is better.
+// If someone can work out why we end up with those, though, that'd be lovely
+void ClipAudioSourcePositionsModel::cleanUpPositions() {
+    d->mutex.tryLock();
+    const qint64 allowedTime{QDateTime::currentMSecsSinceEpoch() - 1000};
+    QMutableListIterator<PositionData*> i(d->positions);
+    int removedAny{0};
+    while (i.hasNext()) {
+        PositionData *position = i.next();
+        if (position->lastUpdated < allowedTime) {
+            i.remove();
+            ++removedAny;
+        }
+    }
+    if (removedAny > 0) {
+        qDebug() << "We had" << removedAny << "orphaned positions, removed those";
+        Q_EMIT beginResetModel();
+        Q_EMIT endResetModel();
+    }
+    d->mutex.unlock();
 }

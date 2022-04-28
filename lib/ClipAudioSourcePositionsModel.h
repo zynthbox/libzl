@@ -45,6 +45,9 @@ public:
 
     float peakGain() const;
     Q_SIGNAL void peakGainChanged();
+
+protected:
+    void cleanUpPositions();
 private:
     std::unique_ptr<ClipAudioSourcePositionsModelPrivate> d;
 };
