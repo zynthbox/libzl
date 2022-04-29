@@ -301,6 +301,10 @@ void ClipAudioSource::setVolume(float vol) {
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
+    ClipCommand *command = new ClipCommand(this, 60);
+    command->changeVolume = true;
+    command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
+    SamplerSynth::instance()->handleClipCommand(command);
   }
 }
 
@@ -309,6 +313,10 @@ void ClipAudioSource::setVolumeAbsolute(float vol)
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume absolutely : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(qMax(0.0f, qMin(vol, 1.0f)));
+    ClipCommand *command = new ClipCommand(this, 60);
+    command->changeVolume = true;
+    command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
+    SamplerSynth::instance()->handleClipCommand(command);
   }
 }
 
@@ -379,23 +387,19 @@ void ClipAudioSource::play(bool loop) {
   auto clip = d->getClip();
   IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << getFilePath() << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
 
-  ClipCommand *command = new ClipCommand();
-  command->clip = this;
+  ClipCommand *command = new ClipCommand(this, 60);
   command->changeVolume = true;
-  command->volume = 1.0;
+  command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
   command->looping = loop;
   command->startPlayback = true;
-  command->midiNote = 60;
   SamplerSynth::instance()->handleClipCommand(command);
 }
 
 void ClipAudioSource::stop() {
   IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << getFilePath() << endl;
 
-  ClipCommand *command = new ClipCommand();
-  command->clip = this;
+  ClipCommand *command = new ClipCommand(this, 60);
   command->stopPlayback = true;
-  command->midiNote = 60;
   SamplerSynth::instance()->handleClipCommand(command);
 }
 
