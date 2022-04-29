@@ -25,9 +25,20 @@ namespace tracktion_engine {
 using namespace std;
 
 //==============================================================================
-class ClipAudioSource : public QObject, public juce::Timer {
+class ClipAudioSource : public QObject {
     Q_OBJECT
     Q_PROPERTY(int id READ id WRITE setId NOTIFY idChanged)
+    /**
+     * \brief The current audio level in dB as a float (might be anywhere from -200 to 30, but can exist above that level as well)
+     */
+    Q_PROPERTY(float audioLevel READ audioLevel NOTIFY audioLevelChanged)
+    /**
+     * \brief The current playback position (of the first position in the positions model) in seconds
+     */
+    Q_PROPERTY(double position READ position NOTIFY positionChanged)
+    /**
+     * \brief A model which contains the current positions at which the clip is being played back in SamplerSynth
+     */
     Q_PROPERTY(QObject* playbackPositions READ playbackPositions CONSTANT)
     /**
      * \brief How many slices should the Clip have
@@ -100,6 +111,12 @@ public:
   void setId(int id);
   Q_SIGNAL void idChanged();
 
+  float audioLevel() const;
+  Q_SIGNAL void audioLevelChanged();
+
+  double position() const;
+  Q_SIGNAL void positionChanged();
+
   QObject *playbackPositions();
   ClipAudioSourcePositionsModel *playbackPositionsModel();
 
@@ -145,7 +162,6 @@ public:
   void setRootNote(int rootNote);
   Q_SIGNAL void rootNoteChanged();
 private:
-  void timerCallback() override;
   class Private;
   Private *d;
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ClipAudioSource)

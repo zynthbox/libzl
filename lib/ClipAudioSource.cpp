@@ -11,11 +11,14 @@
 #include "ClipAudioSource.h"
 #include "ClipAudioSourcePositionsModel.h"
 
+#include <QDateTime>
+
 #include <unistd.h>
 
 #include "JUCEHeaders.h"
 #include "../tracktion_engine/examples/common/Utilities.h"
 #include "Helper.h"
+#include "ClipCommand.h"
 #include "SamplerSynth.h"
 #include "SyncTimer.h"
 
@@ -24,7 +27,7 @@
 
 using namespace std;
 
-class ClipAudioSource::Private {
+class ClipAudioSource::Private : public juce::Timer {
 public:
   Private(ClipAudioSource *qq) : q(qq) {}
   ClipAudioSource *q;
@@ -72,6 +75,39 @@ public:
   int keyZoneStart{0};
   int keyZoneEnd{127};
   int rootNote{60};
+
+  qint64 nextPositionUpdateTime{0};
+  double firstPositionProgress{0};
+
+  qint64 nextGainUpdateTime{0};
+  void syncAudioLevel() {
+    if (nextGainUpdateTime < QDateTime::currentMSecsSinceEpoch()) {
+      prevLeveldB = currentLeveldB;
+
+      currentLeveldB = qMax(Decibels::gainToDecibels(positionsModel->peakGain()), levelClient.getAndClearAudioLevel(0).dB);
+
+      // Now we give the level bar fading charcteristics.
+      // And, the below coversions, decibelsToGain and gainToDecibels,
+      // take care of 0dB, which will never fade!...but a gain of 1.0 (0dB) will.
+
+      const auto prevLevel{Decibels::decibelsToGain(prevLeveldB)};
+
+      if (prevLeveldB > currentLeveldB)
+        currentLeveldB = Decibels::gainToDecibels(prevLevel * 0.94);
+
+      // Only notify when the value actually changes by some noticeable kind of amount
+      if (abs(currentLeveldB - prevLeveldB) > 0.1) {
+        // Because emitting from a thread that's not the object's own is a little dirty, so make sure it's done queued
+        QMetaObject::invokeMethod(q, &ClipAudioSource::audioLevelChanged, Qt::QueuedConnection);
+        if (audioLevelChangedCallback != nullptr) {
+          audioLevelChangedCallback(currentLeveldB);
+        }
+      }
+      nextGainUpdateTime = QDateTime::currentMSecsSinceEpoch() + 30;
+    }
+  }
+private:
+  void timerCallback() override;
 };
 
 class ClipProgress : public ValueTree::Listener {
@@ -100,44 +136,53 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
 
   IF_DEBUG_CLIP cerr << "Opening file : " << filepath << endl;
 
-  d->givenFile = juce::File(filepath);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        d->givenFile = juce::File(filepath);
 
-  const File editFile = File::createTempFile("editFile");
+        const File editFile = File::createTempFile("editFile");
 
-  d->edit = te::createEmptyEdit(*d->engine, editFile);
-  auto clip = Helper::loadAudioFileAsClip(*d->edit, d->givenFile);
-  auto &transport = d->edit->getTransport();
+        d->edit = te::createEmptyEdit(*d->engine, editFile);
+        auto clip = Helper::loadAudioFileAsClip(*d->edit, d->givenFile);
+        auto &transport = d->edit->getTransport();
 
-  transport.ensureContextAllocated(true);
+        transport.ensureContextAllocated(true);
 
-  d->fileName = d->givenFile.getFileName();
-  d->filePath = filepath;
-  d->lengthInSeconds = d->edit->getLength();
+        d->fileName = d->givenFile.getFileName();
+        d->filePath = filepath;
+        d->lengthInSeconds = d->edit->getLength();
 
-  if (clip) {
-    clip->setAutoTempo(false);
-    clip->setAutoPitch(false);
-    clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
-  }
+        if (clip) {
+          clip->setAutoTempo(false);
+          clip->setAutoPitch(false);
+          clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
+        }
 
-  transport.setLoopRange(te::EditTimeRange::withStartAndLength(
-      d->startPositionInSeconds, d->lengthInSeconds));
-  transport.looping = true;
-  transport.state.addListener(new ClipProgress(this));
+        transport.setLoopRange(te::EditTimeRange::withStartAndLength(
+            d->startPositionInSeconds, d->lengthInSeconds));
+        transport.looping = true;
+        transport.state.addListener(new ClipProgress(this));
 
-  auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
+        auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
 
-  if (muted) {
-    IF_DEBUG_CLIP cerr << "Clip marked to be muted" << endl;
-    setVolume(-100.0f);
-  }
+        if (muted) {
+          IF_DEBUG_CLIP cerr << "Clip marked to be muted" << endl;
+          setVolume(-100.0f);
+        }
 
-  auto levelMeasurerPlugin = track->getLevelMeterPlugin();
-  levelMeasurerPlugin->measurer.addClient(d->levelClient);
-  startTimerHz(30);
+        auto levelMeasurerPlugin = track->getLevelMeterPlugin();
+        levelMeasurerPlugin->measurer.addClient(d->levelClient);
+        d->startTimerHz(30);
+      }, true);
 
   d->positionsModel = new ClipAudioSourcePositionsModel(this);
   d->positionsModel->moveToThread(QCoreApplication::instance()->thread());
+  connect(d->positionsModel, &ClipAudioSourcePositionsModel::peakGainChanged, this, [&](){ d->syncAudioLevel(); });
+  connect(d->positionsModel, &QAbstractItemModel::dataChanged, this, [&](const QModelIndex& topLeft, const QModelIndex& /*bottomRight*/, const QVector< int >& roles = QVector<int>()){
+    if (topLeft.row() == 0 && roles.contains(ClipAudioSourcePositionsModel::PositionProgressRole)) {
+      syncProgress();
+    }
+  });
   SamplerSynth::instance()->registerClip(this);
 
   connect(this, &ClipAudioSource::slicePositionsChanged, this, [&](){
@@ -151,13 +196,16 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
 
 ClipAudioSource::~ClipAudioSource() {
   IF_DEBUG_CLIP cerr << "Destroying Clip" << endl;
-  stopTimer();
-  SamplerSynth::instance()->unregisterClip(this);
   stop();
-  auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
-  auto levelMeasurerPlugin = track->getLevelMeterPlugin();
-  levelMeasurerPlugin->measurer.removeClient(d->levelClient);
-  d->edit.reset();
+  SamplerSynth::instance()->unregisterClip(this);
+  Helper::callFunctionOnMessageThread(
+    [&]() {
+      d->stopTimer();
+      auto track = Helper::getOrInsertAudioTrackAt(*d->edit, 0);
+      auto levelMeasurerPlugin = track->getLevelMeterPlugin();
+      levelMeasurerPlugin->measurer.removeClient(d->levelClient);
+      d->edit.reset();
+    }, true);
 }
 
 void ClipAudioSource::setProgressCallback(void (*functionPtr)(float)) {
@@ -165,8 +213,15 @@ void ClipAudioSource::setProgressCallback(void (*functionPtr)(float)) {
 }
 
 void ClipAudioSource::syncProgress() {
-  if (d->progressChangedCallback != nullptr) {
-    d->progressChangedCallback(d->edit->getTransport().getCurrentPosition());
+  if (d->progressChangedCallback != nullptr && d->positionsModel && d->positionsModel->rowCount(QModelIndex()) > 0) {
+    if (d->nextPositionUpdateTime < QDateTime::currentMSecsSinceEpoch()) {
+      d->firstPositionProgress = d->positionsModel->data(d->positionsModel->index(0), ClipAudioSourcePositionsModel::PositionProgressRole).toDouble();
+      Q_EMIT positionChanged();
+      d->progressChangedCallback(d->firstPositionProgress * getDuration());
+      /// TODO This really wants to be 16, so we can get to 60 updates per second, but that tears to all heck without compositing, so... for now
+      // (tested with higher rates, but it tears, so while it looks like an arbitrary number, afraid it's as high as we can go)
+      d->nextPositionUpdateTime = QDateTime::currentMSecsSinceEpoch() + 100; // 10 updates per second, this is loooow...
+    }
   }
 }
 
@@ -192,18 +247,18 @@ void ClipAudioSource::setStartPosition(float startPositionInSeconds) {
 float ClipAudioSource::getStartPosition(int slice) const
 {
     if (slice > -1 && slice < d->slicePositionsCache.length()) {
-        return qMin(d->edit->getLength(), d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice]));
+        return d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice]);
     } else {
-        return qMin((float)d->edit->getLength(), d->startPositionInSeconds);
+        return d->startPositionInSeconds;
     }
 }
 
 float ClipAudioSource::getStopPosition(int slice) const
 {
     if (slice > -1 && slice + 1 < d->slicePositionsCache.length()) {
-        return qMin(d->edit->getLength(), d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice + 1]));
+        return d->startPositionInSeconds + (d->lengthInSeconds * d->slicePositionsCache[slice + 1]);
     } else {
-        return qMin((float)d->edit->getLength(), d->startPositionInSeconds + d->lengthInSeconds);
+        return d->startPositionInSeconds + d->lengthInSeconds;
     }
 }
 
@@ -286,11 +341,6 @@ tracktion_engine::AudioFile ClipAudioSource::getPlaybackFile() const {
 void ClipAudioSource::updateTempoAndPitch() {
   if (auto clip = d->getClip()) {
     auto &transport = clip->edit.getTransport();
-    bool isPlaying = transport.isPlaying();
-
-    if (isPlaying) {
-      transport.stop(false, false);
-    }
 
     IF_DEBUG_CLIP cerr << "Updating speedRatio(" << d->speedRatio << ") and pitch("
          << d->pitchChange << ")" << endl;
@@ -304,39 +354,18 @@ void ClipAudioSource::updateTempoAndPitch() {
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
         d->startPositionInSeconds, d->lengthInSeconds));
     transport.setCurrentPosition(transport.loopPoint1);
-
-    if (isPlaying) {
-      d->syncTimer->queueClipToStart(this);
-    }
   }
 }
 
-void ClipAudioSource::timerCallback() {
-  d->prevLeveldB = d->currentLeveldB;
+void ClipAudioSource::Private::timerCallback() {
+  syncAudioLevel();
 
-  d->currentLeveldB = d->levelClient.getAndClearAudioLevel(0).dB;
-
-  // Now we give the level bar fading charcteristics.
-  // And, the below coversions, decibelsToGain and gainToDecibels,
-  // take care of 0dB, which will never fade!...but a gain of 1.0 (0dB) will.
-
-  const auto prevLevel{Decibels::decibelsToGain(d->prevLeveldB)};
-
-  if (d->prevLeveldB > d->currentLeveldB)
-    d->currentLeveldB = Decibels::gainToDecibels(prevLevel * 0.94);
-
-  // the test below may save some unnecessary paints
-  if (d->currentLeveldB != d->prevLeveldB && d->audioLevelChangedCallback != nullptr) {
-    // Callback
-    d->audioLevelChangedCallback(d->currentLeveldB);
-  }
-
-  if (auto clip = d->getClip()) {
+  if (auto clip = getClip()) {
     if (clip->needsRender()) {
-        d->isRendering = true;
-    } else if (d->isRendering) {
-        d->isRendering = false;
-        Q_EMIT playbackFileChanged();
+        isRendering = true;
+    } else if (isRendering) {
+        isRendering = false;
+        Q_EMIT q->playbackFileChanged();
     }
   }
 }
@@ -344,27 +373,25 @@ void ClipAudioSource::timerCallback() {
 void ClipAudioSource::play(bool loop) {
   auto clip = d->getClip();
   IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
-  if (!clip) {
-    return;
-  }
 
-  auto &transport = d->getClip()->edit.getTransport();
-
-  transport.stop(false, false);
-  transport.setCurrentPosition(transport.loopPoint1);
-
-  if (loop) {
-    transport.play(false);
-  } else {
-    transport.playSectionAndReset(te::EditTimeRange::withStartAndLength(
-        d->startPositionInSeconds, d->lengthInSeconds));
-  }
+  ClipCommand *command = new ClipCommand();
+  command->clip = this;
+  command->changeVolume = true;
+  command->volume = 1.0;
+  command->looping = loop;
+  command->startPlayback = true;
+  command->midiNote = 60;
+  SamplerSynth::instance()->handleClipCommand(command);
 }
 
 void ClipAudioSource::stop() {
   IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << endl;
 
-  d->edit->getTransport().stop(false, false);
+  ClipCommand *command = new ClipCommand();
+  command->clip = this;
+  command->stopPlayback = true;
+  command->midiNote = 60;
+  SamplerSynth::instance()->handleClipCommand(command);
 }
 
 int ClipAudioSource::id() const
@@ -378,6 +405,16 @@ void ClipAudioSource::setId(int id)
         d->id = id;
         Q_EMIT idChanged();
     }
+}
+
+float ClipAudioSource::audioLevel() const
+{
+  return d->currentLeveldB;
+}
+
+double ClipAudioSource::position() const
+{
+  return d->firstPositionProgress;
 }
 
 QObject *ClipAudioSource::playbackPositions()
