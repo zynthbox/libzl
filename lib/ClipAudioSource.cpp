@@ -372,7 +372,7 @@ void ClipAudioSource::Private::timerCallback() {
 
 void ClipAudioSource::play(bool loop) {
   auto clip = d->getClip();
-  IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
+  IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << getFilePath() << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
 
   ClipCommand *command = new ClipCommand();
   command->clip = this;
@@ -385,7 +385,7 @@ void ClipAudioSource::play(bool loop) {
 }
 
 void ClipAudioSource::stop() {
-  IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << endl;
+  IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << getFilePath() << endl;
 
   ClipCommand *command = new ClipCommand();
   command->clip = this;
