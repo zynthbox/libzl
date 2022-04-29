@@ -98,12 +98,8 @@ ClipAudioSource *ClipAudioSource_byID(int id) {
 }
 
 ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted) {
-  ClipAudioSource *sClip;
-
-  Helper::callFunctionOnMessageThread(
-      [&]() { sClip = new ClipAudioSource(tracktionEngine, syncTimer, filepath, muted); }, true);
-
-  sClip->setParent(qApp);
+  ClipAudioSource *sClip = new ClipAudioSource(tracktionEngine, syncTimer, filepath, muted, qApp);
+  sClip->moveToThread(qApp->thread());
 
   static int clipID{1};
   sClip->setId(clipID);
@@ -252,7 +248,7 @@ void initJuce() {
     SamplerSynth::instance()->initialize(tracktionEngine);
   }, true);
 
-  qmlRegisterSingletonType<AudioLevels>("libzl", 1, 0, "AudioLevels", [](QQmlEngine *engine, QJSEngine *scriptEngine) -> QObject * {
+  qmlRegisterSingletonType<AudioLevels>("libzl", 1, 0, "AudioLevels", [](QQmlEngine */*engine*/, QJSEngine *scriptEngine) -> QObject * {
     Q_UNUSED(scriptEngine)
     if (audioLevelsInstance == nullptr) {
       audioLevelsInstance = new AudioLevels();
