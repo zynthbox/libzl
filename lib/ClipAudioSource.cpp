@@ -213,9 +213,13 @@ void ClipAudioSource::setProgressCallback(void (*functionPtr)(float)) {
 }
 
 void ClipAudioSource::syncProgress() {
-  if (d->progressChangedCallback != nullptr && d->positionsModel && d->positionsModel->rowCount(QModelIndex()) > 0) {
-    if (d->nextPositionUpdateTime < QDateTime::currentMSecsSinceEpoch()) {
-      d->firstPositionProgress = d->positionsModel->data(d->positionsModel->index(0), ClipAudioSourcePositionsModel::PositionProgressRole).toDouble();
+  if (d->nextPositionUpdateTime < QDateTime::currentMSecsSinceEpoch()) {
+    double newPosition = d->startPositionInSeconds / getDuration();
+    if (d->progressChangedCallback != nullptr && d->positionsModel && d->positionsModel->rowCount(QModelIndex()) > 0) {
+      newPosition = d->positionsModel->data(d->positionsModel->index(0), ClipAudioSourcePositionsModel::PositionProgressRole).toDouble();
+    }
+    if (abs(d->firstPositionProgress - newPosition) > 0.001) {
+      d->firstPositionProgress = newPosition;
       Q_EMIT positionChanged();
       d->progressChangedCallback(d->firstPositionProgress * getDuration());
       /// TODO This really wants to be 16, so we can get to 60 updates per second, but that tears to all heck without compositing, so... for now
@@ -354,6 +358,7 @@ void ClipAudioSource::updateTempoAndPitch() {
     transport.setLoopRange(te::EditTimeRange::withStartAndLength(
         d->startPositionInSeconds, d->lengthInSeconds));
     transport.setCurrentPosition(transport.loopPoint1);
+    syncProgress();
   }
 }
 
