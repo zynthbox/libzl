@@ -198,7 +198,9 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
                     const ClipCommand *currentVoiceCommand = voice->currentCommand();
                     if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                         voice->stopNote(0.0f, true);
-                        break;
+                        // We may have more than one thing going for the same sound on the same note, which... shouldn't
+                        // really happen, but it's ugly and we just need to deal with that when stopping, so, stop /all/
+                        // the voices where both the sound and the command match.
                     }
                 }
             }
