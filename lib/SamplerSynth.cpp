@@ -219,7 +219,9 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
                 if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                     // Update the voice with the new command
                     voice->setCurrentCommand(clipCommand);
-                    break;
+                    // We may have more than one thing going for the same sound on the same note, which... shouldn't
+                    // really happen, but it's ugly and we just need to deal with that when stopping, so, update /all/
+                    // the voices where both the sound and the command match.
                 }
             }
         }
