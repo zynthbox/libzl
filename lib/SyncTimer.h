@@ -15,6 +15,8 @@ class SyncTimerPrivate;
 class SyncTimer : public QObject {
   // HighResolutionTimer facade
   Q_OBJECT
+  Q_PROPERTY(quint64 bpm READ getBpm WRITE setBpm NOTIFY bpmChanged)
+  Q_PROPERTY(quint64 scheduleAheadAmount READ scheduleAheadAmount NOTIFY scheduleAheadAmountChanged)
 public:
   explicit SyncTimer(QObject *parent = nullptr);
   void addCallback(void (*functionPtr)(int));
@@ -51,7 +53,26 @@ public:
    * @return The number of beats per minute currently used as the basis for the timer's operation
    */
   Q_INVOKABLE quint64 getBpm() const;
+  /**
+   * \brief Sets the timer's bpm rate
+   * @param bpm The bpm you wish the timer to operate at
+   */
+  Q_INVOKABLE void setBpm(quint64 bpm);
+  Q_SIGNAL void bpmChanged();
 
+  /**
+   * \brief Returns the number of timer ticks you should schedule midi events for to ensure they won't get missed
+   * To ensure that jack doesn't miss one of your midi notes, you should schedule at least this many ticks ahead
+   * when you are inserting midi notes into the schedule. The logic is that this is the amount of ticks which will
+   * fit inside the length of buffer jack uses.
+   * If you are working out yourself, the formula for working out the full buffer length (latency) would be:
+   * (Frames [or buffer]/Sample Rate) * Period = Theoretical (or Math-derived) Latency in ms
+   * and you will want one more than will fit inside that period (so that if you end up with exactly the right
+   * conditions, you will have enough to schedule a note on both the first and last frame of a single buffer)
+   * @return The number of ticks you should schedule midi notes ahead for
+   */
+  Q_INVOKABLE quint64 scheduleAheadAmount() const;
+  Q_SIGNAL void scheduleAheadAmountChanged();
   /**
    * \brief The current beat, where that makes useful sense
    * @returns An integer from 0 through 128
@@ -61,7 +82,7 @@ public:
    * \brief The number of ticks since the timer was most recently started
    * @returns The number of times the timer has fired since it was most recently started
    */
-  quint64 cumulativeBeat() const;
+  Q_INVOKABLE quint64 cumulativeBeat() const;
 
   /**
    * \brief Schedule an audio clip to have one or more commands run on it on the next tick of the timer

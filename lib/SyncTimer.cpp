@@ -232,8 +232,8 @@ public:
     QList<void (*)(int)> callbacks;
     QHash<quint64, QList<ClipCommand *> > clipStartQueues;
     QHash<quint64, QList<ClipAudioSource *> > clipStopQueues;
-    QQueue<ClipAudioSource *> clipsStartQueue;
     QQueue<ClipAudioSource *> clipsStopQueue;
+    QQueue<ClipCommand *> clipCommandStartQueue;
 
     quint64 cumulativeBeat = 0;
     QList<juce::MidiBuffer> buffersForImmediateDispatch;
@@ -258,8 +258,8 @@ public:
         /// {
 
         if (beat == 0) {
-            for (ClipAudioSource *clip : clipsStartQueue) {
-                clip->play();
+            for (ClipCommand *command : clipCommandStartQueue) {
+                samplerSynth->handleClipCommand(command);
             }
         }
         if (clipStopQueues.contains(cumulativeBeat)) {
@@ -283,7 +283,7 @@ public:
 
         // Now that we're done doing performance intensive things, we can clean up
         if (beat == 0) {
-            clipsStartQueue.clear();
+            clipCommandStartQueue.clear();
             if (samplerSynth->engine()) {
                 qDebug() << "Current tracktion/juce CPU usage:" << samplerSynth->engine()->getDeviceManager().getCpuUsage();
             }
@@ -327,6 +327,7 @@ public:
     jack_time_t jackUsecDeficit{0};
     jack_time_t jackStartTime{0};
     quint64 skipHowMany{0};
+    quint64 jackLatency{0};
     int process(jack_nframes_t nframes) {
         if (!timerThread->isPaused() || !buffersForImmediateDispatch.isEmpty()) {
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -376,7 +377,7 @@ public:
                             // to the real-time timer, but the problem with doing that is we will end
                             // up with incorrect timing in any recorded data, which is not what we want.
                             // So, adjust Juce /and/ SyncTimerThread here, not Jack.
-                            static const quint64 maxPlayheadDeviation = 1;
+                            const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() - 1;
                             if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
                                 qDebug() << "We are ahead of the timer - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat;
                                 // This will cause a short pause in playback, which at 1 subbeat (less
@@ -495,6 +496,20 @@ static int client_process(jack_nframes_t nframes, void* arg) {
 static int client_xrun(void* arg) {
     return static_cast<SyncTimerPrivate*>(arg)->xrun();
 }
+void client_latency_callback(jack_latency_callback_mode_t mode, void *arg)
+{
+    if (mode == JackPlaybackLatency) {
+        SyncTimerPrivate *d = static_cast<SyncTimerPrivate*>(arg);
+        jack_latency_range_t range;
+        jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
+        if (range.max != d->jackLatency) {
+            jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
+            d->jackLatency = (1000 * (double)range.max) / (double)sampleRate;
+            qDebug() << "Latency changed, max is now" << range.max << "That means we will now suggest scheduling things" << d->q->scheduleAheadAmount() << "steps into the future";
+            Q_EMIT d->q->scheduleAheadAmountChanged();
+        }
+    }
+}
 
 SyncTimer::SyncTimer(QObject *parent)
     : QObject(parent)
@@ -539,6 +554,14 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                         qDebug() << "Successfully created and set up the SyncTimer's Jack client";
                         if (jack_connect(d->jackClient, "SyncTimerOut:main_out", "ZynMidiRouter:step_in") == 0) {
                             qDebug() << "Successfully created and hooked up the sync timer's jack output to the midi router's step input port";
+                            jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
+                            jack_latency_range_t range;
+                            jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
+                            jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
+                            jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
+                            d->jackLatency = (1000 * (double)range.max) / (double)sampleRate;
+                            qDebug() << "Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that includes the amount of extra buffers alsa might (and likely does) use. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
+                            Q_EMIT scheduleAheadAmountChanged();
                         } else {
                             qWarning() << "Failed to connect the SyncTimer's Jack output to ZynMidiRouter:step_in";
                         }
@@ -563,30 +586,39 @@ void SyncTimer::removeCallback(void (*functionPtr)(int)) {
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
     QMutexLocker locker(&d->mutex);
-    for (ClipAudioSource *c : d->clipsStopQueue) {
-        if (c == clip) {
-            qWarning() << "Found clip(" << c << ") in stop queue. Removing from stop queue";
-            d->clipsStopQueue.removeOne(c);
-        }
-    }
-    d->clipsStartQueue.enqueue(clip);
+    ClipCommand *command = new ClipCommand();
+    command->clip = clip;
+    command->changeVolume = true;
+    command->volume = 1.0;
+    command->looping = true;
+    command->startPlayback = true;
+    command->midiNote = 60;
+    d->clipCommandStartQueue.enqueue(command);
 }
 
 void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
     QMutexLocker locker(&d->mutex);
-    for (ClipAudioSource *c : d->clipsStartQueue) {
-        if (c == clip) {
-            qWarning() << "Found clip(" << c << ") in start queue. Removing from start queue";
-            d->clipsStartQueue.removeOne(c);
+    ClipCommand *needle{nullptr};
+    for (ClipCommand *command : d->clipCommandStartQueue) {
+        if (command->clip == clip) {
+            needle = command;
+            break;
         }
     }
-    // Immediately stop clips when queued to stop
-    clip->stop();
+    if (needle) {
+        d->clipCommandStartQueue.removeOne(needle);
+        delete needle;
+    }
+    ClipCommand *command = new ClipCommand();
+    command->clip = clip;
+    command->stopPlayback = true;
+    command->midiNote = 60;
+    d->samplerSynth->handleClipCommand(command);
 }
 
 void SyncTimer::start(int bpm) {
     qDebug() << "#### Starting timer with bpm " << bpm << " and interval " << getInterval(bpm);
-    d->timerThread->setBPM(quint64(bpm));
+    setBpm(quint64(bpm));
 #ifdef DEBUG_SYNCTIMER_TIMING
     d->intervals.clear();
     d->lastRound = frame_clock::now();
@@ -671,6 +703,21 @@ int SyncTimer::getMultiplier() {
 quint64 SyncTimer::getBpm() const
 {
     return d->timerThread->getBpm();
+}
+
+void SyncTimer::setBpm(quint64 bpm)
+{
+    // TODO Changing this requires the timer to be restarted if it's running already...
+    if (d->timerThread->getBpm() != bpm) {
+        d->timerThread->setBPM(bpm);
+        Q_EMIT bpmChanged();
+        Q_EMIT scheduleAheadAmountChanged();
+    }
+}
+
+quint64 SyncTimer::scheduleAheadAmount() const
+{
+    return d->timerThread->nanosecondsToSubbeatCount(d->timerThread->getBpm(), d->jackLatency * (float)1000000) + 1;
 }
 
 int SyncTimer::beat() const {
