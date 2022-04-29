@@ -7,6 +7,8 @@ class ClipAudioSource;
  * Roughly equivalent to a midi message, but for clips
  */
 struct ClipCommand {
+    ClipCommand() {};
+    ClipCommand(ClipAudioSource *clip, int midiNote) : clip(clip), midiNote(midiNote) {};
     ClipAudioSource* clip{nullptr};
     int midiNote{-1};
     bool startPlayback{false};
