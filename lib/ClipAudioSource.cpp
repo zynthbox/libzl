@@ -61,6 +61,7 @@ public:
 
   float startPositionInSeconds = 0;
   float lengthInSeconds = -1;
+  float lengthInBeats = -1;
   float pitchChange = 0;
   float speedRatio = 1.0;
   double currentLeveldB{0.0};
@@ -330,7 +331,13 @@ void ClipAudioSource::setLength(float beat, int bpm) {
       (quint64)bpm, (quint64)(beat * d->syncTimer->getMultiplier()));
   IF_DEBUG_CLIP cerr << "Setting Length to " << lengthInSeconds << endl;
   d->lengthInSeconds = lengthInSeconds;
+  d->lengthInBeats = beat;
   updateTempoAndPitch();
+}
+
+float ClipAudioSource::getLengthInBeats() const
+{
+  return d->lengthInBeats;
 }
 
 float ClipAudioSource::getDuration() { return d->edit->getLength(); }

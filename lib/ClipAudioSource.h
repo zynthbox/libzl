@@ -87,6 +87,11 @@ public:
   void setLooping(bool looping);
   bool getLooping() const;
   void setLength(float beat, int bpm);
+  /**
+   * \brief The length of the clip in beats
+   * @return The length of the clip in beats (that is, in quarter notes)
+   */
+  float getLengthInBeats() const;
   void setPitch(float pitchChange, bool immediate = false);
   void setSpeedRatio(float speedRatio, bool immediate = false);
   void setGain(float db);
