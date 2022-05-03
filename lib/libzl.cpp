@@ -248,12 +248,13 @@ void initJuce() {
     SamplerSynth::instance()->initialize(tracktionEngine);
   }, true);
 
+  if (audioLevelsInstance == nullptr) {
+    audioLevelsInstance = new AudioLevels();
+    QQmlEngine::setObjectOwnership(audioLevelsInstance, QQmlEngine::CppOwnership);
+  }
+
   qmlRegisterSingletonType<AudioLevels>("libzl", 1, 0, "AudioLevels", [](QQmlEngine */*engine*/, QJSEngine *scriptEngine) -> QObject * {
     Q_UNUSED(scriptEngine)
-    if (audioLevelsInstance == nullptr) {
-      audioLevelsInstance = new AudioLevels();
-      QQmlEngine::setObjectOwnership(audioLevelsInstance, QQmlEngine::CppOwnership);
-    }
 
     return audioLevelsInstance;
   });
