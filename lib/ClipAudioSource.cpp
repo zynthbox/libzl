@@ -64,8 +64,8 @@ public:
   float lengthInBeats = -1;
   float pitchChange = 0;
   float speedRatio = 1.0;
-  double currentLeveldB{0.0};
-  double prevLeveldB{0.0};
+  double currentLeveldB{-400.0};
+  double prevLeveldB{-400.0};
   int id{0};
   ClipAudioSourcePositionsModel *positionsModel{nullptr};
   // Default is 16, but we also need to generate the positions, so that is set up in the ClipAudioSource ctor
