@@ -40,27 +40,15 @@ Q_OBJECT
      * \brief Left Capture channel audio level in decibels
      */
     Q_PROPERTY(float captureA MEMBER captureA NOTIFY audioLevelsChanged)
-
     /**
      * \brief Right Capture channel audio level in decibels
      */
     Q_PROPERTY(float captureB MEMBER captureB NOTIFY audioLevelsChanged)
 
     /**
-     * \brief Left Synth playback channel audio level in decibels
-     */
-    Q_PROPERTY(float synthA MEMBER synthA NOTIFY audioLevelsChanged)
-
-    /**
-     * \brief Right Synth playback channel audio level in decibels
-     */
-    Q_PROPERTY(float synthB MEMBER synthB NOTIFY audioLevelsChanged)
-
-    /**
      * \brief Left system playback channel audio level in decibels
      */
     Q_PROPERTY(float playbackA MEMBER playbackA NOTIFY audioLevelsChanged)
-
     /**
      * \brief Right system playback channel audio level in decibels
      */
@@ -97,8 +85,6 @@ private:
     jack_status_t audioLevelsJackStatus{};
     jack_port_t* capturePortA{nullptr};
     jack_port_t* capturePortB{nullptr};
-    jack_port_t* synthPortA{nullptr};
-    jack_port_t* synthPortB{nullptr};
     jack_port_t* playbackPortA{nullptr};
     jack_port_t* playbackPortB{nullptr};
     jack_port_t* tracksPortA[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
@@ -106,15 +92,12 @@ private:
 
     float capturePeakA{0.0f},
           capturePeakB{0.0f},
-          synthPeakA{0.0f},
-          synthPeakB{0.0f},
           playbackPeakA{0.0f},
           playbackPeakB{0.0f},
           tracksPeakA[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
           tracksPeakB[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
     float captureA{-200.0f}, captureB{-200.0f};
-    float synthA{-200.0f}, synthB{-200.0f};
     float playbackA{-200.0f}, playbackB{-200.0f};
     float tracksA[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
           tracksB[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};

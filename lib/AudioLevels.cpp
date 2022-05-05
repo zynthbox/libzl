@@ -44,21 +44,6 @@ AudioLevels::AudioLevels(QObject *parent) : QObject(parent) {
         0
       );
 
-      synthPortA = jack_port_register(
-        audioLevelsJackClient,
-        "synth_port_a",
-        JACK_DEFAULT_AUDIO_TYPE,
-        JackPortIsInput,
-        0
-      );
-      synthPortB = jack_port_register(
-        audioLevelsJackClient,
-        "synth_port_b",
-        JACK_DEFAULT_AUDIO_TYPE,
-        JackPortIsInput,
-        0
-      );
-
       playbackPortA = jack_port_register(
         audioLevelsJackClient,
         "playback_port_a",
@@ -158,15 +143,11 @@ void AudioLevels::timerCallback() {
 int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     capturePeakA = 0.0f;
     capturePeakB = 0.0f;
-    synthPeakA = 0.0f;
-    synthPeakB = 0.0f;
     playbackPeakA = 0.0f;
     playbackPeakB = 0.0f;
 
     jack_default_audio_sample_t *captureBufA{(jack_default_audio_sample_t *)jack_port_get_buffer(capturePortA, nframes)},
                                 *captureBufB{(jack_default_audio_sample_t *)jack_port_get_buffer(capturePortB, nframes)},
-                                *synthBufA{(jack_default_audio_sample_t *)jack_port_get_buffer(synthPortA, nframes)},
-                                *synthBufB{(jack_default_audio_sample_t *)jack_port_get_buffer(synthPortB, nframes)},
                                 *playbackBufA{(jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortA, nframes)},
                                 *playbackBufB{(jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortB, nframes)},
                                 *tracksBufA[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
@@ -182,8 +163,6 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     for (jack_nframes_t i=0; i<nframes; i++) {
         const float captureSampleA = fabs(captureBufA[i]) * 0.2,
                     captureSampleB = fabs(captureBufB[i]) * 0.2,
-                    synthSampleA = fabs(synthBufA[i]) * 0.2,
-                    synthSampleB = fabs(synthBufB[i]) * 0.2,
                     playbackSampleA = fabs(playbackBufA[i]) * 0.2,
                     playbackSampleB = fabs(playbackBufB[i]) * 0.2;
 
@@ -192,13 +171,6 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
         }
         if (captureSampleB > capturePeakB) {
             capturePeakB = captureSampleB;
-        }
-
-        if (synthSampleA > synthPeakA) {
-            synthPeakA = synthSampleA;
-        }
-        if (synthSampleB > synthPeakB) {
-            synthPeakB = synthSampleB;
         }
 
         if (playbackSampleA > playbackPeakA) {
@@ -223,15 +195,11 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
 
     const float captureDbA{convertTodbFS(capturePeakA)},
                 captureDbB{convertTodbFS(capturePeakB)},
-                synthDbA{convertTodbFS(synthPeakA)},
-                synthDbB{convertTodbFS(synthPeakB)},
                 playbackDbA{convertTodbFS(playbackPeakA)},
                 playbackDbB{convertTodbFS(playbackPeakB)};
 
     captureA = captureDbA <= -200 ? -200 : captureDbA;
     captureB = captureDbB <= -200 ? -200 : captureDbB;
-    synthA = synthDbA <= -200 ? -200 : synthDbA;
-    synthB = synthDbB <= -200 ? -200 : synthDbB;
     playbackA = playbackDbA <= -200 ? -200 : playbackDbA;
     playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
 
