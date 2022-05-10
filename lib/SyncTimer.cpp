@@ -328,6 +328,8 @@ public:
     jack_time_t jackStartTime{0};
     quint64 jackLatency{0};
     int process(jack_nframes_t nframes) {
+        auto buffer = jack_port_get_buffer(jackPort, nframes);
+        jack_midi_clear_buffer(buffer);
         if (!timerThread->isPaused() || !buffersForImmediateDispatch.isEmpty()) {
 #ifdef DEBUG_SYNCTIMER_JACK
             quint64 stepCount = 0;
@@ -347,8 +349,6 @@ public:
 
             // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
             if (mutex.tryLock(period_usecs / 4000)) {
-                auto buffer = jack_port_get_buffer(jackPort, nframes);
-                jack_midi_clear_buffer(buffer);
 
                 const jack_time_t subbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
                 const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
