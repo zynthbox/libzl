@@ -326,7 +326,6 @@ public:
     jack_time_t jackMostRecentNextUsecs{0};
     jack_time_t jackUsecDeficit{0};
     jack_time_t jackStartTime{0};
-    quint64 skipHowMany{0};
     quint64 jackLatency{0};
     int process(jack_nframes_t nframes) {
         if (!timerThread->isPaused() || !buffersForImmediateDispatch.isEmpty()) {
@@ -358,7 +357,6 @@ public:
                         // first run for this playback session, let's do a touch of setup
                         jackStartTime = current_usecs;
                         jackUsecDeficit = 0;
-                        skipHowMany = 0;
                     } else {
                         if (jackMostRecentNextUsecs < current_usecs) {
                             // That means we have skipped some cycles somehow - let's work out what to do about that!
@@ -377,13 +375,12 @@ public:
                             // to the real-time timer, but the problem with doing that is we will end
                             // up with incorrect timing in any recorded data, which is not what we want.
                             // So, adjust Juce /and/ SyncTimerThread here, not Jack.
-                            const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() - 1;
+                            const quint64 notesPerFrame = microsecondsPerFrame / subbeatLengthInMicroseconds;
+                            const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() - notesPerFrame;
                             if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
-                                qDebug() << "We are ahead of the timer - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat;
-                                // This will cause a short pause in playback, which at 1 subbeat (less
-                                // than 4ms at 120bpm) should be imperceptible, and help make the playback
-                                // stay in sync. Why this happens, i have no idea, but here we are.
-                                skipHowMany += 1;
+                                const quint64 excessBeats = (jackPlayhead - cumulativeBeat) - maxPlayheadDeviation;
+                                timerThread->addAdjustmentByMicroseconds(qint64(subbeatLengthInMicroseconds * qMax(notesPerFrame, excessBeats)));
+                                qDebug() << "We are ahead of the timer by" << excessBeats << "ticks - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat << "- the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
                             }
                             // No need to handle being behind, the while loop below handles that already
                         }
@@ -391,7 +388,7 @@ public:
                     jackMostRecentNextUsecs = next_usecs;
                 }
 
-                jack_time_t nextPlaybackPosition = jackStartTime + (timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), jackPlayhead + skipHowMany) / 1000);
+                jack_time_t nextPlaybackPosition = jackStartTime + (timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), jackPlayhead) / 1000);
                 jack_nframes_t firstAvailableFrame{0};
                 jack_nframes_t relativePosition{0};
 
