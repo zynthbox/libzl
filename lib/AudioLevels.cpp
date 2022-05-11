@@ -84,10 +84,10 @@ AudioLevels::AudioLevels(QObject *parent) : QObject(parent) {
           static_cast<void*>(this)
         ) != 0
       ) {
-        qWarning() << "Failed to set the Audio Levels Jack Client processing callback" << endl;
+        qWarning() << "Failed to set the Audio Levels Jack Client processing callback";
       } else {
         if (jack_activate(audioLevelsJackClient) == 0) {
-          qWarning() << "Successfully created and set up the Audio Levels Jack client" << endl;
+          qWarning() << "Successfully created and set up the Audio Levels Jack client";
 
           if (jack_connect(audioLevelsJackClient, "system:capture_1", jack_port_name(capturePortA)) == 0) {
               qDebug() << "Successfully connected audio level jack output to the system capture port A";
@@ -113,11 +113,11 @@ AudioLevels::AudioLevels(QObject *parent) : QObject(parent) {
               qWarning() << "Failed to connect audio level jack output to the system playback port B";
           }
         } else {
-          qWarning() << "Failed to activate Audio Levels Jack client" << endl;
+          qWarning() << "Failed to activate Audio Levels Jack client";
         }
       }
     } else {
-      qWarning() << "Error initializing Audio Levels Jack Client zynthiloops_client" << endl;
+      qWarning() << "Error initializing Audio Levels Jack Client zynthiloops_client";
     }
 
     startTimerHz(30);
