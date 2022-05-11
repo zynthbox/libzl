@@ -4,6 +4,7 @@
 #include "ClipCommand.h"
 #include "libzl.h"
 #include "Helper.h"
+#include "MidiRouter.h"
 #include "SamplerSynth.h"
 
 #include <QDebug>
@@ -518,6 +519,8 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
     cerr << "Adding callback " << functionPtr << endl;
     d->callbacks.append(functionPtr);
     if (!d->jackClient) {
+        // First instantiate out midi router, so we can later connect to it...
+        MidiRouter::instance();
         // Open the client.
         jack_status_t real_jack_status{};
         d->jackClient = jack_client_open(
@@ -549,8 +552,8 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                     // Activate the client.
                     if (jack_activate(d->jackClient) == 0) {
                         qDebug() << "Successfully created and set up the SyncTimer's Jack client";
-                        if (jack_connect(d->jackClient, "SyncTimerOut:main_out", "ZynMidiRouter:step_in") == 0) {
-                            qDebug() << "Successfully created and hooked up the sync timer's jack output to the midi router's step input port";
+                        if (jack_connect(d->jackClient, "SyncTimerOut:main_out", "ZLRouter:MidiIn") == 0) {
+                            qDebug() << "Successfully created and hooked up the sync timer's jack output to the midi router's input port";
                             jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
                             jack_latency_range_t range;
                             jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
@@ -560,7 +563,7 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                             qDebug() << "Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that includes the amount of extra buffers alsa might (and likely does) use. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
                             Q_EMIT scheduleAheadAmountChanged();
                         } else {
-                            qWarning() << "Failed to connect the SyncTimer's Jack output to ZynMidiRouter:step_in";
+                            qWarning() << "Failed to connect the SyncTimer's Jack output to ZLRouter:MidiIn";
                         }
                     } else {
                         qWarning() << "Failed to activate SyncTimer Jack client";
