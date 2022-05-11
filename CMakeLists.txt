@@ -36,6 +36,7 @@ target_sources(libzl
         lib/libzl.cpp
         lib/ClipAudioSource.cpp
         lib/ClipAudioSourcePositionsModel.cpp
+        lib/MidiRouter.cpp
         lib/SamplerSynth.cpp
         lib/SamplerSynthSound.cpp
         lib/SamplerSynthVoice.cpp
@@ -51,6 +52,7 @@ set(libzl_subheaders
     lib/JUCEHeaders.h
     lib/ClipAudioSource.h
     lib/ClipCommand.h
+    lib/MidiRouter.h
     lib/SamplerSynth.h
     lib/SyncTimer.h)
 
