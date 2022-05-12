@@ -114,9 +114,9 @@ public:
                 event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
                 jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size);
                 if (outputToExternal && output->destination == MidiRouter::ExternalDestination) {
-                    // Then reset it to the origin
-                    event.buffer[0] = event.buffer[0] + eventChannel - currentChannel;
                     if (output->externalChannel > -1) {
+                        // Reset it to the origin before reworking to the new channel
+                        event.buffer[0] = event.buffer[0] + eventChannel - currentChannel;
                         qDebug() << "ZLRouter: Hardware Event: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel;
                         event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
                     }
