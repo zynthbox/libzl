@@ -1,6 +1,7 @@
 #include "MidiRouter.h"
 
 #include <QDebug>
+#include <QTimer>
 
 #include <jack/jack.h>
 #include <jack/midiport.h>
@@ -33,10 +34,11 @@ public:
     QList<ChannelOutput*> outputs;
 
     void connectPorts(const QString &from, const QString &to) {
-        if (jack_connect(jackClient, from.toUtf8(), to.toUtf8()) == 0) {
-            qDebug() << "ZLRouter: Successfully connected" << from << "with" << to;
+        int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
+        if (result == 0 || result == EEXIST) {
+            qDebug() << "ZLRouter:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to;
         } else {
-            qWarning() << "ZLRouter: Failed to connect" << from << "with" << to;
+            qWarning() << "ZLRouter: Failed to connect" << from << "with" << to << "with error code" << result;
         }
     }
     void disconnectPorts(const QString &from, const QString &to) {
@@ -49,16 +51,21 @@ public:
     }
 
     int process(jack_nframes_t nframes) {
+        // Get all our output channels' buffers and clear them, if there was one previously set.
+        // A little overly protective, given how lightweight the functions are, but might as well
+        // be lighter-weight about it.
         for (ChannelOutput *output : outputs) {
             if (output->channelBuffer) {
                 jack_midi_clear_buffer(output->channelBuffer);
                 output->channelBuffer = nullptr;
             }
         }
-        void *inputBuffer = jack_port_get_buffer(midiInPort, nframes);
-        uint32_t events = jack_midi_get_event_count(inputBuffer);
+        // Get and clear our passthrough buffer
         void *passthroughBuffer = jack_port_get_buffer(passthroughPort, nframes);
         jack_midi_clear_buffer(passthroughBuffer);
+        // First handle input coming from our own inputs, because we gotta start somewhere
+        void *inputBuffer = jack_port_get_buffer(midiInPort, nframes);
+        uint32_t events = jack_midi_get_event_count(inputBuffer);
         ChannelOutput *output{nullptr};
         jack_midi_event_t event;
         int eventChannel{-1};
@@ -137,10 +144,11 @@ public:
         return 0;
     }
 
+    QTimer *hardwareInputConnector{nullptr};
     void connectHardwareInputs() {
         const char **ports = jack_get_ports(jackClient, nullptr, JACK_DEFAULT_MIDI_TYPE, JackPortIsPhysical | JackPortIsOutput);
         for (const char **p = ports; *p; p++) {
-            qDebug() << "ZLRouter: Found a midi event out-spitter" << *p;
+            // TODO Maybe we want to filter this by what is set in webconf, probably?
             connectPorts(QString::fromLocal8Bit(*p), QLatin1String{"ZLRouter:ExternalInput"});
         }
         free(ports);
@@ -152,6 +160,12 @@ static int client_process(jack_nframes_t nframes, void* arg) {
 }
 static int client_xrun(void* arg) {
     return static_cast<MidiRouterPrivate*>(arg)->xrun();
+}
+static void client_port_registration(jack_port_id_t /*port*/, int /*registering*/, void *arg) {
+    QMetaObject::invokeMethod(static_cast<MidiRouterPrivate*>(arg)->hardwareInputConnector, "start");
+}
+static void client_registration(const char */*name*/, int /*registering*/, void *arg) {
+    QMetaObject::invokeMethod(static_cast<MidiRouterPrivate*>(arg)->hardwareInputConnector, "start");
 }
 
 MidiRouter::MidiRouter(QObject *parent)
@@ -186,6 +200,12 @@ MidiRouter::MidiRouter(QObject *parent)
                 qWarning() << "ZLRouter: Failed to set the ZLRouter Jack processing callback";
             } else {
                 jack_set_xrun_callback(d->jackClient, client_xrun, static_cast<void*>(d));
+                d->hardwareInputConnector = new QTimer(this);
+                d->hardwareInputConnector->setSingleShot(true);
+                d->hardwareInputConnector->setInterval(300);
+                connect(d->hardwareInputConnector, &QTimer::timeout, this, [this](){ d->connectHardwareInputs(); });
+                jack_set_port_registration_callback(d->jackClient, client_port_registration, static_cast<void*>(d));
+                jack_set_client_registration_callback(d->jackClient, client_registration, static_cast<void*>(d));
                 // Activate the client.
                 if (jack_activate(d->jackClient) == 0) {
                     qDebug() << "ZLRouter: Successfully created and set up the ZLRouter's Jack client";
@@ -215,7 +235,7 @@ MidiRouter::MidiRouter(QObject *parent)
                 0
             );
             if (d->externalInput) {
-                d->connectHardwareInputs();
+                d->hardwareInputConnector->start();
             } else {
                 qWarning() << "ZLRouter: Could not register ZLRouter Jack input port for external equipment";
             }
