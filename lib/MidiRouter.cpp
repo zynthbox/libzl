@@ -6,6 +6,9 @@
 #include <jack/jack.h>
 #include <jack/midiport.h>
 
+// Set this to true to emit a bunch more debug output when the router is operating
+#define DebugZLRouter false
+
 struct ChannelOutput {
     ChannelOutput(int channel) : channel(channel) {}
     int channel{-1};
@@ -36,17 +39,18 @@ public:
     void connectPorts(const QString &from, const QString &to) {
         int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
         if (result == 0 || result == EEXIST) {
-            qDebug() << "ZLRouter:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to;
+            if (DebugZLRouter) { qDebug() << "ZLRouter:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to; }
         } else {
             qWarning() << "ZLRouter: Failed to connect" << from << "with" << to << "with error code" << result;
         }
     }
     void disconnectPorts(const QString &from, const QString &to) {
         // Don't attempt to connect already connected ports
-        if (jack_disconnect(jackClient, from.toUtf8(), to.toUtf8()) == 0) {
-            qDebug() << "ZLRouter: Successfully disconnected" << from << "from" << to;
+        int result = jack_disconnect(jackClient, from.toUtf8(), to.toUtf8());
+        if (result == 0) {
+            if (DebugZLRouter) { qDebug() << "ZLRouter: Successfully disconnected" << from << "from" << to; }
         } else {
-            qWarning() << "ZLRouter: Failed to disconnect" << from << "from" << to;
+            qWarning() << "ZLRouter: Failed to disconnect" << from << "from" << to << "with error code" << result;
         }
     }
 
@@ -85,13 +89,13 @@ public:
                 }
                 jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size);
                 if (output->destination == MidiRouter::ExternalDestination && output->externalChannel > -1) {
-                    qDebug() << "ZLRouter: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel;
+                    if (DebugZLRouter) { qDebug() << "ZLRouter: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
                     event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
                 }
                 if (jack_midi_event_write(output->channelBuffer, 0, event.buffer, event.size) == ENOBUFS) {
                     qWarning() << "ZLRouter: Ran out of space while writing events!";
                 } else {
-                    qDebug() << "ZLRouter: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName;
+                    if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName; }
                 }
             } else {
                 qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
@@ -124,13 +128,13 @@ public:
                     if (output->externalChannel > -1) {
                         // Reset it to the origin before reworking to the new channel
                         event.buffer[0] = event.buffer[0] + eventChannel - currentChannel;
-                        qDebug() << "ZLRouter: Hardware Event: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel;
+                        if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
                         event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
                     }
                     if (jack_midi_event_write(output->channelBuffer, 0, event.buffer, event.size) == ENOBUFS) {
                         qWarning() << "ZLRouter: Hardware Event: Ran out of space while writing events!";
                     } else {
-                        qDebug() << "ZLRouter: Hardware Event: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName;
+                        if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName; }
                     }
                 }
             } else {
