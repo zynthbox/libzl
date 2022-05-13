@@ -277,6 +277,7 @@ void ClipAudioSource::setPitch(float pitchChange, bool immediate) {
   } else {
     updateTempoAndPitch();
   }
+  d->isRendering = true;
 }
 
 void ClipAudioSource::setSpeedRatio(float speedRatio, bool immediate) {
@@ -289,6 +290,7 @@ void ClipAudioSource::setSpeedRatio(float speedRatio, bool immediate) {
   } else {
     updateTempoAndPitch();
   }
+  d->isRendering = true;
 }
 
 void ClipAudioSource::setGain(float db) {
@@ -296,6 +298,7 @@ void ClipAudioSource::setGain(float db) {
     IF_DEBUG_CLIP cerr << "Setting gain : " << db;
     clip->setGainDB(db);
   }
+  d->isRendering = true;
 }
 
 void ClipAudioSource::setVolume(float vol) {
@@ -381,9 +384,7 @@ void ClipAudioSource::Private::timerCallback() {
   syncAudioLevel();
 
   if (auto clip = getClip()) {
-    if (clip->needsRender()) {
-        isRendering = true;
-    } else if (isRendering) {
+    if (!clip->needsRender() && isRendering) {
         isRendering = false;
         Q_EMIT q->playbackFileChanged();
     }
