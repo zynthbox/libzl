@@ -1,6 +1,7 @@
 #include "MidiRouter.h"
 
 #include <QDebug>
+#include <QProcessEnvironment>
 #include <QTimer>
 
 #include <jack/jack.h>
@@ -28,6 +29,12 @@ public:
         }
         qDeleteAll(outputs);
     };
+
+    bool constructing{true};
+    bool filterMidiOut{false};
+    QStringList disabledMidiInPorts;
+    QStringList enabledMidiOutPorts;
+    QStringList enabledMidiFbPorts;
 
     int currentChannel{0};
     jack_client_t* jackClient{nullptr};
@@ -87,7 +94,13 @@ public:
                 if (!output->channelBuffer) {
                     output->channelBuffer = jack_port_get_buffer(output->port, nframes);
                 }
-                jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size);
+                if (output->destination != MidiRouter::NoDestination) {
+                    if (jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size) == ENOBUFS) {
+                        qWarning() << "ZLRouter: Ran out of space while writing events!";
+                    } else {
+                        if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to passthrough buffer on channel" << currentChannel << "for port" << output->portName; }
+                    }
+                }
                 if (output->destination == MidiRouter::ExternalDestination && output->externalChannel > -1) {
                     if (DebugZLRouter) { qDebug() << "ZLRouter: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
                     event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
@@ -102,8 +115,7 @@ public:
             }
         }
         jack_midi_clear_buffer(inputBuffer);
-        // Now handle all the hardware input - but, importantly, only in case the current channel actually
-        // targets external, otherwise just skip those (as zynthian handles that itself)
+        // Now handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
         output = outputs[currentChannel];
         bool outputToExternal{currentChannel < outputs.count()};
         inputBuffer = jack_port_get_buffer(externalInput, nframes);
@@ -118,13 +130,28 @@ public:
             }
             eventChannel = (event.buffer[0] & 0xf);
             if (eventChannel > -1 && eventChannel < outputs.count()) {
-                if (outputToExternal && !output->channelBuffer) {
+                if (!output->channelBuffer) {
                     output->channelBuffer = jack_port_get_buffer(output->port, nframes);
                 }
-                // First pass through the note to the channel we're expecting notes on internally...
+                // Pass through the note to the channel we're expecting notes on internally...
                 event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
-                jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size);
-                if (outputToExternal && output->destination == MidiRouter::ExternalDestination) {
+                if (output->destination != MidiRouter::NoDestination) {
+                    if (jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size) == ENOBUFS) {
+                        qWarning() << "ZLRouter: Hardware Event: Ran out of space while writing events!";
+                    } else {
+                        if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: Wrote event to passthrough buffer on channel" << currentChannel << "for port" << output->portName; }
+                    }
+                }
+                // If the track targets zynthian, pass it directly through to there
+                if (output->destination == MidiRouter::ZynthianDestination) {
+                    if (jack_midi_event_write(output->channelBuffer, 0, event.buffer, event.size) == ENOBUFS) {
+                        qWarning() << "ZLRouter: Hardware Event: Ran out of space while writing events!";
+                    } else {
+                        if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName; }
+                    }
+                }
+                // If we're supposed to target the external thing, do that, with adjustments as expected
+                if (outputToExternal && (output->destination == MidiRouter::ExternalDestination || filterMidiOut)) {
                     if (output->externalChannel > -1) {
                         // Reset it to the origin before reworking to the new channel
                         event.buffer[0] = event.buffer[0] + eventChannel - currentChannel;
@@ -152,10 +179,36 @@ public:
     void connectHardwareInputs() {
         const char **ports = jack_get_ports(jackClient, nullptr, JACK_DEFAULT_MIDI_TYPE, JackPortIsPhysical | JackPortIsOutput);
         for (const char **p = ports; *p; p++) {
-            // TODO Maybe we want to filter this by what is set in webconf, probably?
-            connectPorts(QString::fromLocal8Bit(*p), QLatin1String{"ZLRouter:ExternalInput"});
+            const QString inputPortName{QString::fromLocal8Bit(*p)};
+            if (disabledMidiInPorts.contains(inputPortName)) {
+                disconnectPorts(inputPortName, QLatin1String{"ZLRouter:ExternalInput"});
+            } else {
+                connectPorts(inputPortName, QLatin1String{"ZLRouter:ExternalInput"});
+            }
         }
         free(ports);
+    }
+
+    void disconnectFromOutputs(ChannelOutput *output) {
+        const QString portName = QString("ZLRouter:%1").arg(output->portName);
+        if (output->destination == MidiRouter::ZynthianDestination) {
+            disconnectPorts(portName, QLatin1String{"ZynMidiRouter:step_in"});
+        } else if (output->destination == MidiRouter::ExternalDestination) {
+            for (const QString &externalPort : enabledMidiOutPorts) {
+                disconnectPorts(portName, externalPort);
+            }
+        }
+    }
+
+    void connectToOutputs(ChannelOutput *output) {
+        const QString portName = QString("ZLRouter:%1").arg(output->portName);
+        if (output->destination == MidiRouter::ZynthianDestination) {
+            connectPorts(portName, QLatin1String{"ZynMidiRouter:step_in"});
+        } else if (output->destination == MidiRouter::ExternalDestination) {
+            for (const QString &externalPort : enabledMidiOutPorts) {
+                connectPorts(portName, externalPort);
+            }
+        }
     }
 };
 
@@ -176,6 +229,8 @@ MidiRouter::MidiRouter(QObject *parent)
     : QObject(parent)
     , d(new MidiRouterPrivate)
 {
+    // First, load up our configuration (TODO: also remember to reload it when the config changes)
+    reloadConfiguration();
     // Open the client.
     jack_status_t real_jack_status{};
     d->jackClient = jack_client_open(
@@ -249,6 +304,7 @@ MidiRouter::MidiRouter(QObject *parent)
     } else {
         qWarning() << "ZLRouter: Could not create the ZLRouter Jack client.";
     }
+    d->constructing = false;
 }
 
 MidiRouter::~MidiRouter()
@@ -262,10 +318,9 @@ void MidiRouter::setChannelDestination(int channel, MidiRouter::RoutingDestinati
         ChannelOutput *output = d->outputs[channel];
         output->externalChannel = externalChannel;
         if (output->destination != destination) {
-            const QString portName = QString("ZLRouter:%1").arg(output->portName);
-            d->disconnectPorts(portName, QLatin1String{output->destination == ZynthianDestination ? "ZynMidiRouter:step_in" : "ttymidi:MIDI_out"});
+            d->disconnectFromOutputs(output);
             output->destination = destination;
-            d->connectPorts(portName, QLatin1String{output->destination == ZynthianDestination ? "ZynMidiRouter:step_in" : "ttymidi:MIDI_out"});
+            d->connectToOutputs(output);
         }
     }
 }
@@ -281,4 +336,57 @@ void MidiRouter::setCurrentChannel(int currentChannel)
 int MidiRouter::currentChannel() const
 {
     return d->currentChannel;
+}
+
+void MidiRouter::reloadConfiguration()
+{
+    // TODO Make the fb stuff work as well... (also, note to self, work out what that stuff actually is?)
+    if (!d->constructing) {
+        // First, disconnect our outputs, just in case...
+        for (ChannelOutput *output : d->outputs) {
+            d->disconnectFromOutputs(output);
+        }
+    }
+    // If 0, zynthian expects no midi to be routed externally, and if 1 it expects everything to go out
+    // So, in our parlance, that means that 1 means route events external for anything on a Zynthian channel, and for non-Zynthian channels, use our own rules
+    QString envVar = qgetenv("ZYNTHIAN_MIDI_FILTER_OUTPUT");
+    if (envVar.isEmpty()) {
+        if (DebugZLRouter) { qDebug() << "No env var data for output filtering, setting default"; }
+        envVar = "0";
+    }
+    d->filterMidiOut = envVar.toInt();
+    envVar = qgetenv("ZYNTHIAN_MIDI_PORTS");
+    if (envVar.isEmpty()) {
+        if (DebugZLRouter) { qDebug() << "No env var data for midi ports, setting default"; }
+        envVar = "DISABLED_IN=\\nENABLED_OUT=ttymidi:MIDI_out\\nENABLED_FB=";
+    }
+    const QStringList midiPorts = envVar.split("\\n");
+    for (const QString &portOptions : midiPorts) {
+        const QStringList splitOptions{portOptions.split("=")};
+        if (splitOptions.length() == 2) {
+            if (splitOptions[0] == "DISABLED_IN") {
+                d->disabledMidiInPorts = splitOptions[1].split(",");
+            } else if (splitOptions[0] == "ENABLED_OUT") {
+                d->enabledMidiOutPorts = splitOptions[1].split(",");
+            } else if (splitOptions[0] == "ENABLED_FB") {
+                d->enabledMidiFbPorts = splitOptions[1].split(",");
+            }
+        } else {
+            qWarning() << "ZLRouter: Malformed option in the midi ports variable - we expected a single = in the following string, and encountered two:" << portOptions;
+        }
+    }
+    if (DebugZLRouter) {
+        qDebug() << "ZLRouter: Loaded settings, which are now:";
+        qDebug() << "Filter midi out?" << d->filterMidiOut;
+        qDebug() << "Disabled midi input devices:" << d->disabledMidiInPorts;
+        qDebug() << "Enabled midi output devices:" << d->enabledMidiOutPorts;
+        qDebug() << "Enabled midi fb devices:" << d->enabledMidiFbPorts;
+    }
+    if (!d->constructing) {
+        // Reconnect out outputs after reloading
+        for (ChannelOutput *output : d->outputs) {
+            d->connectToOutputs(output);
+        }
+        d->connectHardwareInputs();
+    }
 }

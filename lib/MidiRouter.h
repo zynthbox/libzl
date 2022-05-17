@@ -32,9 +32,10 @@ public:
     virtual ~MidiRouter();
 
     enum RoutingDestination {
-        NoDestination = 0,
-        ZynthianDestination = 1,
-        ExternalDestination = 2,
+        NoDestination = 0, // Don't route any events on this channel (including to the passthrough port)
+        ZynthianDestination = 1, // Route all events to Zynthian
+        ExternalDestination = 2, // Route all events to the enabled external ports
+        SamplerDestination = 3, // Route all events only to passthrough (which is then handled elsewhere for distribution to the sampler)
     };
     /**
      * \brief Where notes on a specific midi channel should be routed
@@ -50,6 +51,11 @@ public:
     void setCurrentChannel(int currentChannel);
     int currentChannel() const;
     Q_SIGNAL void currentChannelChanged();
+
+    /**
+     * \brief Call this function to reload the midi routing configuration and set ports back up
+     */
+    Q_SLOT void reloadConfiguration();
 private:
     MidiRouterPrivate *d{nullptr};
 };
