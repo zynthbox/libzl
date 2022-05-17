@@ -377,7 +377,7 @@ public:
                             // up with incorrect timing in any recorded data, which is not what we want.
                             // So, adjust Juce /and/ SyncTimerThread here, not Jack.
                             const quint64 notesPerFrame = microsecondsPerFrame / subbeatLengthInMicroseconds;
-                            const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() - notesPerFrame;
+                            const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() / 2;
                             if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
                                 const quint64 excessBeats = (jackPlayhead - cumulativeBeat) - maxPlayheadDeviation;
                                 timerThread->addAdjustmentByMicroseconds(qint64(subbeatLengthInMicroseconds * qMax(notesPerFrame, excessBeats)));
@@ -717,7 +717,7 @@ void SyncTimer::setBpm(quint64 bpm)
 
 quint64 SyncTimer::scheduleAheadAmount() const
 {
-    return d->timerThread->nanosecondsToSubbeatCount(d->timerThread->getBpm(), d->jackLatency * (float)1000000) + 1;
+    return (d->timerThread->nanosecondsToSubbeatCount(d->timerThread->getBpm(), d->jackLatency * (float)1000000)) * 2;
 }
 
 int SyncTimer::beat() const {
