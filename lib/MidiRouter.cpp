@@ -39,8 +39,14 @@ public:
     int currentChannel{0};
     jack_client_t* jackClient{nullptr};
     jack_port_t *midiInPort{nullptr};
-    jack_port_t *passthroughPort{nullptr};
     jack_port_t *externalInput{nullptr};
+
+    jack_port_t *passthroughPort{nullptr};
+    jack_port_t *hardwareInPassthrough{nullptr};
+    jack_port_t *zynthianOutput{nullptr};
+    jack_port_t *samplerOutput{nullptr};
+    jack_port_t *externalOutput{nullptr};
+
     QList<ChannelOutput*> outputs;
 
     void connectPorts(const QString &from, const QString &to) {
@@ -49,6 +55,7 @@ public:
             if (DebugZLRouter) { qDebug() << "ZLRouter:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to; }
         } else {
             qWarning() << "ZLRouter: Failed to connect" << from << "with" << to << "with error code" << result;
+            // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
         }
     }
     void disconnectPorts(const QString &from, const QString &to) {
@@ -58,6 +65,15 @@ public:
             if (DebugZLRouter) { qDebug() << "ZLRouter: Successfully disconnected" << from << "from" << to; }
         } else {
             qWarning() << "ZLRouter: Failed to disconnect" << from << "from" << to << "with error code" << result;
+        }
+    }
+
+    // Really just a convenience function because it makes it easier to read things below while retaining the errorhandling/debug stuff
+    static inline void writeEventToBuffer(const jack_midi_event_t &event, void *buffer, int currentChannel, ChannelOutput *output) {
+        if (jack_midi_event_write(buffer, event.time, event.buffer, event.size) == ENOBUFS) {
+            qWarning() << "ZLRouter: Ran out of space while writing events!";
+        } else {
+            if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to buffer on channel" << currentChannel << "for port" << output->portName; }
         }
     }
 
@@ -71,9 +87,17 @@ public:
                 output->channelBuffer = nullptr;
             }
         }
-        // Get and clear our passthrough buffer
+        // Get and clear our passthrough buffers
         void *passthroughBuffer = jack_port_get_buffer(passthroughPort, nframes);
         jack_midi_clear_buffer(passthroughBuffer);
+        void *hardwareInPassthroughBuffer = jack_port_get_buffer(hardwareInPassthrough, nframes);
+        jack_midi_clear_buffer(hardwareInPassthroughBuffer);
+        void *zynthianOutputBuffer = jack_port_get_buffer(zynthianOutput, nframes);
+        jack_midi_clear_buffer(zynthianOutputBuffer);
+        void *samplerOutputBuffer = jack_port_get_buffer(samplerOutput, nframes);
+        jack_midi_clear_buffer(samplerOutputBuffer);
+        void *externalOutputBuffer = jack_port_get_buffer(externalOutput, nframes);
+        jack_midi_clear_buffer(externalOutputBuffer);
         // First handle input coming from our own inputs, because we gotta start somewhere
         void *inputBuffer = jack_port_get_buffer(midiInPort, nframes);
         uint32_t events = jack_midi_get_event_count(inputBuffer);
@@ -95,20 +119,26 @@ public:
                     output->channelBuffer = jack_port_get_buffer(output->port, nframes);
                 }
                 if (output->destination != MidiRouter::NoDestination) {
-                    if (jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size) == ENOBUFS) {
-                        qWarning() << "ZLRouter: Ran out of space while writing events!";
-                    } else {
-                        if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to passthrough buffer on channel" << currentChannel << "for port" << output->portName; }
+                    writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
+                    if (output->destination == MidiRouter::ExternalDestination && output->externalChannel > -1) {
+                        if (DebugZLRouter) { qDebug() << "ZLRouter: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
+                        event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
                     }
-                }
-                if (output->destination == MidiRouter::ExternalDestination && output->externalChannel > -1) {
-                    if (DebugZLRouter) { qDebug() << "ZLRouter: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
-                    event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
-                }
-                if (jack_midi_event_write(output->channelBuffer, 0, event.buffer, event.size) == ENOBUFS) {
-                    qWarning() << "ZLRouter: Ran out of space while writing events!";
-                } else {
-                    if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName; }
+                    writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
+                    switch (output->destination) {
+                        case MidiRouter::ZynthianDestination:
+                            writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, output);
+                            break;
+                        case MidiRouter::SamplerDestination:
+                            writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
+                            break;
+                        case MidiRouter::ExternalDestination:
+                            writeEventToBuffer(event, externalOutputBuffer, eventChannel, output);
+                        case MidiRouter::NoDestination:
+                        default:
+                            // Do nothing here
+                            break;
+                    }
                 }
             } else {
                 qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
@@ -137,34 +167,29 @@ public:
                     // Pass through the note to the channel we're expecting notes on internally...
                     event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
                     if (output->destination != MidiRouter::NoDestination) {
-                        if (jack_midi_event_write(passthroughBuffer, 0, event.buffer, event.size) == ENOBUFS) {
-                            qWarning() << "ZLRouter: Hardware Event: Ran out of space while writing events!";
-                        } else {
-                            if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: Wrote event to passthrough buffer on channel" << currentChannel << "for port" << output->portName; }
-                        }
+                        writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
                     }
                     // If the track targets zynthian, pass it directly through to there
                     if (output->destination == MidiRouter::ZynthianDestination) {
-                        if (jack_midi_event_write(output->channelBuffer, 0, event.buffer, event.size) == ENOBUFS) {
-                            qWarning() << "ZLRouter: Hardware Event: Ran out of space while writing events!";
-                        } else {
-                            if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName; }
-                        }
+                        writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
+                        writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, output);
+                    }
+                    // If the track targets the sampler, send things to the sampeler destination buffer
+                    else if (output->destination == MidiRouter::ZynthianDestination) {
+                        writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
                     }
                     // If we're supposed to target the external thing, do that, with adjustments as expected
-                    if (outputToExternal && (output->destination == MidiRouter::ExternalDestination || filterMidiOut)) {
+                    else if (outputToExternal && (output->destination == MidiRouter::ExternalDestination || filterMidiOut)) {
                         if (output->externalChannel > -1) {
                             // Reset it to the origin before reworking to the new channel
                             event.buffer[0] = event.buffer[0] + eventChannel - currentChannel;
                             if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
                             event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
                         }
-                        if (jack_midi_event_write(output->channelBuffer, 0, event.buffer, event.size) == ENOBUFS) {
-                            qWarning() << "ZLRouter: Hardware Event: Ran out of space while writing events!";
-                        } else {
-                            if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: Wrote event of size" << event.size << "to channel" << eventChannel << "which is on port" << output->portName; }
-                        }
+                        writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
+                        writeEventToBuffer(event, externalOutputBuffer, eventChannel, output);
                     }
+                    writeEventToBuffer(event, hardwareInPassthroughBuffer, eventChannel, output);
                 } else {
                     qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
                 }
@@ -286,6 +311,22 @@ MidiRouter::MidiRouter(QObject *parent)
             d->passthroughPort = jack_port_register(d->jackClient, "Passthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
             if (!d->passthroughPort) {
                 qWarning() << "ZLRouter: Could not register ZLRouter Jack passthrough port";
+            }
+            d->hardwareInPassthrough = jack_port_register(d->jackClient, "HardwareInPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+            if (!d->hardwareInPassthrough) {
+                qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
+            }
+            d->externalOutput = jack_port_register(d->jackClient, "ExternalOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+            if (!d->externalOutput) {
+                qWarning() << "ZLRouter: Could not register ZLRouter Jack External destination output port";
+            }
+            d->zynthianOutput = jack_port_register(d->jackClient, "ZynthianOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+            if (!d->zynthianOutput) {
+                qWarning() << "ZLRouter: Could not register ZLRouter Jack Zynthian destination output port";
+            }
+            d->samplerOutput = jack_port_register(d->jackClient, "SamplerOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+            if (!d->samplerOutput) {
+                qWarning() << "ZLRouter: Could not register ZLRouter Jack Sampler destination output port";
             }
             // Now hook up the hardware inputs
             d->externalInput = jack_port_register(

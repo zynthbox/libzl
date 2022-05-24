@@ -10,6 +10,15 @@ class MidiRouterPrivate;
  * By default everything will be routed to ZynMidiRouter without changing the event's channel.
  * To route anywhere else, use  the function setChannelDestination() to set up your redirections.
  * Note that setting the external channel will only affect channels set to ExternalDestination.
+ *
+ * In addition to the specific destinations above, there are a set of ports that you can listen
+ * to to get all notes going to those specific locations:
+ *
+ * ZLRouter:Passthrough sends out all notes except those on input channels set to no destination
+ * ZLRouter:HardwareInPassthrough sends out all notes that came in from externally connected midi hardware
+ * ZLRouter:ExternalOut will send out notes also sent to the enabled external ports
+ * ZLRouter:ZynthianOut will send out notes also sent to Zynthian destinations
+ * ZLRouter:SamplerOut will send out notes also sent to the sampler
  */
 class MidiRouter : public QObject
 {
