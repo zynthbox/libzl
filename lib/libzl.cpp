@@ -10,8 +10,13 @@
 
 #include "libzl.h"
 
+#include <unistd.h>
 #include <iostream>
+#include <chrono>
+using namespace std::chrono;
+
 #include <jack/jack.h>
+
 #include <QDebug>
 #include <QTimer>
 #include <QtQml/qqml.h>
@@ -233,20 +238,41 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
 /// END SyncTimer API Bridge
 //////////////
 
-void initJuce() {
-  cerr << "### INIT JUCE\n";
-  elThread.startThread();
+class ZLEngineBehavior : public te::EngineBehaviour {
+  bool autoInitialiseDeviceManager() override { return false; }
+};
 
-  Helper::callFunctionOnMessageThread([&](){
+void initJuce() {
+  qDebug() << "### JUCE initialisation start";
+  elThread.startThread();
+  qDebug() << "Started juce event loop, initialising...";
+
+  bool initialisationCompleted{false};
+  auto juceInitialiser = [&](){
     qDebug() << "Getting us an engine";
-    tracktionEngine = new te::Engine("libzl");
-    qDebug() << "Initialising device manager";
-    tracktionEngine->getDeviceManager().initialise(0, 2);
+    tracktionEngine = new te::Engine("libzl", nullptr, std::make_unique<ZLEngineBehavior>());
     qDebug() << "Setting device type to JACK";
     tracktionEngine->getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
+    qDebug() << "Initialising device manager";
+    tracktionEngine->getDeviceManager().initialise(0, 2);
     qDebug() << "Initialising SamplerSynth";
     SamplerSynth::instance()->initialize(tracktionEngine);
-  }, true);
+    qDebug() << "Initialisation completed";
+    initialisationCompleted = true;
+  };
+  auto start = high_resolution_clock::now();
+  while (!initialisationCompleted) {
+    Helper::callFunctionOnMessageThread(juceInitialiser, true, 10000);
+    if (!initialisationCompleted) {
+      qWarning() << "Failed to initialise juce in 10 seconds, retrying...";
+      if (tracktionEngine) {
+        delete tracktionEngine;
+        tracktionEngine = nullptr;
+      }
+    }
+  }
+  auto duration = duration_cast<milliseconds>(high_resolution_clock::now() - start);
+  qDebug() << "### JUCE initialisation took" << duration.count() << "ms";
 
   if (audioLevelsInstance == nullptr) {
     audioLevelsInstance = new AudioLevels();
