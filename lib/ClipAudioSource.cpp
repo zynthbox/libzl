@@ -355,7 +355,7 @@ const char *ClipAudioSource::getFilePath() const {
 
 tracktion_engine::AudioFile ClipAudioSource::getPlaybackFile() const {
     if (const auto& clip = d->getClip()) {
-        return clip->getAudioFile();
+        return clip->getPlaybackFile();
     }
     return te::AudioFile(*d->engine);
 }
