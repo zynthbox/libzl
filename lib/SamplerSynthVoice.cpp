@@ -9,6 +9,15 @@
 #include <QDebug>
 #include <QThread>
 
+static inline float velocityToGain(const float &velocity) {
+//     static const float sensibleMinimum{log10(1.0f/127.0f)};
+//     if (velocity == 0) {
+//         return 0;
+//     }
+//     return (sensibleMinimum-log10(velocity))/sensibleMinimum;
+    return velocity;
+}
+
 class SamplerSynthVoicePrivate {
 public:
     SamplerSynthVoicePrivate() {
@@ -69,8 +78,8 @@ void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
         if (clipCommand->changeVolume) {
             d->clipCommand->volume = clipCommand->volume;
             d->clipCommand->changeVolume = true;
-            d->lgain = d->clipCommand->volume;
-            d->rgain = d->clipCommand->volume;
+            d->lgain = velocityToGain(d->clipCommand->volume);
+            d->rgain = velocityToGain(d->clipCommand->volume);
         }
         if (clipCommand->changeSlice) {
             d->clipCommand->slice = clipCommand->slice;
@@ -99,7 +108,7 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
         d->pitchRatio = std::pow (2.0, (midiNoteNumber - sound->rootMidiNote()) / 12.0)
                         * sound->sourceSampleRate() / getSampleRate();
 
-        d->startTick = d->syncTimer->cumulativeBeat();
+        d->startTick = d->syncTimer->jackPlayhead();
         d->maxSampleDeviation = d->syncTimer->subbeatCountToSeconds(d->syncTimer->getBpm(), 1) * sound->sourceSampleRate();
         d->clip = sound->clip();
         d->sourceSampleLength = d->clip->getDuration() * sound->sourceSampleRate();
@@ -124,8 +133,8 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
         }, Qt::QueuedConnection);
         QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "requestPositionID", Qt::QueuedConnection, Q_ARG(void*, this), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
 
-        d->lgain = velocity;
-        d->rgain = velocity;
+        d->lgain = velocityToGain(velocity);
+        d->rgain = velocityToGain(velocity);
 
         d->adsr.setSampleRate (sound->sourceSampleRate());
         d->adsr.setParameters (sound->params());
@@ -174,24 +183,6 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
 
             const int stopPosition = playingSound->stopPosition(d->clipCommand->slice);
             const int sampleDuration = playingSound->length();
-
-            // beat align samples by reading clip duration in beats from clip, saving curentbeat in voice on startNote, and adjust in if (looping) section of process, and make sure the loop is restarted on that beat if deviation is sufficiently large (like... one timer tick is too much maybe?)
-            // If the clip is a looping type (otherwise we don't really care enough)
-            const double localSampleDeviationAllowance{qMax(d->maxSampleDeviation, (numSamples * getSampleRate() / playingSound->sourceSampleRate()))};
-            if (d->clipCommand->looping
-                // and the clip is actually a clean multiple of a number of beats
-                && trunc(d->clip->getLengthInBeats()) == d->clip->getLengthInBeats()
-                // and we are currently at some multiple of that beat duration in the playback loop
-                && (quint64(d->syncTimer->cumulativeBeat() - d->startTick) % quint64(d->clip->getLengthInBeats() * d->syncTimer->getMultiplier())) == 0
-                // and we are at a higher deviation from the start point than we accept
-                && ((d->sourceSamplePosition - (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate())) > localSampleDeviationAllowance)
-                // and also at a higher deviation from the end point...
-                && (abs(d->sourceSamplePosition - stopPosition) > localSampleDeviationAllowance))
-            {
-                qDebug() << "Resetting playback for" << d->clip->getFilePath() << "due to not matching what we think the position should be, with start point deviation at" << (d->sourceSamplePosition - (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate())) << "and end point deviation" << abs(d->sourceSamplePosition - stopPosition) << "of an accepted" << localSampleDeviationAllowance;
-                // TODO Switch start position for the loop position here
-                d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
-            }
             while (--numSamples >= 0)
             {
                 auto pos = (int) d->sourceSamplePosition;
@@ -222,17 +213,17 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
                 d->sourceSamplePosition += d->pitchRatio;
 
                 if (d->clipCommand->looping) {
-                    if (d->sourceSamplePosition > stopPosition)
+                    if (d->sourceSamplePosition >= stopPosition)
                     {
                         // TODO Switch start position for the loop position here
                         d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
                     }
                 } else {
-                    if (d->sourceSamplePosition > stopPosition)
+                    if (d->sourceSamplePosition >= stopPosition)
                     {
                         stopNote (0.0f, false);
                         break;
-                    } else if (d->sourceSamplePosition > (stopPosition - (d->adsr.getParameters().release * playingSound->sourceSampleRate()))) {
+                    } else if (d->sourceSamplePosition >= (stopPosition - (d->adsr.getParameters().release * playingSound->sourceSampleRate()))) {
                         // ...really need a way of telling that this has been done already (it's not dangerous, just not pretty, there's maths in there)
                         stopNote (0.0f, true);
                     }
@@ -241,6 +232,25 @@ void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int s
                     stopNote(0.0f, false);
                     break;
                 }
+            }
+
+            // beat align samples by reading clip duration in beats from clip, saving curentbeat in voice on startNote, and adjust in if (looping) section of process, and make sure the loop is restarted on that beat if deviation is sufficiently large (like... one timer tick is too much maybe?)
+            const double localSampleDeviationAllowance = 8 * getSampleRate() / playingSound->sourceSampleRate(); //qMax(d->maxSampleDeviation, (numSamples * getSampleRate() / playingSound->sourceSampleRate())) / 4;
+            if (d->clipCommand
+                // If the clip is a looping type (otherwise we don't really care enough)
+                && d->clipCommand->looping
+                // and the clip is actually a clean multiple of a number of beats
+                && trunc(d->clip->getLengthInBeats()) == d->clip->getLengthInBeats()
+                // and we are currently at some multiple of that beat duration in the playback loop
+                && (quint64(d->syncTimer->jackPlayhead() - d->startTick) % quint64(d->clip->getLengthInBeats() * d->syncTimer->getMultiplier())) == 0
+                // and we are at a higher deviation from the start point than we accept
+                && ((d->sourceSamplePosition - (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate())) > localSampleDeviationAllowance)
+                // and also at a higher deviation from the end point...
+                && (abs(d->sourceSamplePosition - stopPosition) > localSampleDeviationAllowance))
+            {
+//                 qDebug() << "Resetting playback for" << d->clip->getFilePath() << "due to not matching what we think the position should be, with start point deviation at" << (d->sourceSamplePosition - (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate())) << "and end point deviation" << abs(d->sourceSamplePosition - stopPosition) << "of an accepted" << localSampleDeviationAllowance;
+                // TODO Switch start position for the loop position here
+                d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
             }
             // Because it might have gone away after being stopped above, so let's try and not crash
             if (d->clip && d->clipPositionId > -1) {
