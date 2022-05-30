@@ -85,6 +85,14 @@ public:
   Q_INVOKABLE quint64 cumulativeBeat() const;
 
   /**
+   * \brief Used only for playback purposes, for synchronising the sampler synth loop playback
+   * In short - you probably don't need this, unless you need to sync specifically with jack's internal playback position
+   * (which is the most recent tick for stuff put into a jack buffer)
+   * @returns The internal jack playback position
+   */
+  quint64 jackPlayhead() const;
+
+  /**
    * \brief Schedule an audio clip to have one or more commands run on it on the next tick of the timer
    * If a command with the associated clip is already scheduled at the position and the given midiNote you're attempting to schedule it into,
    * this function will change the existing to match any new settings (that is, things marked to be done on the command
@@ -100,13 +108,6 @@ public:
     * @param clipCommand The clip command which has just been sent to SamplerSynth
     */
   Q_SIGNAL void clipCommandSent(ClipCommand *clipCommand);
-  /**
-   * \brief Schedule an audio clip to stop on the next tick of the timer
-   * If the clip is already scheduled at the position you're attempting to schedule it into, this function will not add multiple
-   * @param clip The audio clip you wish to stop playback of
-   * @param delay A delay in number of timer ticks counting from the current position
-   */
-  void scheduleClipToStop(ClipAudioSource *clip, quint64 delay);
 
   /**
    * \brief Schedule a note message to be sent on the next tick of the timer

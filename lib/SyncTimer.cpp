@@ -232,9 +232,7 @@ public:
     int beat = 0;
     QList<void (*)(int)> callbacks;
     QHash<quint64, QList<ClipCommand *> > clipStartQueues;
-    QHash<quint64, QList<ClipAudioSource *> > clipStopQueues;
-    QQueue<ClipAudioSource *> clipsStopQueue;
-    QQueue<ClipCommand *> clipCommandStartQueue;
+    QList<ClipCommand*> sentOutClips;
 
     quint64 cumulativeBeat = 0;
     QList<juce::MidiBuffer> buffersForImmediateDispatch;
@@ -252,71 +250,52 @@ public:
         intervals << (thisRound - lastRound).count();
         lastRound = thisRound;
 #endif
-        /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-        ///      Performance Intensive Stuff Goes Below Here
-        /// avoid allocations, list changes, etc if at all possible
-        /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-        /// {
-
-        if (beat == 0) {
-            for (ClipCommand *command : clipCommandStartQueue) {
-                samplerSynth->handleClipCommand(command);
+        const quint64 maxPlayheadDeviation = ceil(float(q->scheduleAheadAmount()) / 2.0f);
+        while (cumulativeBeat < (jackPlayhead + maxPlayheadDeviation)) {
+            // Call any callbacks registered to us
+            for (auto cb : callbacks) {
+                cb(beat);
             }
-        }
-        if (clipStopQueues.contains(cumulativeBeat)) {
-            const QList<ClipAudioSource *> &clips = clipStopQueues[cumulativeBeat];
-            for (ClipAudioSource *clip : clips) {
-                clip->stop();
-            }
-        }
-        if (clipStartQueues.contains(cumulativeBeat)) {
-            const QList<ClipCommand *> &clips = clipStartQueues[cumulativeBeat];
-            for (ClipCommand *clipCommand : clips) {
-                samplerSynth->handleClipCommand(clipCommand);
-            }
-        }
 
-        /// }
-        /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-        ///      Performance Intensive Stuff Goes Above Here
-        /// avoid allocations, list changes, etc if at all possible
-        /// =+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-
-        // Now that we're done doing performance intensive things, we can clean up
-        if (beat == 0) {
-            clipCommandStartQueue.clear();
-            if (samplerSynth->engine()) {
+            // Spit out a touch of useful information on beat zero
+            if (beat == 0 && samplerSynth->engine()) {
                 qDebug() << "Current tracktion/juce CPU usage:" << samplerSynth->engine()->getDeviceManager().getCpuUsage();
             }
+
+            // Increase the current beat as we understand it
+            beat = (beat + 1) % (BeatSubdivisions * 4);
+            ++cumulativeBeat;
         }
-        // Make sure any listeners are aware that we've actually sent off the command they asked us to
-        if (clipStartQueues.contains(cumulativeBeat)) {
-            const QList<ClipCommand *> &clips = clipStartQueues[cumulativeBeat];
-            for (ClipCommand *clipCommand : clips) {
+
+        // Finally, remove old queues that are sufficiently far behind us in time.
+        // That is to say, get rid of any queues that are older than the current jack playback position
+        if (mutex.tryLock(timerThread->getInterval().count() / 5000000)) {
+            // First get rid of any midi queues that have already been sent out
+            QMutableHashIterator<quint64, MidiBuffer> midiBufferQueuesIterator(midiMessageQueues);
+            while (midiBufferQueuesIterator.hasNext()) {
+                midiBufferQueuesIterator.next();
+                if (midiBufferQueuesIterator.key() >= jackPlayhead) {
+                    break;
+                }
+                midiBufferQueuesIterator.remove();
+            }
+
+            // Then clear any clip commands that are in the past
+            QMutableHashIterator<quint64, QList< ClipCommand* > > clipCommandQueuesIterator(clipStartQueues);
+            while (clipCommandQueuesIterator.hasNext()) {
+                clipCommandQueuesIterator.next();
+                if (clipCommandQueuesIterator.key() >= jackPlayhead) {
+                    break;
+                }
+                clipCommandQueuesIterator.remove();
+            }
+
+            // Finally, notify any listeners that commands have been sent out
+            for (ClipCommand *clipCommand : sentOutClips) {
                 Q_EMIT q->clipCommandSent(clipCommand);
             }
-        }
-        // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
-        clipStopQueues.remove(cumulativeBeat);
-        clipStartQueues.remove(cumulativeBeat);
-
-        // Logically, we consider these low-priority (if you need high precision output, things should be scheduled for next beat)
-        for (auto cb : callbacks) {
-            cb(beat);
-        }
-
-        beat = (beat + 1) % (BeatSubdivisions * 4);
-        ++cumulativeBeat;
-
-        // Finally, remove old queues that are sufficiently far behind us in
-        // time. If our latency is big enough that a tail this long causes problems,
-        // then there's not a lot we can reasonably do without eating all the memory.
-        if (mutex.tryLock(timerThread->getInterval().count() / 5000000)) {
-            quint64 i{16};
-            while (midiMessageQueues.contains(cumulativeBeat - i)) {
-                midiMessageQueues.remove(cumulativeBeat - i);
-                ++i;
-            }
+            // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
+            sentOutClips.clear();
             mutex.unlock();
         }
     }
@@ -358,33 +337,33 @@ public:
                         // first run for this playback session, let's do a touch of setup
                         jackStartTime = current_usecs;
                         jackUsecDeficit = 0;
-                    } else {
-                        if (jackMostRecentNextUsecs < current_usecs) {
-                            // That means we have skipped some cycles somehow - let's work out what to do about that!
-                            const qint64 adjustment = qint64(current_usecs - jackMostRecentNextUsecs);
-                            jackUsecDeficit += quint64(adjustment);
-                            timerThread->addAdjustmentByMicroseconds(adjustment);
-                            qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds and the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
-                        } else {
-                            // TODO We will need to treat Jack as the canonical time reference or risk
-                            // ending in in more trouble. In short, we are going to have to never skip
-                            // anything here, but rather ask SyncTimer to adjust itself, and then also
-                            // ensure that Juce's playback is synchronised with Jack's position, not
-                            // the other way around. Since we are recording through jack, that is the
-                            // time that is actually important (otherwise the recording will be unsynced,
-                            // which is the more critical path). The code below makes Jack synchronise
-                            // to the real-time timer, but the problem with doing that is we will end
-                            // up with incorrect timing in any recorded data, which is not what we want.
-                            // So, adjust Juce /and/ SyncTimerThread here, not Jack.
-                            const quint64 notesPerFrame = microsecondsPerFrame / subbeatLengthInMicroseconds;
-                            const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() / 2;
-                            if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
-                                const quint64 excessBeats = (jackPlayhead - cumulativeBeat) - maxPlayheadDeviation;
-                                timerThread->addAdjustmentByMicroseconds(qint64(subbeatLengthInMicroseconds * qMax(notesPerFrame, excessBeats)));
-                                qDebug() << "We are ahead of the timer by" << excessBeats << "ticks - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat << "- the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
-                            }
-                            // No need to handle being behind, the while loop below handles that already
-                        }
+//                     } else {
+//                         if (jackMostRecentNextUsecs < current_usecs) {
+//                             // That means we have skipped some cycles somehow - let's work out what to do about that!
+//                             const qint64 adjustment = qint64(current_usecs - jackMostRecentNextUsecs);
+//                             jackUsecDeficit += quint64(adjustment);
+//                             timerThread->addAdjustmentByMicroseconds(adjustment);
+//                             qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds and the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
+//                         } else {
+//                             // TODO We will need to treat Jack as the canonical time reference or risk
+//                             // ending in in more trouble. In short, we are going to have to never skip
+//                             // anything here, but rather ask SyncTimer to adjust itself, and then also
+//                             // ensure that Juce's playback is synchronised with Jack's position, not
+//                             // the other way around. Since we are recording through jack, that is the
+//                             // time that is actually important (otherwise the recording will be unsynced,
+//                             // which is the more critical path). The code below makes Jack synchronise
+//                             // to the real-time timer, but the problem with doing that is we will end
+//                             // up with incorrect timing in any recorded data, which is not what we want.
+//                             // So, adjust Juce /and/ SyncTimerThread here, not Jack.
+//                             const quint64 notesPerFrame = microsecondsPerFrame / subbeatLengthInMicroseconds;
+//                             const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() / 2;
+//                             if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
+//                                 const quint64 excessBeats = (jackPlayhead - cumulativeBeat) - maxPlayheadDeviation;
+//                                 timerThread->addAdjustmentByMicroseconds(qint64(subbeatLengthInMicroseconds * qMax(notesPerFrame, excessBeats)));
+//                                 qDebug() << "We are ahead of the timer by" << excessBeats << "ticks - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat << "- the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
+//                             }
+//                             // No need to handle being behind, the while loop below handles that already
+//                         }
                     }
                     jackMostRecentNextUsecs = next_usecs;
                 }
@@ -393,6 +372,7 @@ public:
                 jack_nframes_t firstAvailableFrame{0};
                 jack_nframes_t relativePosition{0};
 
+                // Firstly, send out any buffers we've been told to send out immediately
                 if (!buffersForImmediateDispatch.isEmpty()) {
                     for (const juce::MidiBuffer &juceBuffer : buffersForImmediateDispatch) {
                         relativePosition = firstAvailableFrame;
@@ -424,6 +404,7 @@ public:
                 if (!timerThread->isPaused()) {
                     // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
                     while (nextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
+                        // First send out any notes we have to send out
                         const juce::MidiBuffer &juceBuffer = midiMessageQueues[jackPlayhead];
                         if (!juceBuffer.isEmpty()) {
                             // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
@@ -456,6 +437,15 @@ public:
                             frameSteps << jackPlayhead;
 #endif
                         }
+                        // Then do direct-control samplersynth things
+                        if (clipStartQueues.contains(jackPlayhead)) {
+                            const QList<ClipCommand *> &clips = clipStartQueues[jackPlayhead];
+                            for (ClipCommand *clipCommand : clips) {
+                                samplerSynth->handleClipCommand(clipCommand);
+                            }
+                            sentOutClips.append(clips);
+                        }
+                        // Next roll for next time
                         ++jackPlayhead;
                         nextPlaybackPosition += subbeatLengthInMicroseconds;
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -585,7 +575,6 @@ void SyncTimer::removeCallback(void (*functionPtr)(int)) {
 }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
-    QMutexLocker locker(&d->mutex);
     ClipCommand *command = new ClipCommand();
     command->clip = clip;
     command->changeVolume = true;
@@ -593,22 +582,32 @@ void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
     command->looping = true;
     command->startPlayback = true;
     command->midiNote = 60;
-    d->clipCommandStartQueue.enqueue(command);
+
+    const quint64 nextJackZeroBeat = d->timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->jackPlayhead % (BeatSubdivisions * 4));
+    const quint64 nextZeroBeat = d->timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->cumulativeBeat % (BeatSubdivisions * 4));
+//     qDebug() << "Queueing up" << clip << "to start, with jack and timer zero beats at" << nextJackZeroBeat << "and" << nextZeroBeat << "respectively at beats" << d->jackPlayhead << d->cumulativeBeat;
+    scheduleClipCommand(command, qMax(nextZeroBeat, nextJackZeroBeat));
 }
 
 void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
     QMutexLocker locker(&d->mutex);
-    ClipCommand *needle{nullptr};
-    for (ClipCommand *command : d->clipCommandStartQueue) {
-        if (command->clip == clip) {
-            needle = command;
-            break;
+
+    // First, remove any references to the clip that we're wanting to stop
+    QHash<quint64, QList<ClipCommand *> >::iterator queuesIterator = d->clipStartQueues.begin();
+    while (queuesIterator != d->clipStartQueues.end()) {
+        QMutableListIterator<ClipCommand *> stepIterator(queuesIterator.value());
+        while (stepIterator.hasNext()) {
+            stepIterator.next();
+            if (stepIterator.value()->clip == clip) {
+                delete stepIterator.value();
+                stepIterator.remove();
+                break;
+            }
         }
+        ++queuesIterator;
     }
-    if (needle) {
-        d->clipCommandStartQueue.removeOne(needle);
-        delete needle;
-    }
+
+    // Then stop it, now, because it should be now
     ClipCommand *command = new ClipCommand();
     command->clip = clip;
     command->stopPlayback = true;
@@ -623,7 +622,6 @@ void SyncTimer::start(int bpm) {
     d->intervals.clear();
     d->lastRound = frame_clock::now();
 #endif
-    d->jackPlayhead = 0;
     d->timerThread->resume();
 }
 
@@ -635,17 +633,9 @@ void SyncTimer::stop() {
         d->timerThread->pause();
     }
 
-    for (ClipAudioSource *clip : d->clipsStopQueue) {
-        clip->stop();
-    }
-
-    QHashIterator<quint64, QList<ClipAudioSource *> > iterator(d->clipStopQueues);
-    while (iterator.hasNext()) {
-        iterator.next();
-        for (ClipAudioSource *clip : iterator.value()) {
-            clip->stop();
-        }
-    }
+    d->beat = 0;
+    d->cumulativeBeat = 0;
+    d->jackPlayhead = 0;
 
     // A touch of hackery to spit out all the queued midi messages immediately, but in strict order, and only off notes...
     for (const juce::MidiBuffer& buffer : d->midiMessageQueues) {
@@ -659,10 +649,9 @@ void SyncTimer::stop() {
             d->buffersForImmediateDispatch.append(onlyOffs);
         }
     }
-
-    d->beat = 0;
-    d->cumulativeBeat = 0;
     d->midiMessageQueues.clear();
+
+    // Make sure all the clip commands are handled to a useful degree
     for (QList<ClipCommand *> startQueue : d->clipStartQueues) {
         for (ClipCommand *clipCommand : startQueue) {
             // Actually run all the commands (so we don't end up in a weird state), but also
@@ -674,11 +663,15 @@ void SyncTimer::stop() {
         }
     }
     d->clipStartQueues.clear();
-    d->clipStopQueues.clear();
+    // Make sure we're actually informing about any clips that have been sent out, in case we
+    // hit somewhere between a jack roll and a synctimer tick
+    for (ClipCommand *clipCommand : d->sentOutClips) {
+        Q_EMIT clipCommandSent(clipCommand);
+    }
+    d->sentOutClips.clear();
 #ifdef DEBUG_SYNCTIMER_TIMING
     qDebug() << d->intervals;
 #endif
-    d->clipsStopQueue.clear();
 }
 
 int SyncTimer::getInterval(int bpm) {
@@ -728,124 +721,129 @@ quint64 SyncTimer::cumulativeBeat() const {
     return d->cumulativeBeat;
 }
 
-void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
+quint64 SyncTimer::jackPlayhead() const
 {
-    d->mutex.lock();
-    if (!d->clipStartQueues.contains(d->cumulativeBeat + delay)) {
-        d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipCommand*>{};
-    }
-    QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
-    bool foundExisting{false};
-    for (ClipCommand *clipCommand : clips) {
-        if (clipCommand->equivalentTo(clip)) {
-            if (clip->changeLooping) {
-                clipCommand->looping = clip->looping;
-                clipCommand->changeLooping = true;
-            }
-            if (clip->changePitch) {
-                clipCommand->pitchChange = clip->pitchChange;
-                clipCommand->changePitch = true;
-            }
-            if (clip->changeSpeed) {
-                clipCommand->speedRatio = clip->speedRatio;
-                clipCommand->changeSpeed = true;
-            }
-            if (clip->changeGainDb) {
-                clipCommand->gainDb = clip->gainDb;
-                clipCommand->changeGainDb = true;
-            }
-            if (clip->changeVolume) {
-                clipCommand->volume = clip->volume;
-                clipCommand->changeVolume = true;
-            }
-            if (clip->startPlayback) {
-                clipCommand->startPlayback = true;
-            }
-            foundExisting = true;
-        }
-    }
-    if (foundExisting) {
-        delete clip;
-    } else {
-        clips << clip;
-    }
-    d->mutex.unlock();
+    return d->jackPlayhead;
 }
 
-void SyncTimer::scheduleClipToStop(ClipAudioSource *clip, quint64 delay)
+// TODO Maybe don't schedule clips for somewhere prior to the jack playhead?
+void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
 {
-    d->mutex.lock();
-    if (!d->clipStopQueues.contains(d->cumulativeBeat + delay)) {
-        d->clipStopQueues[d->cumulativeBeat + delay] = QList<ClipAudioSource*>{};
+    // Don't schedule things that aren't going to be played, that's just silly
+    // (that is, don't do things with stuff that jack is already past anyway)
+    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
+        d->mutex.lock();
+        if (!d->clipStartQueues.contains(d->cumulativeBeat + delay)) {
+            d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipCommand*>{};
+        }
+        QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
+        bool foundExisting{false};
+        for (ClipCommand *clipCommand : clips) {
+            if (clipCommand->equivalentTo(clip)) {
+                if (clip->changeLooping) {
+                    clipCommand->looping = clip->looping;
+                    clipCommand->changeLooping = true;
+                }
+                if (clip->changePitch) {
+                    clipCommand->pitchChange = clip->pitchChange;
+                    clipCommand->changePitch = true;
+                }
+                if (clip->changeSpeed) {
+                    clipCommand->speedRatio = clip->speedRatio;
+                    clipCommand->changeSpeed = true;
+                }
+                if (clip->changeGainDb) {
+                    clipCommand->gainDb = clip->gainDb;
+                    clipCommand->changeGainDb = true;
+                }
+                if (clip->changeVolume) {
+                    clipCommand->volume = clip->volume;
+                    clipCommand->changeVolume = true;
+                }
+                if (clip->startPlayback) {
+                    clipCommand->startPlayback = true;
+                }
+                foundExisting = true;
+            }
+        }
+        if (foundExisting) {
+            delete clip;
+        } else {
+            clips << clip;
+        }
+        d->mutex.unlock();
     }
-    QList<ClipAudioSource*> &clips = d->clipStopQueues[d->cumulativeBeat + delay];
-    if (!clips.contains(clip)) {
-        clips << clip;
-    }
-    d->mutex.unlock();
 }
 
 void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay)
 {
-    unsigned char note[3];
-    if (setOn) {
-        note[0] = 0x90 + midiChannel;
-    } else {
-        note[0] = 0x80 + midiChannel;
-    }
-    note[1] = midiNote;
-    note[2] = velocity;
-    const int onOrOff = setOn ? 1 : 0;
-    d->mutex.lock();
-    if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
-        d->midiMessageQueues[d->cumulativeBeat + delay].addEvent(note, 3, onOrOff);
-    } else {
-        MidiBuffer buffer;
-        buffer.addEvent(note, 3, onOrOff);
-        d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
-    }
-    d->mutex.unlock();
-    if (setOn && duration > 0) {
-        // Schedule an off note for that position
-        scheduleNote(midiNote, midiChannel, false, 64, 0, delay + duration);
+    // Don't schedule things that aren't going to be played, that's just silly
+    // (that is, don't do things with stuff that jack is already past anyway)
+    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
+        unsigned char note[3];
+        if (setOn) {
+            note[0] = 0x90 + midiChannel;
+        } else {
+            note[0] = 0x80 + midiChannel;
+        }
+        note[1] = midiNote;
+        note[2] = velocity;
+        const int onOrOff = setOn ? 1 : 0;
+        d->mutex.lock();
+        if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
+            d->midiMessageQueues[d->cumulativeBeat + delay].addEvent(note, 3, onOrOff);
+        } else {
+            MidiBuffer buffer;
+            buffer.addEvent(note, 3, onOrOff);
+            d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
+        }
+        d->mutex.unlock();
+        if (setOn && duration > 0) {
+            // Schedule an off note for that position
+            scheduleNote(midiNote, midiChannel, false, 64, 0, delay + duration);
+        }
     }
 }
 
 void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay)
 {
-    d->mutex.lock();
-    const bool queueContainsPosition{d->midiMessageQueues.contains(d->cumulativeBeat + delay)};
-    d->mutex.unlock();
-    if (queueContainsPosition) {
+    // Don't schedule things that aren't going to be played, that's just silly
+    // (that is, don't do things with stuff that jack is already past anyway)
+    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
         d->mutex.lock();
-        juce::MidiBuffer &addToThis = d->midiMessageQueues[d->cumulativeBeat + delay];
+        const bool queueContainsPosition{d->midiMessageQueues.contains(d->cumulativeBeat + delay)};
         d->mutex.unlock();
-        for (const juce::MidiMessageMetadata &newMeta : buffer) {
-            bool alreadyExists{false};
-            for (const juce::MidiMessageMetadata &existingMeta : addToThis) {
-                if (existingMeta.samplePosition == newMeta.samplePosition
-                    && existingMeta.numBytes == newMeta.numBytes
-                ) {
-                    if (newMeta.numBytes == 2 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1]) {
-                        alreadyExists = true;
-                        break;
-                    } else if (newMeta.numBytes == 3 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1] && existingMeta.data[2] == newMeta.data[2]) {
-                        alreadyExists = true;
+        if (queueContainsPosition) {
+            d->mutex.lock();
+            juce::MidiBuffer &addToThis = d->midiMessageQueues[d->cumulativeBeat + delay];
+            d->mutex.unlock();
+            for (const juce::MidiMessageMetadata &newMeta : buffer) {
+                bool alreadyExists{false};
+                for (const juce::MidiMessageMetadata &existingMeta : addToThis) {
+                    if (existingMeta.samplePosition == newMeta.samplePosition
+                        && existingMeta.numBytes == newMeta.numBytes
+                    ) {
+                        if (newMeta.numBytes == 2 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1]) {
+                            alreadyExists = true;
+                            break;
+                        } else if (newMeta.numBytes == 3 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1] && existingMeta.data[2] == newMeta.data[2]) {
+                            alreadyExists = true;
+                            break;
+                        }
+                    }
+                    if (alreadyExists) {
                         break;
                     }
                 }
-                if (alreadyExists) {
-                    break;
+                if (!alreadyExists) {
+                    addToThis.addEvent(newMeta.data, newMeta.numBytes, newMeta.samplePosition);
                 }
             }
-            if (!alreadyExists) {
-                addToThis.addEvent(newMeta.data, newMeta.numBytes, newMeta.samplePosition);
-            }
+        } else {
+            d->mutex.lock();
+            d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
+            d->mutex.unlock();
         }
-    } else {
-        d->mutex.lock();
-        d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
-        d->mutex.unlock();
     }
 }
 
