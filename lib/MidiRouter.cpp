@@ -115,14 +115,14 @@ public:
             eventChannel = (event.buffer[0] & 0xf);
             if (eventChannel > -1 && eventChannel < outputs.count()) {
                 output = outputs[eventChannel];
-                if (!output->channelBuffer) {
-                    output->channelBuffer = jack_port_get_buffer(output->port, nframes);
-                }
                 if (output->destination != MidiRouter::NoDestination) {
                     writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
                     if (output->destination == MidiRouter::ExternalDestination && output->externalChannel > -1) {
                         if (DebugZLRouter) { qDebug() << "ZLRouter: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
                         event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
+                    }
+                    if (!output->channelBuffer) {
+                        output->channelBuffer = jack_port_get_buffer(output->port, nframes);
                     }
                     writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
                     switch (output->destination) {
