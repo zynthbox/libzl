@@ -10,6 +10,35 @@
 // Set this to true to emit a bunch more debug output when the router is operating
 #define DebugZLRouter false
 
+class InputDevice {
+public:
+    InputDevice(const QString &jackPortName)
+        : jackPortName(jackPortName)
+    {
+        for (int i = 0; i < 128; ++i) {
+            noteActivations[i] = 0;
+            activeNoteChannel[i] = 0;
+        }
+    }
+    ~InputDevice() {}
+    // The string name which identifies this input device in jack
+    QString jackPortName;
+    // A human-readable name for the port (derived from the port's first alias, if one exists, otherwise it's the port name)
+    QString humanReadableName;
+    // The number of times we have received a note activation on this channel
+    // After the first, assume that all other activations will go to the same destination
+    QHash<int, int> noteActivations;
+    // The channel which the most recent note activation went to
+    // This will be written the first time the associated noteActivations position gets
+    // incremented above 0 (all subsequent events read from this hash to determine the
+    // destination instead)
+    QHash<int, int> activeNoteChannel;
+    // The jack port we connect to for reading events
+    jack_port_t* port;
+    // Whether or not we should read events from this device
+    bool enabled{false};
+};
+
 struct ChannelOutput {
     ChannelOutput(int channel) : channel(channel) {}
     int channel{-1};
@@ -22,14 +51,18 @@ struct ChannelOutput {
 
 class MidiRouterPrivate {
 public:
-    MidiRouterPrivate() {};
+    MidiRouterPrivate(MidiRouter *q)
+        : q(q)
+    {};
     ~MidiRouterPrivate() {
         if (jackClient) {
             jack_client_close(jackClient);
         }
+        qDeleteAll(hardwareInputs);
         qDeleteAll(outputs);
     };
 
+    MidiRouter *q;
     bool constructing{true};
     bool filterMidiOut{false};
     QStringList disabledMidiInPorts;
@@ -39,7 +72,6 @@ public:
     int currentChannel{0};
     jack_client_t* jackClient{nullptr};
     jack_port_t *midiInPort{nullptr};
-    jack_port_t *externalInput{nullptr};
 
     jack_port_t *passthroughPort{nullptr};
     jack_port_t *hardwareInPassthrough{nullptr};
@@ -47,6 +79,7 @@ public:
     jack_port_t *samplerOutput{nullptr};
     jack_port_t *externalOutput{nullptr};
 
+    QList<InputDevice*> hardwareInputs;
     QList<ChannelOutput*> outputs;
 
     void connectPorts(const QString &from, const QString &to) {
@@ -146,56 +179,82 @@ public:
         }
         jack_midi_clear_buffer(inputBuffer);
         // Now handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
-        inputBuffer = jack_port_get_buffer(externalInput, nframes);
         if (currentChannel > -1 && currentChannel < outputs.count()) {
-            output = outputs[currentChannel];
-            bool outputToExternal{currentChannel < outputs.count()};
-            events = jack_midi_get_event_count(inputBuffer);
-            for (uint32_t eventIndex = 0; eventIndex < events; ++eventIndex) {
-                if (jack_midi_event_get(&event, inputBuffer, eventIndex)) {
-                    qWarning() << "ZLRouter: jack_midi_event_get failed, received note lost!";
-                    continue;
-                }
-                if ((event.buffer[0] & 0xf0) == 0xf0) {
-                    continue;
-                }
-                eventChannel = (event.buffer[0] & 0xf);
-                if (eventChannel > -1 && eventChannel < outputs.count()) {
-                    if (!output->channelBuffer) {
-                        output->channelBuffer = jack_port_get_buffer(output->port, nframes);
-                    }
-                    // Pass through the note to the channel we're expecting notes on internally...
-                    event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
-                    if (output->destination != MidiRouter::NoDestination) {
-                        writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
-                    }
-                    // If the track targets zynthian, pass it directly through to there
-                    if (output->destination == MidiRouter::ZynthianDestination) {
-                        writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
-                        writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, output);
-                    }
-                    // If the track targets the sampler, send things to the sampeler destination buffer
-                    else if (output->destination == MidiRouter::ZynthianDestination) {
-                        writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
-                    }
-                    // If we're supposed to target the external thing, do that, with adjustments as expected
-                    else if (outputToExternal && (output->destination == MidiRouter::ExternalDestination || filterMidiOut)) {
-                        if (output->externalChannel > -1) {
-                            // Reset it to the origin before reworking to the new channel
-                            event.buffer[0] = event.buffer[0] + eventChannel - currentChannel;
-                            if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
-                            event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
+            int adjustedCurrentChannel{currentChannel};
+            for (InputDevice *device : hardwareInputs) {
+                if (device->enabled) {
+                    inputBuffer = jack_port_get_buffer(device->port, nframes);
+                    output = outputs[currentChannel];
+                    bool outputToExternal{currentChannel < outputs.count()};
+                    events = jack_midi_get_event_count(inputBuffer);
+                    for (uint32_t eventIndex = 0; eventIndex < events; ++eventIndex) {
+                        if (jack_midi_event_get(&event, inputBuffer, eventIndex)) {
+                            qWarning() << "ZLRouter: jack_midi_event_get failed, received note lost!";
+                            continue;
                         }
-                        writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
-                        writeEventToBuffer(event, externalOutputBuffer, eventChannel, output);
+                        if ((event.buffer[0] & 0xf0) == 0xf0) {
+                            continue;
+                        }
+                        eventChannel = (event.buffer[0] & 0xf);
+                        if (eventChannel > -1 && eventChannel < outputs.count()) {
+                            // Make sure we're using the correct output
+                            // This is done to ensure that if we have any note-on events happen on some
+                            // output, then all the following commands associated with that note should
+                            // go to the same output (so any further ons, and any matching offs)
+                            const unsigned char &byte1 = event.buffer[0];
+                            if (0x7F < byte1 && byte1 < 0xA0) {
+                                const bool setOn = (byte1 >= 0x90);
+                                const int &midiNote = event.buffer[1];
+                                int &noteActivation = device->noteActivations[midiNote];
+                                if (setOn) {
+                                    ++noteActivation;
+                                    if (noteActivation == 1) {
+                                        device->activeNoteChannel[midiNote] = currentChannel;
+                                    }
+                                } else if (noteActivation > 0) {
+                                    --noteActivation;
+                                }
+                                adjustedCurrentChannel = device->activeNoteChannel[midiNote];
+                                output = outputs[adjustedCurrentChannel];
+                            }
+                            // Now ensure we have our output buffer
+                            if (!output->channelBuffer) {
+                                output->channelBuffer = jack_port_get_buffer(output->port, nframes);
+                            }
+                            // Pass through the note to the channel we're expecting notes on internally...
+                            event.buffer[0] = event.buffer[0] - eventChannel + adjustedCurrentChannel;
+                            if (output->destination != MidiRouter::NoDestination) {
+                                writeEventToBuffer(event, passthroughBuffer, adjustedCurrentChannel, output);
+                            }
+                            // If the track targets zynthian, pass it directly through to there
+                            if (output->destination == MidiRouter::ZynthianDestination) {
+                                writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
+                                writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, output);
+                            }
+                            // If the track targets the sampler, send things to the sampeler destination buffer
+                            else if (output->destination == MidiRouter::ZynthianDestination) {
+                                writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
+                            }
+                            // If we're supposed to target the external thing, do that, with adjustments as expected
+                            else if (outputToExternal && (output->destination == MidiRouter::ExternalDestination || filterMidiOut)) {
+                                if (output->externalChannel > -1) {
+                                    // Reset it to the origin before reworking to the new channel
+                                    event.buffer[0] = event.buffer[0] + eventChannel - adjustedCurrentChannel;
+                                    if (DebugZLRouter) { qDebug() << "ZLRouter: Hardware Event: We're being redirected to a different channel, let's obey that - going from" << eventChannel << "to" << output->externalChannel; }
+                                    event.buffer[0] = event.buffer[0] - eventChannel + output->externalChannel;
+                                }
+                                writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
+                                writeEventToBuffer(event, externalOutputBuffer, eventChannel, output);
+                            }
+                            writeEventToBuffer(event, hardwareInPassthroughBuffer, eventChannel, output);
+                        } else {
+                            qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
+                        }
                     }
-                    writeEventToBuffer(event, hardwareInPassthroughBuffer, eventChannel, output);
-                } else {
-                    qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
                 }
+                jack_midi_clear_buffer(inputBuffer);
             }
         }
-        jack_midi_clear_buffer(inputBuffer);
         return 0;
     }
     int xrun() {
@@ -205,12 +264,71 @@ public:
     QTimer *hardwareInputConnector{nullptr};
     void connectHardwareInputs() {
         const char **ports = jack_get_ports(jackClient, nullptr, JACK_DEFAULT_MIDI_TYPE, JackPortIsPhysical | JackPortIsOutput);
+        QList<InputDevice*> newDevices;
         for (const char **p = ports; *p; p++) {
             const QString inputPortName{QString::fromLocal8Bit(*p)};
-            if (disabledMidiInPorts.contains(inputPortName)) {
-                disconnectPorts(inputPortName, QLatin1String{"ZLRouter:ExternalInput"});
-            } else {
-                connectPorts(inputPortName, QLatin1String{"ZLRouter:ExternalInput"});
+            InputDevice *device{nullptr};
+            for (InputDevice *needle : hardwareInputs) {
+                if (needle->jackPortName == inputPortName) {
+                    device = needle;
+                    break;
+                }
+            }
+            if (!device) {
+                device = new InputDevice(inputPortName);
+                hardwareInputs << device;
+                device->port = jack_port_register(jackClient, QString("input-%1").arg(inputPortName).toUtf8(), JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
+                if (device->port) {
+                    jack_port_t *hardwarePort = jack_port_by_name(jackClient, *p);
+                    if (hardwarePort) {
+                        int num_aliases;
+                        char *aliases[2];
+                        aliases[0] = (char *)malloc(size_t(jack_port_name_size()));
+                        aliases[1] = (char *)malloc(size_t(jack_port_name_size()));
+                        num_aliases = jack_port_get_aliases(hardwarePort, aliases);
+                        if (num_aliases > 0) {
+                            int i;
+                            for (i = 0; i < num_aliases; i++) {
+                                QStringList splitAlias = QString::fromUtf8(aliases[i]).split('-');
+                                if (splitAlias.length() > 5) {
+                                    for (int i = 0; i < 5; ++i) {
+                                        splitAlias.removeFirst();
+                                    }
+                                    device->humanReadableName = splitAlias.join(" ");
+                                }
+                            }
+                        }
+                        if (device->humanReadableName.isEmpty()) {
+                            device->humanReadableName = device->jackPortName.split(':').last();
+                        }
+                        qDebug() << "ZLRouter: Discovered a new bit of hardware, named" << inputPortName << "which we have given the friendly name" << device->humanReadableName;
+                    } else {
+                        qWarning() << "ZLRouter: Failed to open hardware port for identification:" << inputPortName;
+                    }
+
+                    connectPorts(inputPortName, QString("ZLRouter:input-%1").arg(inputPortName));
+                    Q_EMIT q->addedHardwareInputDevice(inputPortName, device->humanReadableName);
+                } else {
+                    qWarning() << "ZLRouter: Failed to register input port for" << inputPortName;
+                    device->enabled = false;
+                }
+            }
+            if (device->port) {
+                device->enabled = !disabledMidiInPorts.contains(device->jackPortName);
+                qDebug() << "ZLRouter: Updated" << device->jackPortName << "enabled state to" << device->enabled;
+            }
+            newDevices << device;
+        }
+        // Clean up, in case something's been removed
+        QMutableListIterator<InputDevice*> iterator(hardwareInputs);
+        while (iterator.hasNext()) {
+            InputDevice *device = iterator.next();
+            if (!newDevices.contains(device)) {
+                iterator.remove();
+                qDebug() << "ZLRouter: Detected removal of a hardware device" << device->jackPortName;
+                Q_EMIT q->removedHardwareInputDevice(device->jackPortName, device->humanReadableName);
+                // TODO When disconnecting a bit of hardware, before deleting it, cycle through its noteActivations and ensure we spit out equivalent off events
+                delete device;
             }
         }
         free(ports);
@@ -254,7 +372,7 @@ static void client_registration(const char */*name*/, int /*registering*/, void 
 
 MidiRouter::MidiRouter(QObject *parent)
     : QObject(parent)
-    , d(new MidiRouterPrivate)
+    , d(new MidiRouterPrivate(this))
 {
     // First, load up our configuration (TODO: also remember to reload it when the config changes)
     reloadConfiguration();
@@ -307,7 +425,7 @@ MidiRouter::MidiRouter(QObject *parent)
                     qWarning() << "ZLRouter: Failed to activate ZLRouter Jack client";
                 }
             }
-            // Create the passthrough port
+            // Create the passthrough ports
             d->passthroughPort = jack_port_register(d->jackClient, "Passthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
             if (!d->passthroughPort) {
                 qWarning() << "ZLRouter: Could not register ZLRouter Jack passthrough port";
@@ -329,18 +447,7 @@ MidiRouter::MidiRouter(QObject *parent)
                 qWarning() << "ZLRouter: Could not register ZLRouter Jack Sampler destination output port";
             }
             // Now hook up the hardware inputs
-            d->externalInput = jack_port_register(
-                d->jackClient,
-                "ExternalInput",
-                JACK_DEFAULT_MIDI_TYPE,
-                JackPortIsInput,
-                0
-            );
-            if (d->externalInput) {
-                d->hardwareInputConnector->start();
-            } else {
-                qWarning() << "ZLRouter: Could not register ZLRouter Jack input port for external equipment";
-            }
+            d->hardwareInputConnector->start();
         } else {
             qWarning() << "ZLRouter: Could not register ZLRouter Jack input port for internal messages";
         }

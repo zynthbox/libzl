@@ -65,6 +65,9 @@ public:
      * \brief Call this function to reload the midi routing configuration and set ports back up
      */
     Q_SLOT void reloadConfiguration();
+
+    Q_SIGNAL void addedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
+    Q_SIGNAL void removedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
 private:
     MidiRouterPrivate *d{nullptr};
 };
