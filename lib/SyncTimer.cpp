@@ -511,6 +511,8 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
     if (!d->jackClient) {
         // First instantiate out midi router, so we can later connect to it...
         MidiRouter::instance();
+        connect(MidiRouter::instance(), &MidiRouter::addedHardwareInputDevice, this, &SyncTimer::addedHardwareInputDevice);
+        connect(MidiRouter::instance(), &MidiRouter::removedHardwareInputDevice, this, &SyncTimer::removedHardwareInputDevice);
         // Open the client.
         jack_status_t real_jack_status{};
         d->jackClient = jack_client_open(

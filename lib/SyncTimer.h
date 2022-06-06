@@ -146,6 +146,9 @@ public:
 
   bool timerRunning();
   Q_SIGNAL void timerRunningChanged();
+
+  Q_SIGNAL void addedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
+  Q_SIGNAL void removedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
 private:
   SyncTimerPrivate *d = nullptr;
 };
