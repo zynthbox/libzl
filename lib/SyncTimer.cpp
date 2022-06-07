@@ -250,8 +250,7 @@ public:
         intervals << (thisRound - lastRound).count();
         lastRound = thisRound;
 #endif
-        const quint64 maxPlayheadDeviation = ceil(float(q->scheduleAheadAmount()) / 2.0f);
-        while (cumulativeBeat < (jackPlayhead + maxPlayheadDeviation)) {
+        while (cumulativeBeat < (jackPlayhead + q->scheduleAheadAmount())) {
             // Call any callbacks registered to us
             for (auto cb : callbacks) {
                 cb(beat);
