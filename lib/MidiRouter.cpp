@@ -518,7 +518,19 @@ void MidiRouter::setZynthianChannels(int channel, QList<int> zynthianChannels)
 {
     if (channel > -1 && channel < d->outputs.count()) {
         TrackOutput *output = d->outputs[channel];
-        output->zynthianChannels = zynthianChannels;
+        bool hasChanged = (output->zynthianChannels.count() != zynthianChannels.count());
+        if (!hasChanged) {
+            for (int i = 0; i < zynthianChannels.count(); ++i) {
+                if (output->zynthianChannels[i] != zynthianChannels[i]) {
+                    hasChanged = true;
+                    break;
+                }
+            }
+        }
+        if (hasChanged) {
+            if (DebugZLRouter) { qDebug() << "ZLRouter: Updating zynthian channels for" << output->portName << "from" << output->zynthianChannels << "to" << zynthianChannels; }
+            output->zynthianChannels = zynthianChannels;
+        }
     }
 }
 
