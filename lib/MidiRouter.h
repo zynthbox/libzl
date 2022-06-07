@@ -11,6 +11,9 @@ class MidiRouterPrivate;
  * To route anywhere else, use  the function setChannelDestination() to set up your redirections.
  * Note that setting the external channel will only affect channels set to ExternalDestination.
  *
+ * To ensure that Zynthian targets are correct, use setZynthianChannels() to change from the
+ * default (that is, targeting the same channel in Zynthian as the track's input channel)
+ *
  * In addition to the specific destinations above, there are a set of ports that you can listen
  * to to get all notes going to those specific locations:
  *
@@ -60,6 +63,13 @@ public:
     void setCurrentChannel(int currentChannel);
     int currentChannel() const;
     Q_SIGNAL void currentChannelChanged();
+
+    /**
+     * \brief Set the channels which will be used to map eevnts for the track for the given channel into zynthian
+     * @param channel The midi channel (0 through 15)
+     * @param zynthianChannels The channels that zynthian should play notes on for the track with the given input channel
+     */
+    void setZynthianChannels(int channel, QList<int> zynthianChannels);
 
     /**
      * \brief Call this function to reload the midi routing configuration and set ports back up
