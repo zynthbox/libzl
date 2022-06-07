@@ -184,9 +184,12 @@ public:
                         writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
                         break;
                     case MidiRouter::ExternalDestination:
+                    {
                         writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
-                        writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
-                        writeEventToBuffer(event, externalOutputBuffer, eventChannel, output, output->externalChannel);
+                        int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
+                        writeEventToBuffer(event, externalOutputBuffer, eventChannel, output, externalChannel);
+                        writeEventToBuffer(event, output->channelBuffer, eventChannel, output, externalChannel);
+                    }
                     case MidiRouter::NoDestination:
                     default:
                         // Do nothing here
@@ -253,13 +256,16 @@ public:
                                     break;
                                 case MidiRouter::SamplerDestination:
                                     writeEventToBuffer(event, passthroughBuffer, adjustedCurrentChannel, output);
-                                    writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
                                     writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
+                                    writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
                                     break;
                                 case MidiRouter::ExternalDestination:
+                                {
                                     writeEventToBuffer(event, passthroughBuffer, adjustedCurrentChannel, output);
-                                    writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
-                                    writeEventToBuffer(event, externalOutputBuffer, eventChannel, output, output->externalChannel);
+                                    int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
+                                    writeEventToBuffer(event, externalOutputBuffer, eventChannel, output, externalChannel);
+                                    writeEventToBuffer(event, output->channelBuffer, eventChannel, output, externalChannel);
+                                }
                                 case MidiRouter::NoDestination:
                                 default:
                                     // Do nothing here
