@@ -237,7 +237,9 @@ public:
                                 }
                                 adjustedCurrentChannel = device->activeNoteChannel[midiNote];
                                 output = outputs[adjustedCurrentChannel];
-                                if (currentChannel != adjustedCurrentChannel) {
+                                if (currentChannel == adjustedCurrentChannel) {
+                                    event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
+                                } else {
                                     event.buffer[0] = event.buffer[0] - eventChannel + adjustedCurrentChannel;
                                 }
                             }
