@@ -168,46 +168,34 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
 void SamplerSynthVoice::pitchWheelMoved (int /*newValue*/) {}
 void SamplerSynthVoice::controllerMoved (int /*controllerNumber*/, int /*newValue*/) {}
 
-void SamplerSynthVoice::renderNextBlock (AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
+void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_default_audio_sample_t *rightBuffer, jack_nframes_t nframes)
 {
     if (auto* playingSound = static_cast<SamplerSynthSound*> (getCurrentlyPlayingSound().get()))
     {
         if (playingSound->isValid()) {
+            float peakGain{0.0f};
             auto& data = *playingSound->audioData();
             const float* const inL = data.getReadPointer (0);
             const float* const inR = data.getNumChannels() > 1 ? data.getReadPointer (1) : nullptr;
 
-            float* outL = outputBuffer.getWritePointer (0, startSample);
-            float* outR = outputBuffer.getNumChannels() > 1 ? outputBuffer.getWritePointer (1, startSample) : nullptr;
-            float peakGain{0.0f};
-
             const int stopPosition = playingSound->stopPosition(d->clipCommand->slice);
             const int sampleDuration = playingSound->length();
-            while (--numSamples >= 0)
-            {
+            for(jack_nframes_t frame = 0; frame < nframes; ++frame) {
                 auto pos = (int) d->sourceSamplePosition;
                 auto alpha = (float) (d->sourceSamplePosition - pos);
                 auto invAlpha = 1.0f - alpha;
 
                 // just using a very simple linear interpolation here..
                 float l = sampleDuration > pos ? (inL[pos] * invAlpha + inL[pos + 1] * alpha) : 0;
-                float r = (inR != nullptr && sampleDuration > pos) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha)
-                                                                   : l;
+                float r = (inR != nullptr && sampleDuration > pos) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha) : l;
 
                 auto envelopeValue = d->adsr.getNextSample();
 
                 l *= d->lgain * envelopeValue;
                 r *= d->rgain * envelopeValue;
 
-                if (outR != nullptr)
-                {
-                    *outL++ += l;
-                    *outR++ += r;
-                }
-                else
-                {
-                    *outL++ += (l + r) * 0.5f;
-                }
+                leftBuffer[frame] += l;
+                rightBuffer[frame] += r;
                 peakGain = qMax(peakGain, (l + r) * 0.5f);
 
                 d->sourceSamplePosition += d->pitchRatio;

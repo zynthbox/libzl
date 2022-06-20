@@ -12,73 +12,61 @@
 #include <QMutex>
 #include <QTimer>
 
+#include <jack/jack.h>
+#include <jack/statistics.h>
+
 using namespace juce;
 
+struct SamplerTrack {
+    jack_port_t *leftPort{nullptr};
+    QString portNameLeft;
+    jack_port_t *rightPort{nullptr};
+    QString portNameRight;
+    int midiChannel{-1};
+    QList<SamplerSynthVoice *> voices;
+};
+
 class SamplerSynthImpl;
-class SamplerSynthPrivate : public juce::AudioProcessor {
+class SamplerSynthPrivate {
 public:
-    SamplerSynthPrivate()
-        : juce::AudioProcessor(BusesProperties()
-            .withInput("Input", AudioChannelSet::stereo(), true)
-            .withOutput("Output", AudioChannelSet::stereo(), true))
-    {
+    SamplerSynthPrivate() { }
+    ~SamplerSynthPrivate() {
+        if (jackClient) {
+            jack_client_close(jackClient);
+        }
     }
-
-    const juce::String getName() const override { return "ZynthiloopsSamplerSynth"; }
-
     QMutex synthMutex;
     SamplerSynthImpl *synth{nullptr};
-    QList<SamplerSynthVoice *> voices;
     static const int numVoices{128};
+    float cpuLoad{0.0f};
 
     QHash<ClipAudioSource*, SamplerSynthSound*> clipSounds;
+    te::Engine *engine{nullptr};
 
-    void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override;
-    void processBlock(AudioBuffer<double> &buffer, juce::MidiBuffer &midiMessages) override {
-        process(buffer, midiMessages);
-    }
-    void processBlock(AudioBuffer<float> &buffer, juce::MidiBuffer &midiMessages) override {
-        process(buffer, midiMessages);
-    }
-    template <typename Element>
-    void process (AudioBuffer<Element>& buffer, MidiBuffer& midiMessages);
-
-    bool hasEditor() const override { return false; }
-    bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return false; }
-    bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
-    void releaseResources() override { }
-    juce::AudioProcessorEditor *createEditor() override {
-        return nullptr;
-    }
-    int getNumPrograms() override {
-        return 1;
-    }
-    int getCurrentProgram() override {
+    jack_client_t *jackClient{nullptr};
+    // An ordered list of ports, in pairs of left and right channels, with two each for:
+    // Global audio (midi "channel" -2, for e.g. the metronome and sample previews)
+    // Global effects targeted audio (midi "channel" -1)
+    // Track 1 (midi channel 0)
+    // Track 2 (midi channel 1)
+    // ...
+    // Track 10 (midi channel 9)
+    QList<SamplerTrack> tracks;
+    int process(jack_nframes_t nframes) {
+        for(const SamplerTrack &track : tracks) {
+            jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
+            jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.rightPort, nframes);
+            for (jack_nframes_t j = 0; j < nframes; j++) {
+                    leftBuffer[j] = 0.0f;
+                    rightBuffer[j] = 0.0f;
+            }
+            for (SamplerSynthVoice *voice : track.voices) {
+                voice->process(leftBuffer, rightBuffer, nframes);
+            }
+        }
+        cpuLoad = jack_cpu_load(jackClient);
         return 0;
     }
-    void setCurrentProgram(int index) override {
-        Q_UNUSED(index)
-    }
-    const juce::String getProgramName(int index) override {
-        Q_UNUSED(index)
-        return "None";
-    }
-    void changeProgramName(int index, const juce::String &newName) override {
-        Q_UNUSED(index)
-        Q_UNUSED(newName)
-    }
-    void getStateInformation(juce::MemoryBlock &destData) override {
-        Q_UNUSED(destData)
-    }
-    void setStateInformation(const void *data, int sizeInBytes) override {
-        Q_UNUSED(data)
-        Q_UNUSED(sizeInBytes)
-    }
-
-    juce::AudioProcessorPlayer* samplerProcessorPlayer{nullptr};
-    te::Engine *engine{nullptr};
 };
 
 class SamplerSynthImpl : public juce::Synthesiser {
@@ -86,21 +74,6 @@ public:
     void handleCommand(ClipCommand *clipCommand);
     SamplerSynthPrivate *d{nullptr};
 };
-
-void SamplerSynthPrivate::prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock)
-{
-    Q_UNUSED(maximumExpectedSamplesPerBlock)
-    synth->setCurrentPlaybackSampleRate(sampleRate);
-}
-
-template<typename Element>
-void SamplerSynthPrivate::process(AudioBuffer<Element> &buffer, juce::MidiBuffer &midiMessages)
-{
-    if (synthMutex.tryLock(1)) {
-        synth->renderNextBlock (buffer, midiMessages, 0, buffer.getNumSamples());
-        synthMutex.unlock();
-    }
-}
 
 SamplerSynth *SamplerSynth::instance()  {
     static SamplerSynth *instance{nullptr};
@@ -123,20 +96,69 @@ SamplerSynth::~SamplerSynth()
     delete d->synth;
 }
 
+static int client_process(jack_nframes_t nframes, void* arg) {
+    return static_cast<SamplerSynthPrivate*>(arg)->process(nframes);
+}
+
+void jackConnect(jack_client_t* jackClient, const QString &from, const QString &to) {
+    int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
+    if (result == 0 || result == EEXIST) {
+//         qDebug() << "SamplerSynth:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to;
+    } else {
+        qWarning() << "SamplerSynth: Failed to connect" << from << "with" << to << "with error code" << result;
+        // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
+    }
+}
+
 void SamplerSynth::initialize(tracktion_engine::Engine *engine)
 {
     d->engine = engine;
-    qDebug() << "Creating an Audio Processor Player for SamplerSynth";
-    d->samplerProcessorPlayer = new juce::AudioProcessorPlayer();
-    qDebug() << "Setting synth private class as processor";
-    d->samplerProcessorPlayer->setProcessor(d.get());
-    qDebug() << "Adding audio callback for the sample processor player";
-    d->engine->getDeviceManager().deviceManager.addAudioCallback (d->samplerProcessorPlayer);
-    qDebug() << "Adding" << d->numVoices << "voices to the synth";
-    for (int i = 0; i < d->numVoices; ++i) {
-        SamplerSynthVoice *voice = new SamplerSynthVoice();
-        d->voices << voice;
-        d->synth->addVoice(voice);
+
+    qDebug() << "Setting up SamplerSynth Jack client";
+    jack_status_t real_jack_status{};
+    d->jackClient = jack_client_open("SamplerSynth", JackNullOption, &real_jack_status);
+    if (d->jackClient) {
+        jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
+        d->synth->setCurrentPlaybackSampleRate(sampleRate);
+        // Register all our tracks for output
+        qDebug() << "Registering ten (plus two global) tracks, with 16 voices each";
+        for (int trackIndex = 0; trackIndex < 12; ++trackIndex) {
+            d->tracks << SamplerTrack();
+            // Funny story, the actual tracks have midi channels equivalent to their name, minus one. The others we can cheat with
+            d->tracks[trackIndex].midiChannel = trackIndex - 1;
+            if (trackIndex == 0) {
+                d->tracks[trackIndex].portNameLeft = QString("global-uneffected_left");
+                d->tracks[trackIndex].portNameRight = QString("global-uneffected_right");
+            } else if (trackIndex == 1) {
+                d->tracks[trackIndex].portNameLeft = QString("global-effected_left");
+                d->tracks[trackIndex].portNameRight = QString("global-effected_right");
+            } else {
+                d->tracks[trackIndex].portNameLeft = QString("track_%1_left").arg(QString::number(trackIndex-1));
+                d->tracks[trackIndex].portNameRight = QString("track_%1_right").arg(QString::number(trackIndex-1));
+            }
+            for (int voiceIndex = 0; voiceIndex < 16; ++voiceIndex) {
+                SamplerSynthVoice *voice = new SamplerSynthVoice();
+                d->tracks[trackIndex].voices << voice;
+                d->synth->addVoice(voice);
+            }
+            d->tracks[trackIndex].leftPort = jack_port_register(d->jackClient, d->tracks[trackIndex].portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+            d->tracks[trackIndex].rightPort = jack_port_register(d->jackClient, d->tracks[trackIndex].portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+        }
+        // Set the process callback.
+        if (jack_set_process_callback(d->jackClient, client_process, static_cast<void*>(d.get())) != 0) {
+            qWarning() << "Failed to set the SamplerSynth Jack processing callback";
+        } else {
+            // Activate the client.
+            if (jack_activate(d->jackClient) == 0) {
+                for (const SamplerTrack& track : d->tracks) {
+                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(track.portNameLeft).toUtf8(), QLatin1String{"system:playback_1"});
+                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(track.portNameRight).toUtf8(), QLatin1String{"system:playback_2"});
+                }
+                qDebug() << "Successfully created and set up the SamplerSynth's Jack client";
+            } else {
+                qWarning() << "Failed to activate SamplerSynth Jack client";
+            }
+        }
     }
 }
 
@@ -194,36 +216,56 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
         SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
         if (clipCommand->stopPlayback || clipCommand->startPlayback) {
             if (clipCommand->stopPlayback) {
-                for (SamplerSynthVoice * voice : d->voices) {
-                    const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                    if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
-                        voice->stopNote(0.0f, true);
-                        // We may have more than one thing going for the same sound on the same note, which... shouldn't
-                        // really happen, but it's ugly and we just need to deal with that when stopping, so, stop /all/
-                        // the voices where both the sound and the command match.
+                for (const SamplerTrack& track : d->tracks) {
+                    if (track.midiChannel == clipCommand->midiChannel) {
+                        for (SamplerSynthVoice * voice : track.voices) {
+                            const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                            if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
+                                voice->stopNote(0.0f, true);
+                                // We may have more than one thing going for the same sound on the same note, which... shouldn't
+                                // really happen, but it's ugly and we just need to deal with that when stopping, so, stop /all/
+                                // the voices where both the sound and the command match.
+                            }
+                        }
+                        break;
                     }
                 }
             }
             if (clipCommand->startPlayback) {
-                for (SamplerSynthVoice *voice : d->voices) {
-                    if (!voice->isVoiceActive()) {
-                        voice->setCurrentCommand(clipCommand);
-                        startVoice(voice, sound, 0, clipCommand->midiNote, clipCommand->volume);
+                for (const SamplerTrack& track : d->tracks) {
+                    if (track.midiChannel == clipCommand->midiChannel) {
+                        for (SamplerSynthVoice *voice : track.voices) {
+                            if (!voice->isVoiceActive()) {
+                                voice->setCurrentCommand(clipCommand);
+                                startVoice(voice, sound, clipCommand->midiChannel, clipCommand->midiNote, clipCommand->volume);
+                                break;
+                            }
+                        }
                         break;
                     }
                 }
             }
         } else {
-            for (SamplerSynthVoice * voice : d->voices) {
-                const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
-                    // Update the voice with the new command
-                    voice->setCurrentCommand(clipCommand);
-                    // We may have more than one thing going for the same sound on the same note, which... shouldn't
-                    // really happen, but it's ugly and we just need to deal with that when stopping, so, update /all/
-                    // the voices where both the sound and the command match.
+            for (const SamplerTrack& track : d->tracks) {
+                if (track.midiChannel == clipCommand->midiChannel) {
+                    for (SamplerSynthVoice * voice : track.voices) {
+                        const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                        if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
+                            // Update the voice with the new command
+                            voice->setCurrentCommand(clipCommand);
+                            // We may have more than one thing going for the same sound on the same note, which... shouldn't
+                            // really happen, but it's ugly and we just need to deal with that when stopping, so, update /all/
+                            // the voices where both the sound and the command match.
+                        }
+                    }
+                    break;
                 }
             }
         }
     }
+}
+
+float SamplerSynth::cpuLoad() const
+{
+    return d->cpuLoad;
 }

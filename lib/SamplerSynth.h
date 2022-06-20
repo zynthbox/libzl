@@ -33,6 +33,11 @@ public:
      */
     void handleClipCommand(ClipCommand *clipCommand);
 
+    /**
+     * \brief SamplerSynth's CPU load as estimated by JackD
+     * @return a float, from 0 through 1, describing the current CPU load
+     */
+    float cpuLoad() const;
 private:
     std::unique_ptr<SamplerSynthPrivate> d;
 };

@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include "JUCEHeaders.h"
+#include <jack/jack.h>
 
 struct ClipCommand;
 class SamplerSynthVoicePrivate;
@@ -23,8 +24,7 @@ public:
     void pitchWheelMoved (int newValue) override;
     void controllerMoved (int controllerNumber, int newValue) override;
 
-    void renderNextBlock (AudioBuffer<float>&, int startSample, int numSamples) override;
-    using SynthesiserVoice::renderNextBlock;
+    void process(jack_default_audio_sample_t *leftBuffer, jack_default_audio_sample_t *rightBuffer, jack_nframes_t nframes);
 private:
     SamplerSynthVoicePrivate *d;
 };
