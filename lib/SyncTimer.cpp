@@ -258,7 +258,7 @@ public:
 
             // Spit out a touch of useful information on beat zero
             if (beat == 0 && samplerSynth->engine()) {
-                qDebug() << "Current tracktion/juce CPU usage:" << samplerSynth->engine()->getDeviceManager().getCpuUsage();
+                qDebug() << "Current tracktion/juce CPU usage:" << samplerSynth->engine()->getDeviceManager().getCpuUsage() << "with total jack process call saturation at:" << samplerSynth->cpuLoad();
             }
 
             // Increase the current beat as we understand it
@@ -576,13 +576,11 @@ void SyncTimer::removeCallback(void (*functionPtr)(int)) {
 }
 
 void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
-    ClipCommand *command = new ClipCommand();
-    command->clip = clip;
+    ClipCommand *command = ClipCommand::effectedCommand(clip);
     command->changeVolume = true;
     command->volume = 1.0;
     command->looping = true;
     command->startPlayback = true;
-    command->midiNote = 60;
 
     const quint64 nextJackZeroBeat = d->timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->jackPlayhead % (BeatSubdivisions * 4));
     const quint64 nextZeroBeat = d->timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->cumulativeBeat % (BeatSubdivisions * 4));
@@ -609,10 +607,8 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
     }
 
     // Then stop it, now, because it should be now
-    ClipCommand *command = new ClipCommand();
-    command->clip = clip;
+    ClipCommand *command = ClipCommand::effectedCommand(clip);
     command->stopPlayback = true;
-    command->midiNote = 60;
     d->samplerSynth->handleClipCommand(command);
 }
 
