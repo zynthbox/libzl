@@ -305,7 +305,7 @@ void ClipAudioSource::setVolume(float vol) {
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
-    ClipCommand *command = new ClipCommand(this, 60);
+    ClipCommand *command = ClipCommand::noEffectCommand(this);
     command->changeVolume = true;
     command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
     SamplerSynth::instance()->handleClipCommand(command);
@@ -317,7 +317,7 @@ void ClipAudioSource::setVolumeAbsolute(float vol)
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume absolutely : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(qMax(0.0f, qMin(vol, 1.0f)));
-    ClipCommand *command = new ClipCommand(this, 60);
+    ClipCommand *command = ClipCommand::noEffectCommand(this);
     command->changeVolume = true;
     command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
     SamplerSynth::instance()->handleClipCommand(command);
@@ -395,7 +395,7 @@ void ClipAudioSource::play(bool loop) {
   auto clip = d->getClip();
   IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << getFilePath() << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
 
-  ClipCommand *command = new ClipCommand(this, 60);
+  ClipCommand *command = ClipCommand::noEffectCommand(this);
   command->changeVolume = true;
   command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
   command->looping = loop;
@@ -406,9 +406,20 @@ void ClipAudioSource::play(bool loop) {
 void ClipAudioSource::stop() {
   IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << getFilePath() << endl;
 
-  ClipCommand *command = new ClipCommand(this, 60);
+  ClipCommand *command = ClipCommand::noEffectCommand(this);
   command->stopPlayback = true;
   SamplerSynth::instance()->handleClipCommand(command);
+  // Less than the best thing - having to do this to ensure we stop the ones looper
+  // queued for starting as well, otherwise they'll get missed for stopping... We'll
+  // want to handle this more precisely later, but for now this should do the trick.
+  command = ClipCommand::effectedCommand(this);
+  command->stopPlayback = true;
+  SamplerSynth::instance()->handleClipCommand(command);
+  for (int i = 0; i < 10; ++i) {
+    command = ClipCommand::trackCommand(this, i);
+    command->stopPlayback = true;
+    SamplerSynth::instance()->handleClipCommand(command);
+  }
 }
 
 int ClipAudioSource::id() const
