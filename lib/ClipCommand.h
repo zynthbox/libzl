@@ -11,6 +11,7 @@ struct ClipCommand {
     ClipCommand(ClipAudioSource *clip, int midiNote) : clip(clip), midiNote(midiNote) {};
     ClipAudioSource* clip{nullptr};
     int midiNote{-1};
+    int midiChannel{-1};
     bool startPlayback{false};
     bool stopPlayback{false};
     // Which slice to use (-1 means no slice, play normal)
@@ -31,7 +32,40 @@ struct ClipCommand {
         return clip == other->clip
             && (
                 (changeSlice == true && other->changeSlice == true && slice == other->slice)
-                || (changeSlice == false && other->changeSlice == false && midiNote == other->midiNote)
+                || (changeSlice == false && other->changeSlice == false && midiNote == other->midiNote && midiChannel == other->midiChannel)
             );
+    }
+
+    /**
+     * \brief Create a command on the no-effects global channel, defaulted to midi note 60
+     */
+    static ClipCommand* noEffectCommand(ClipAudioSource *clip)
+    {
+        ClipCommand *command = new ClipCommand();
+        command->clip = clip;
+        command->midiChannel = -2;
+        command->midiNote = 60;
+        return command;
+    }
+    /**
+     * \brief Create a command on the effects-enabled global channel, defaulted to midi note 60
+     */
+    static ClipCommand* effectedCommand(ClipAudioSource *clip)
+    {
+        ClipCommand *command = new ClipCommand();
+        command->clip = clip;
+        command->midiChannel = -1;
+        command->midiNote = 60;
+        return command;
+    }
+    /**
+     * \brief Create a command for a specific track
+     */
+    static ClipCommand* trackCommand(ClipAudioSource *clip, int trackID)
+    {
+        ClipCommand *command = new ClipCommand();
+        command->clip = clip;
+        command->midiChannel = trackID;
+        return command;
     }
 };
