@@ -26,7 +26,6 @@ public:
     void loadSoundData() {
         if (QFileInfo(clip->getPlaybackFile().getFile().getFullPathName().toRawUTF8()).exists()) {
             qDebug() << Q_FUNC_INFO << "Loading sound data for" << clip->getFilePath();
-            qDebug() << Q_FUNC_INFO << "Using playback file" << clip->getPlaybackFile().getFile().getFullPathName().toRawUTF8();
             AudioFormatReader *format{nullptr};
             juce::File file = clip->getPlaybackFile().getFile();
             tracktion_engine::AudioFileInfo fileInfo = clip->getPlaybackFile().getInfo();
@@ -46,6 +45,7 @@ public:
                     format->read (data.get(), 0, length, 0, true, true);
                     isValid = true;
                 }
+                qDebug() << Q_FUNC_INFO << "Loaded data at sample rate" << sourceSampleRate << "from playback file" << clip->getPlaybackFile().getFile().getFullPathName().toRawUTF8();
                 delete format;
             } else {
                 qWarning() << "Failed to create a format reader for" << file.getFullPathName().toUTF8();
