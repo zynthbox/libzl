@@ -54,6 +54,10 @@ public:
 
   void stopClip(ClipAudioSource *c) { c->stop(); }
 
+  void playClipOnChannel(ClipAudioSource *c, bool loop, int midiChannel) { c->play(loop, midiChannel); }
+
+  void stopClipOnChannel(ClipAudioSource *c, int midiChannel) { c->stop(midiChannel); }
+
   void setClipLength(ClipAudioSource *c, float beat, int bpm) {
     c->setLength(beat, bpm);
   }
@@ -122,6 +126,16 @@ void ClipAudioSource_stop(ClipAudioSource *c) {
   cerr << "libzl : Stop Clip " << c;
 
   elThread.stopClip(c);
+}
+
+void ClipAudioSource_playOnChannel(ClipAudioSource *c, bool loop, int midiChannel) {
+  elThread.playClipOnChannel(c, loop, midiChannel);
+}
+
+void ClipAudioSource_stopOnChannel(ClipAudioSource *c, int midiChannel) {
+  cerr << "libzl : Stop Clip " << c;
+
+  elThread.stopClipOnChannel(c, midiChannel);
 }
 
 float ClipAudioSource_getDuration(ClipAudioSource *c) {
@@ -230,9 +244,19 @@ void SyncTimer_queueClipToStart(ClipAudioSource *clip) {
       [&]() { syncTimer->queueClipToStart(clip); }, true);
 }
 
+void SyncTimer_queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel) {
+  Helper::callFunctionOnMessageThread(
+      [&]() { syncTimer->queueClipToStartOnChannel(clip, midiChannel); }, true);
+}
+
 void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
   Helper::callFunctionOnMessageThread(
       [&]() { syncTimer->queueClipToStop(clip); }, true);
+}
+
+void SyncTimer_queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel) {
+  Helper::callFunctionOnMessageThread(
+      [&]() { syncTimer->queueClipToStopOnChannel(clip, midiChannel); }, true);
 }
 //////////////
 /// END SyncTimer API Bridge

@@ -27,6 +27,8 @@ void ClipAudioSource_setProgressCallback(ClipAudioSource *c,
 void ClipAudioSource_connectProgress(ClipAudioSource *c, void *obj);
 void ClipAudioSource_play(ClipAudioSource *c, bool loop);
 void ClipAudioSource_stop(ClipAudioSource *c);
+void ClipAudioSource_playOnChannel(ClipAudioSource *c, bool loop, int midiChannel);
+void ClipAudioSource_stopOnChannel(ClipAudioSource *c, int midiChannel);
 float ClipAudioSource_getDuration(ClipAudioSource *c);
 const char *ClipAudioSource_getFileName(ClipAudioSource *c);
 void ClipAudioSource_setStartPosition(ClipAudioSource *c,
@@ -60,7 +62,9 @@ void SyncTimer_stopTimer();
 void SyncTimer_registerTimerCallback(void (*functionPtr)(int));
 void SyncTimer_deregisterTimerCallback(void (*functionPtr)(int));
 void SyncTimer_queueClipToStart(ClipAudioSource *clip);
+void SyncTimer_queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel);
 void SyncTimer_queueClipToStop(ClipAudioSource *clip);
+void SyncTimer_queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel);
 //////////////
 /// END SyncTimer API Bridge
 //////////////
