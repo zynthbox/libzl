@@ -125,7 +125,7 @@ void SamplerSynth::initialize(tracktion_engine::Engine *engine)
         for (int trackIndex = 0; trackIndex < 12; ++trackIndex) {
             d->tracks << SamplerTrack();
             // Funny story, the actual tracks have midi channels equivalent to their name, minus one. The others we can cheat with
-            d->tracks[trackIndex].midiChannel = trackIndex - 1;
+            d->tracks[trackIndex].midiChannel = trackIndex - 2;
             if (trackIndex == 0) {
                 d->tracks[trackIndex].portNameLeft = QString("global-uneffected_left");
                 d->tracks[trackIndex].portNameRight = QString("global-uneffected_right");
