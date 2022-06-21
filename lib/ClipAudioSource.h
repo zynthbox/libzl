@@ -102,8 +102,10 @@ public:
    */
   void setVolumeAbsolute(float vol);
   void setAudioLevelChangedCallback(void (*functionPtr)(float));
-  void play(bool loop = true);
-  void stop();
+  // Using the channel logic from SamplerSynth, -2 is no-effect global sounds, -1 is the effected global channel, and 0-9 are tracks 1 through 10 inclusive
+  void play(bool loop = true, int midiChannel = -2);
+  // Midi channel logic as play(), except defaulting to stop all the things everywhere
+  void stop(int midiChannel = -3);
   float getDuration();
   const char *getFileName() const;
   const char *getFilePath() const;
