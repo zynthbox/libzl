@@ -575,8 +575,10 @@ void SyncTimer::removeCallback(void (*functionPtr)(int)) {
     cerr << "Removing callback " << functionPtr << " : " << result << endl;
 }
 
-void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
-    ClipCommand *command = ClipCommand::effectedCommand(clip);
+void SyncTimer::queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel)
+{
+    ClipCommand *command = ClipCommand::trackCommand(clip, midiChannel);
+    command->midiNote = 60;
     command->changeVolume = true;
     command->volume = 1.0;
     command->looping = true;
@@ -588,7 +590,8 @@ void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
     scheduleClipCommand(command, qMax(nextZeroBeat, nextJackZeroBeat));
 }
 
-void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
+void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
+{
     QMutexLocker locker(&d->mutex);
 
     // First, remove any references to the clip that we're wanting to stop
@@ -607,9 +610,18 @@ void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
     }
 
     // Then stop it, now, because it should be now
-    ClipCommand *command = ClipCommand::effectedCommand(clip);
+    ClipCommand *command = ClipCommand::trackCommand(clip, midiChannel);
+    command->midiNote = 60;
     command->stopPlayback = true;
     d->samplerSynth->handleClipCommand(command);
+}
+
+void SyncTimer::queueClipToStart(ClipAudioSource *clip) {
+    queueClipToStartOnChannel(clip, -1);
+}
+
+void SyncTimer::queueClipToStop(ClipAudioSource *clip) {
+    queueClipToStopOnChannel(clip, -1);
 }
 
 void SyncTimer::start(int bpm) {

@@ -23,6 +23,8 @@ public:
   void removeCallback(void (*functionPtr)(int));
   void queueClipToStart(ClipAudioSource *clip);
   void queueClipToStop(ClipAudioSource *clip);
+  void queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel);
+  void queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel);
   void start(int bpm);
   void stop();
   void stopClip(ClipAudioSource *clip);
