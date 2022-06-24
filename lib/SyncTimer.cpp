@@ -100,7 +100,7 @@ public:
                 Q_EMIT timeout(); // Do the thing!
                 ++count;
                 ++cumulativeCount;
-                waitTill(frame_clock::duration(adjustment) + startTime + frame_clock::duration(subbeatCountToNanoseconds(bpm, cumulativeCount)));
+                waitTill(frame_clock::now() + frame_clock::duration(subbeatCountToNanoseconds(bpm, 1)));
             }
 #ifdef DEBUG_SYNCTIMER_TIMING
             qDebug() << "Sync timer reached minute:" << minuteCount << "with interval" << interval.count();
@@ -305,6 +305,7 @@ public:
     jack_time_t jackMostRecentNextUsecs{0};
     jack_time_t jackUsecDeficit{0};
     jack_time_t jackStartTime{0};
+    jack_time_t jackNextPlaybackPosition{0};
     quint64 jackLatency{0};
     int process(jack_nframes_t nframes) {
         auto buffer = jack_port_get_buffer(jackPort, nframes);
@@ -328,46 +329,17 @@ public:
 
             // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
             if (mutex.tryLock(period_usecs / 4000)) {
-
                 const jack_time_t subbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
                 const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
                 if (!timerThread->isPaused()) {
                     if (jackPlayhead == 0) {
                         // first run for this playback session, let's do a touch of setup
-                        jackStartTime = current_usecs;
+                        jackNextPlaybackPosition = current_usecs;
                         jackUsecDeficit = 0;
-//                     } else {
-//                         if (jackMostRecentNextUsecs < current_usecs) {
-//                             // That means we have skipped some cycles somehow - let's work out what to do about that!
-//                             const qint64 adjustment = qint64(current_usecs - jackMostRecentNextUsecs);
-//                             jackUsecDeficit += quint64(adjustment);
-//                             timerThread->addAdjustmentByMicroseconds(adjustment);
-//                             qDebug() << "Somehow, we have ended up skipping cycles, and we are in total deficit of" << jackUsecDeficit << "microseconds - sync timer adjusted to match by adding" << adjustment << "microseconds and the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
-//                         } else {
-//                             // TODO We will need to treat Jack as the canonical time reference or risk
-//                             // ending in in more trouble. In short, we are going to have to never skip
-//                             // anything here, but rather ask SyncTimer to adjust itself, and then also
-//                             // ensure that Juce's playback is synchronised with Jack's position, not
-//                             // the other way around. Since we are recording through jack, that is the
-//                             // time that is actually important (otherwise the recording will be unsynced,
-//                             // which is the more critical path). The code below makes Jack synchronise
-//                             // to the real-time timer, but the problem with doing that is we will end
-//                             // up with incorrect timing in any recorded data, which is not what we want.
-//                             // So, adjust Juce /and/ SyncTimerThread here, not Jack.
-//                             const quint64 notesPerFrame = microsecondsPerFrame / subbeatLengthInMicroseconds;
-//                             const quint64 maxPlayheadDeviation = q->scheduleAheadAmount() / 2;
-//                             if (jackPlayhead > cumulativeBeat && jackPlayhead - cumulativeBeat > maxPlayheadDeviation) {
-//                                 const quint64 excessBeats = (jackPlayhead - cumulativeBeat) - maxPlayheadDeviation;
-//                                 timerThread->addAdjustmentByMicroseconds(qint64(subbeatLengthInMicroseconds * qMax(notesPerFrame, excessBeats)));
-//                                 qDebug() << "We are ahead of the timer by" << excessBeats << "ticks - our playback position is at" << jackPlayhead << "and the most recent tick of the timer is" << cumulativeBeat << "- the sync timer now has" << timerThread->getExtraTickCount() << "extra ticks";
-//                             }
-//                             // No need to handle being behind, the while loop below handles that already
-//                         }
                     }
                     jackMostRecentNextUsecs = next_usecs;
                 }
 
-                jack_time_t nextPlaybackPosition = jackStartTime + (timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), jackPlayhead) / 1000);
                 jack_nframes_t firstAvailableFrame{0};
                 jack_nframes_t relativePosition{0};
 
@@ -402,16 +374,16 @@ public:
 
                 if (!timerThread->isPaused()) {
                     // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
-                    while (nextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
+                    while (jackNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
                         // First send out any notes we have to send out
                         const juce::MidiBuffer &juceBuffer = midiMessageQueues[jackPlayhead];
                         if (!juceBuffer.isEmpty()) {
                             // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
-                            if (nextPlaybackPosition <= current_usecs) {
+                            if (jackNextPlaybackPosition <= current_usecs) {
                                 relativePosition = firstAvailableFrame;
                                 ++firstAvailableFrame;
                             } else {
-                                relativePosition = std::clamp<jack_nframes_t>((nextPlaybackPosition - current_usecs) / microsecondsPerFrame, firstAvailableFrame, nframes - 1);
+                                relativePosition = std::clamp<jack_nframes_t>((jackNextPlaybackPosition - current_usecs) / microsecondsPerFrame, firstAvailableFrame, nframes - 1);
                                 firstAvailableFrame = relativePosition + 1;
                             }
                             for (const juce::MidiMessageMetadata &juceMessage : juceBuffer) {
@@ -446,7 +418,7 @@ public:
                         }
                         // Next roll for next time
                         ++jackPlayhead;
-                        nextPlaybackPosition += subbeatLengthInMicroseconds;
+                        jackNextPlaybackPosition += subbeatLengthInMicroseconds;
 #ifdef DEBUG_SYNCTIMER_JACK
                         ++stepCount;
 #endif
@@ -709,7 +681,6 @@ quint64 SyncTimer::getBpm() const
 
 void SyncTimer::setBpm(quint64 bpm)
 {
-    // TODO Changing this requires the timer to be restarted if it's running already...
     if (d->timerThread->getBpm() != bpm) {
         d->timerThread->setBPM(bpm);
         Q_EMIT bpmChanged();

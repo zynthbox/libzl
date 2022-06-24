@@ -58,6 +58,7 @@ int ClipAudioSource_id(ClipAudioSource *c);
 //////////////
 QObject *SyncTimer_instance();
 void SyncTimer_startTimer(int interval);
+void SyncTimer_setBpm(uint bpm);
 void SyncTimer_stopTimer();
 void SyncTimer_registerTimerCallback(void (*functionPtr)(int));
 void SyncTimer_deregisterTimerCallback(void (*functionPtr)(int));

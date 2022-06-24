@@ -229,6 +229,8 @@ QObject *SyncTimer_instance() { return syncTimer; }
 
 void SyncTimer_startTimer(int interval) { syncTimer->start(interval); }
 
+void SyncTimer_setBpm(uint bpm) { syncTimer->setBpm(bpm); }
+
 void SyncTimer_stopTimer() { syncTimer->stop(); }
 
 void SyncTimer_registerTimerCallback(void (*functionPtr)(int)) {
