@@ -119,6 +119,7 @@ ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted) {
 }
 
 void ClipAudioSource_play(ClipAudioSource *c, bool loop) {
+  cerr << "libzl : Start Clip " << c << std::endl;
   Helper::callFunctionOnMessageThread(
       [&]() {
         elThread.playClip(c, loop);
@@ -126,7 +127,7 @@ void ClipAudioSource_play(ClipAudioSource *c, bool loop) {
 }
 
 void ClipAudioSource_stop(ClipAudioSource *c) {
-  cerr << "libzl : Stop Clip " << c;
+  cerr << "libzl : Stop Clip " << c << std::endl;
   Helper::callFunctionOnMessageThread(
       [&]() {
         elThread.stopClip(c);
@@ -134,6 +135,7 @@ void ClipAudioSource_stop(ClipAudioSource *c) {
 }
 
 void ClipAudioSource_playOnChannel(ClipAudioSource *c, bool loop, int midiChannel) {
+  cerr << "libzl : Play Clip " << c << " on channel " << midiChannel << std::endl;
   Helper::callFunctionOnMessageThread(
       [&]() {
         elThread.playClipOnChannel(c, loop, midiChannel);
@@ -141,7 +143,7 @@ void ClipAudioSource_playOnChannel(ClipAudioSource *c, bool loop, int midiChanne
 }
 
 void ClipAudioSource_stopOnChannel(ClipAudioSource *c, int midiChannel) {
-  cerr << "libzl : Stop Clip " << c;
+  cerr << "libzl : Stop Clip " << c << " on channel " << midiChannel << std::endl;
   Helper::callFunctionOnMessageThread(
       [&]() {
         elThread.stopClipOnChannel(c, midiChannel);
@@ -278,6 +280,7 @@ void SyncTimer_queueClipToStart(ClipAudioSource *clip) {
 }
 
 void SyncTimer_queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel) {
+  cerr << "libzl : Queue Clip " << clip << " to start on channel " << midiChannel << std::endl;
   Helper::callFunctionOnMessageThread(
       [&]() { syncTimer->queueClipToStartOnChannel(clip, midiChannel); }, true);
 }
@@ -288,6 +291,7 @@ void SyncTimer_queueClipToStop(ClipAudioSource *clip) {
 }
 
 void SyncTimer_queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel) {
+  cerr << "libzl : Queue Clip " << clip << " to stop on channel " << midiChannel << std::endl;
   Helper::callFunctionOnMessageThread(
       [&]() { syncTimer->queueClipToStopOnChannel(clip, midiChannel); }, true);
 }
@@ -312,8 +316,6 @@ void initJuce() {
     tracktionEngine->getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
     qDebug() << "Initialising device manager";
     tracktionEngine->getDeviceManager().initialise(0, 2);
-    qDebug() << "Initialising SamplerSynth";
-    SamplerSynth::instance()->initialize(tracktionEngine);
     qDebug() << "Initialisation completed";
     initialisationCompleted = true;
   };
@@ -330,6 +332,9 @@ void initJuce() {
   }
   auto duration = duration_cast<milliseconds>(high_resolution_clock::now() - start);
   qDebug() << "### JUCE initialisation took" << duration.count() << "ms";
+
+  qDebug() << "Initialising SamplerSynth";
+  SamplerSynth::instance()->initialize(tracktionEngine);
 
   if (audioLevelsInstance == nullptr) {
     audioLevelsInstance = new AudioLevels();
