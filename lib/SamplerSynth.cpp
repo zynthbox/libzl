@@ -10,6 +10,7 @@
 #include <QDebug>
 #include <QHash>
 #include <QMutex>
+#include <QThread>
 #include <QTimer>
 
 #include <jack/jack.h>
@@ -53,18 +54,29 @@ public:
     // Track 10 (midi channel 9)
     QList<SamplerTrack> tracks;
     int process(jack_nframes_t nframes) {
-        for(const SamplerTrack &track : tracks) {
-            jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
-            jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.rightPort, nframes);
-            for (jack_nframes_t j = 0; j < nframes; j++) {
-                    leftBuffer[j] = 0.0f;
-                    rightBuffer[j] = 0.0f;
+        jack_nframes_t current_frames;
+        jack_time_t current_usecs;
+        jack_time_t next_usecs;
+        float period_usecs;
+        jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
+            // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
+        if (synthMutex.tryLock(period_usecs / 4000)) {
+            for(const SamplerTrack &track : tracks) {
+                jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
+                jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.rightPort, nframes);
+                for (jack_nframes_t j = 0; j < nframes; j++) {
+                        leftBuffer[j] = 0.0f;
+                        rightBuffer[j] = 0.0f;
+                }
+                for (SamplerSynthVoice *voice : track.voices) {
+                    voice->process(leftBuffer, rightBuffer, nframes);
+                }
             }
-            for (SamplerSynthVoice *voice : track.voices) {
-                voice->process(leftBuffer, rightBuffer, nframes);
-            }
+            cpuLoad = jack_cpu_load(jackClient);
+            synthMutex.unlock();
+        } else {
+            qWarning() << "Failed to lock the samplersynth mutex within a reasonable amount of time, being" << period_usecs / 4000 << "ms";
         }
-        cpuLoad = jack_cpu_load(jackClient);
         return 0;
     }
 };
@@ -200,12 +212,12 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
 {
-    // Very extremely short timeout, but we do want to try and make sure it actually happens...
     if (d->synthMutex.tryLock(1)) {
         d->synth->handleCommand(clipCommand);
         d->synthMutex.unlock();
     } else {
         // If we failed to lock the mutex, postpone this command until the next run of the event loop
+        qWarning() << "Failed to lock synth mutex, postponing until next tick";
         QTimer::singleShot(0, this, [this, clipCommand](){ handleClipCommand(clipCommand); });
     }
 }
