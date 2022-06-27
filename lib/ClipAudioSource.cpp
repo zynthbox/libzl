@@ -405,9 +405,10 @@ void ClipAudioSource::play(bool loop, int midiChannel) {
 }
 
 void ClipAudioSource::stop(int midiChannel) {
-  IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << getFilePath() << endl;
+  IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << " on channel" << midiChannel << " path: " << getFilePath() << endl;
   if (midiChannel > -3) {
     ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
+    command->midiNote = 60;
     command->stopPlayback = true;
     SamplerSynth::instance()->handleClipCommand(command);
   } else {
