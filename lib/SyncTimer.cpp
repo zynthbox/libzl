@@ -269,24 +269,26 @@ public:
         // Finally, remove old queues that are sufficiently far behind us in time.
         // That is to say, get rid of any queues that are older than the current jack playback position
         if (mutex.tryLock(timerThread->getInterval().count() / 5000000)) {
-            // First get rid of any midi queues that have already been sent out
-            QMutableHashIterator<quint64, MidiBuffer> midiBufferQueuesIterator(midiMessageQueues);
-            while (midiBufferQueuesIterator.hasNext()) {
-                midiBufferQueuesIterator.next();
-                if (midiBufferQueuesIterator.key() >= jackPlayhead) {
-                    break;
+            if (jackPlayhead > q->scheduleAheadAmount()) {
+                // First get rid of any midi queues that have already been sent out
+                QMutableHashIterator<quint64, MidiBuffer> midiBufferQueuesIterator(midiMessageQueues);
+                while (midiBufferQueuesIterator.hasNext()) {
+                    midiBufferQueuesIterator.next();
+                    if (midiBufferQueuesIterator.key() >= jackPlayhead - q->scheduleAheadAmount()) {
+                        break;
+                    }
+                    midiBufferQueuesIterator.remove();
                 }
-                midiBufferQueuesIterator.remove();
-            }
 
-            // Then clear any clip commands that are in the past
-            QMutableHashIterator<quint64, QList< ClipCommand* > > clipCommandQueuesIterator(clipStartQueues);
-            while (clipCommandQueuesIterator.hasNext()) {
-                clipCommandQueuesIterator.next();
-                if (clipCommandQueuesIterator.key() >= jackPlayhead) {
-                    break;
+                // Then clear any clip commands that are in the past
+                QMutableHashIterator<quint64, QList< ClipCommand* > > clipCommandQueuesIterator(clipStartQueues);
+                while (clipCommandQueuesIterator.hasNext()) {
+                    clipCommandQueuesIterator.next();
+                    if (clipCommandQueuesIterator.key() >= jackPlayhead - q->scheduleAheadAmount()) {
+                        break;
+                    }
+                    clipCommandQueuesIterator.remove();
                 }
-                clipCommandQueuesIterator.remove();
             }
 
             // Finally, notify any listeners that commands have been sent out
