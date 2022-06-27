@@ -132,7 +132,7 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
                     positionsModel->disconnect(this);
                 }
             }, Qt::QueuedConnection);
-            QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "requestPositionID", Qt::QueuedConnection, Q_ARG(void*, this), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
+            QMetaObject::invokeMethod(positionsModel, "requestPositionID", Qt::QueuedConnection, Q_ARG(void*, this), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
 
             d->lgain = velocityToGain(velocity);
             d->rgain = velocityToGain(velocity);
