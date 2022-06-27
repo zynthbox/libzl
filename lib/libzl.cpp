@@ -119,23 +119,33 @@ ClipAudioSource *ClipAudioSource_new(const char *filepath, bool muted) {
 }
 
 void ClipAudioSource_play(ClipAudioSource *c, bool loop) {
-  elThread.playClip(c, loop);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.playClip(c, loop);
+      }, true);
 }
 
 void ClipAudioSource_stop(ClipAudioSource *c) {
   cerr << "libzl : Stop Clip " << c;
-
-  elThread.stopClip(c);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.stopClip(c);
+      }, true);
 }
 
 void ClipAudioSource_playOnChannel(ClipAudioSource *c, bool loop, int midiChannel) {
-  elThread.playClipOnChannel(c, loop, midiChannel);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.playClipOnChannel(c, loop, midiChannel);
+      }, true);
 }
 
 void ClipAudioSource_stopOnChannel(ClipAudioSource *c, int midiChannel) {
   cerr << "libzl : Stop Clip " << c;
-
-  elThread.stopClipOnChannel(c, midiChannel);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.stopClipOnChannel(c, midiChannel);
+      }, true);
 }
 
 float ClipAudioSource_getDuration(ClipAudioSource *c) {
@@ -153,27 +163,45 @@ void ClipAudioSource_setProgressCallback(ClipAudioSource *c,
 
 void ClipAudioSource_setStartPosition(ClipAudioSource *c,
                                       float startPositionInSeconds) {
-  elThread.setClipStartPosition(c, startPositionInSeconds);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.setClipStartPosition(c, startPositionInSeconds);
+      }, true);
 }
 
 void ClipAudioSource_setLength(ClipAudioSource *c, float beat, int bpm) {
-  elThread.setClipLength(c, beat, bpm);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.setClipLength(c, beat, bpm);
+      }, true);
 }
 
 void ClipAudioSource_setSpeedRatio(ClipAudioSource *c, float speedRatio) {
-  elThread.setClipSpeedRatio(c, speedRatio);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.setClipSpeedRatio(c, speedRatio);
+      }, true);
 }
 
 void ClipAudioSource_setPitch(ClipAudioSource *c, float pitchChange) {
-  elThread.setClipPitch(c, pitchChange);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.setClipPitch(c, pitchChange);
+      }, true);
 }
 
 void ClipAudioSource_setGain(ClipAudioSource *c, float db) {
-  elThread.setClipGain(c, db);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.setClipGain(c, db);
+      }, true);
 }
 
 void ClipAudioSource_setVolume(ClipAudioSource *c, float vol) {
-  elThread.setClipVolume(c, vol);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.setClipVolume(c, vol);
+      }, true);
 }
 
 void ClipAudioSource_setAudioLevelChangedCallback(ClipAudioSource *c,
@@ -214,7 +242,10 @@ void ClipAudioSource_destroy(ClipAudioSource *c) {
   if (clip) {
     createdClips.removeAll(clip);
   }
-  elThread.destroyClip(c);
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.destroyClip(c);
+      }, true);
 }
 
 int ClipAudioSource_id(ClipAudioSource *c) { return c->id(); }
