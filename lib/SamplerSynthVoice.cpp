@@ -30,7 +30,8 @@ public:
     ClipAudioSource *clip{nullptr};
     qint64 clipPositionId{-1};
     quint64 startTick{0};
-    quint64 startJackUsecs{0};
+    quint64 nextLoopTick{0};
+    quint64 nextLoopUsecs{0};
     double maxSampleDeviation{0.0};
     double pitchRatio = 0;
     double sourceSamplePosition = 0;
@@ -102,6 +103,11 @@ ClipCommand *SamplerSynthVoice::currentCommand() const
     return d->clipCommand;
 }
 
+void SamplerSynthVoice::setStartTick(quint64 startTick)
+{
+    d->startTick = startTick;
+}
+
 void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, SynthesiserSound* s, int /*currentPitchWheelPosition*/)
 {
     if (auto* sound = dynamic_cast<const SamplerSynthSound*> (s))
@@ -110,12 +116,16 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
             d->pitchRatio = std::pow (2.0, (midiNoteNumber - sound->rootMidiNote()) / 12.0)
                             * sound->sourceSampleRate() / getSampleRate();
 
-            d->startTick = d->syncTimer->jackPlayhead();
-            d->startJackUsecs = d->syncTimer->jackPlayheadUsecs();
             d->maxSampleDeviation = d->syncTimer->subbeatCountToSeconds(d->syncTimer->getBpm(), 1) * sound->sourceSampleRate();
             d->clip = sound->clip();
             d->sourceSampleLength = d->clip->getDuration() * sound->sourceSampleRate();
             d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * sound->sourceSampleRate());
+
+            d->nextLoopTick = d->startTick + d->clip->getLengthInBeats() * d->syncTimer->getMultiplier();
+            const qint64 rewindAmount = qint64(d->syncTimer->jackPlayhead()) - qint64(d->nextLoopTick);
+            const qint64 rewindUsecs = qint64(d->syncTimer->jackPlayheadUsecs()) - (rewindAmount * qint64(d->syncTimer->jackSubbeatLengthInMicroseconds()));
+            const qint64 lengthUsecs = d->syncTimer->subbeatCountToSeconds(d->syncTimer->getBpm(), d->clip->getLengthInBeats() * d->syncTimer->getMultiplier()) * 1000000;
+            d->nextLoopUsecs = quint64(qint64(d->syncTimer->jackPlayheadUsecs()) - rewindUsecs + lengthUsecs);
 
             // Asynchronously request the creation of a new position ID - if we call directly (or blocking
             // queued), we may end up in deadlocky threading trouble, so... asynchronous api it is!
@@ -170,17 +180,20 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
             d->clipCommandsForDeleting << d->clipCommand;
             d->clipCommand = nullptr;
         }
+        d->nextLoopTick = 0;
+        d->nextLoopUsecs = 0;
     }
 }
 
 void SamplerSynthVoice::pitchWheelMoved (int /*newValue*/) {}
 void SamplerSynthVoice::controllerMoved (int /*controllerNumber*/, int /*newValue*/) {}
 
-void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_default_audio_sample_t *rightBuffer, jack_nframes_t nframes, jack_nframes_t current_frames, jack_time_t current_usecs, jack_time_t next_usecs, float period_usecs)
+void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_default_audio_sample_t *rightBuffer, jack_nframes_t nframes, jack_nframes_t /*current_frames*/, jack_time_t current_usecs, jack_time_t next_usecs, float /*period_usecs*/)
 {
     if (auto* playingSound = static_cast<SamplerSynthSound*> (getCurrentlyPlayingSound().get()))
     {
         if (playingSound->isValid() && d->clipCommand) {
+            const double microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
             float peakGain{0.0f};
             auto& data = *playingSound->audioData();
             const float* const inL = data.getReadPointer (0);
@@ -210,16 +223,23 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
 
                 if (d->clipCommand->looping) {
                     if (d->sourceSamplePosition >= stopPosition) {
-                        // TODO beat align samples by reading clip duration in beats from clip, saving synctimer's jack playback positions in voice on startNote, and adjust in if (looping) section of process, and make sure the loop is restarted on that beat if deviation is sufficiently large (like... one timer tick is too much maybe?)
+                        // beat align samples by reading clip duration in beats from clip, saving synctimer's jack playback positions in voice on startNote, and adjust in if (looping) section of process, and make sure the loop is restarted on that beat if deviation is sufficiently large (like... one timer tick is too much maybe?)
                         if (trunc(d->clip->getLengthInBeats()) == d->clip->getLengthInBeats()) {
                             // If the clip is actually a clean multiple of a number of beats, let's make sure it loops matching that beat position
-                            // First, reset the playback position to where the loop starts
-                            d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
-                            // TODO Then rewind to where we need to be able to match the beat as it exists
-                            // We would expect this to be a minute difference which might accumulate over several runs, or
-                            // if the bpm has changed (at which point we need to sync up again as well so the sample doesn't
-                            // need to be restarted explicitly)
-//                             qDebug() << "Restarted" << d->clip->getFilePath() << d->syncTimer->jackPlayheadUsecs() << d->syncTimer->jackSubbeatLengthInMicroseconds() << d->syncTimer->jackPlayheadUsecs() - d->syncTimer->jackSubbeatLengthInMicroseconds() << current_frames << current_usecs << next_usecs << period_usecs;
+                            // Work out next loop start point in usecs
+                            // Once we hit the frame for that number of usecs after the most recent start, reset playback position to match.
+                            // nb: Don't try and be clever, actually make sure to play the first sample in the sound - play past the end rather than before the start
+                            if (current_usecs + (frame * microsecondsPerFrame) >= d->nextLoopUsecs) {
+                                // Work out the position of the next loop, based on the most recent beat tick position, not the current position, as that might be slightly incorrect
+                                d->nextLoopTick = d->nextLoopTick + d->clip->getLengthInBeats() * d->syncTimer->getMultiplier();
+                                const qint64 rewindAmount = qint64(d->syncTimer->jackPlayhead()) - qint64(d->nextLoopTick);
+                                const qint64 rewindUsecs = qint64(d->syncTimer->jackPlayheadUsecs()) - (rewindAmount * qint64(d->syncTimer->jackSubbeatLengthInMicroseconds()));
+                                const qint64 lengthUsecs = d->syncTimer->subbeatCountToSeconds(d->syncTimer->getBpm(), d->clip->getLengthInBeats() * d->syncTimer->getMultiplier()) * 1000000;
+                                d->nextLoopUsecs = quint64(qint64(d->syncTimer->jackPlayheadUsecs()) - rewindUsecs + lengthUsecs);
+
+                                // Reset the sample playback position back to the start point
+                                d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
+                            }
                         } else {
                             // If we're not beat-matched, just loop "normally"
                             // TODO Switch start position for the loop position here

@@ -18,6 +18,8 @@ public:
     void setCurrentCommand(ClipCommand *clipCommand);
     ClipCommand *currentCommand() const;
 
+    void setStartTick(quint64 startTick);
+
     void startNote (int midiNoteNumber, float velocity, SynthesiserSound*, int pitchWheel) override;
     void stopNote (float velocity, bool allowTailOff) override;
 
