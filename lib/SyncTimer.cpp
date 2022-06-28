@@ -377,6 +377,7 @@ public:
 
                 if (!timerThread->isPaused()) {
                     // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
+                    samplerSynth->lock(); // explicitly locking samplerSynth, which must be unlocked again when we're done
                     while (jackNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
                         // First send out any notes we have to send out
                         const juce::MidiBuffer &juceBuffer = midiMessageQueues[jackPlayhead];
@@ -415,7 +416,8 @@ public:
                         if (clipStartQueues.contains(jackPlayhead)) {
                             const QList<ClipCommand *> &clips = clipStartQueues[jackPlayhead];
                             for (ClipCommand *clipCommand : clips) {
-                                samplerSynth->handleClipCommand(clipCommand);
+                                // Using the protected function, which only we (and SamplerSynth) can use, to ensure less locking
+                                samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
                             }
                             sentOutClips.append(clips);
                         }
@@ -426,6 +428,7 @@ public:
                         ++stepCount;
 #endif
                     }
+                    samplerSynth->unlock(); // explicitly unlocking samplerSynth
                     if (eventCount > 0) {
                         if (uint32_t lost = jack_midi_get_lost_event_count(buffer)) {
                             qDebug() << "Lost some notes:" << lost;
@@ -559,10 +562,9 @@ void SyncTimer::queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel
     command->looping = true;
     command->startPlayback = true;
 
-    const quint64 nextJackZeroBeat = d->timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->jackPlayhead % (BeatSubdivisions * 4));
     const quint64 nextZeroBeat = d->timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->cumulativeBeat % (BeatSubdivisions * 4));
-//     qDebug() << "Queueing up" << clip << "to start, with jack and timer zero beats at" << nextJackZeroBeat << "and" << nextZeroBeat << "respectively at beats" << d->jackPlayhead << d->cumulativeBeat;
-    scheduleClipCommand(command, qMax(nextZeroBeat, nextJackZeroBeat));
+//     qDebug() << "Queueing up" << clip << "to start, with jack and timer zero beats at" << nextZeroBeat << "at beats" << d->cumulativeBeat << "meaning we want positions" << (d->cumulativeBeat + nextZeroBeat < d->jackPlayhead ? nextZeroBeat + BeatSubdivisions * 4 : nextZeroBeat);
+    scheduleClipCommand(command, d->cumulativeBeat + nextZeroBeat < d->jackPlayhead ? nextZeroBeat + BeatSubdivisions * 4 : nextZeroBeat);
 }
 
 void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
