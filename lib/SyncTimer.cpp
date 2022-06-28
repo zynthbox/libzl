@@ -308,6 +308,7 @@ public:
     jack_time_t jackUsecDeficit{0};
     jack_time_t jackStartTime{0};
     jack_time_t jackNextPlaybackPosition{0};
+    jack_time_t jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
     int process(jack_nframes_t nframes) {
         auto buffer = jack_port_get_buffer(jackPort, nframes);
@@ -331,7 +332,7 @@ public:
 
             // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
             if (mutex.tryLock(period_usecs / 4000)) {
-                const jack_time_t subbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
+                jackSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
                 const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
                 if (!timerThread->isPaused()) {
                     if (jackPlayhead == 0) {
@@ -420,7 +421,7 @@ public:
                         }
                         // Next roll for next time
                         ++jackPlayhead;
-                        jackNextPlaybackPosition += subbeatLengthInMicroseconds;
+                        jackNextPlaybackPosition += jackSubbeatLengthInMicroseconds;
 #ifdef DEBUG_SYNCTIMER_JACK
                         ++stepCount;
 #endif
@@ -706,6 +707,16 @@ quint64 SyncTimer::cumulativeBeat() const {
 quint64 SyncTimer::jackPlayhead() const
 {
     return d->jackPlayhead;
+}
+
+quint64 SyncTimer::jackPlayheadUsecs() const
+{
+    return d->jackNextPlaybackPosition;
+}
+
+quint64 SyncTimer::jackSubbeatLengthInMicroseconds() const
+{
+    return d->jackSubbeatLengthInMicroseconds;
 }
 
 // TODO Maybe don't schedule clips for somewhere prior to the jack playhead?
