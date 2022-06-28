@@ -8,12 +8,14 @@
 struct ClipCommand;
 class ClipAudioSource;
 class SamplerSynthPrivate;
+class SyncTimerPrivate;
 namespace tracktion_engine {
     class Engine;
 }
 class SamplerSynth : public QObject
 {
     Q_OBJECT
+    friend class SyncTimerPrivate;
 public:
     static SamplerSynth *instance();
 
@@ -38,6 +40,13 @@ public:
      * @return a float, from 0 through 1, describing the current CPU load
      */
     float cpuLoad() const;
+
+protected:
+    // Some stuff to ensure SyncTimer can operate with sufficient speed
+    void lock();
+    void handleClipCommand(ClipCommand* clipCommand, quint64 currentTick);
+    void unlock();
+
 private:
     std::unique_ptr<SamplerSynthPrivate> d;
 };

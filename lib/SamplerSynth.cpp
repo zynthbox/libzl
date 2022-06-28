@@ -6,6 +6,8 @@
 #include "SamplerSynthSound.h"
 #include "SamplerSynthVoice.h"
 #include "ClipCommand.h"
+#include "libzl.h"
+#include "SyncTimer.h"
 
 #include <QDebug>
 #include <QHash>
@@ -30,13 +32,17 @@ struct SamplerTrack {
 class SamplerSynthImpl;
 class SamplerSynthPrivate {
 public:
-    SamplerSynthPrivate() { }
+    SamplerSynthPrivate() {
+        syncTimer = qobject_cast<SyncTimer*>(SyncTimer_instance());
+    }
     ~SamplerSynthPrivate() {
         if (jackClient) {
             jack_client_close(jackClient);
         }
     }
+    SyncTimer* syncTimer{nullptr};
     QMutex synthMutex;
+    bool syncLocked{false};
     SamplerSynthImpl *synth{nullptr};
     static const int numVoices{128};
     float cpuLoad{0.0f};
@@ -83,7 +89,7 @@ public:
 
 class SamplerSynthImpl : public juce::Synthesiser {
 public:
-    void handleCommand(ClipCommand *clipCommand);
+    void handleCommand(ClipCommand *clipCommand, quint64 currentTick);
     SamplerSynthPrivate *d{nullptr};
 };
 
@@ -213,7 +219,7 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
 {
     if (d->synthMutex.tryLock(1)) {
-        d->synth->handleCommand(clipCommand);
+        d->synth->handleCommand(clipCommand, d->syncTimer ? d->syncTimer->jackPlayhead() : 0);
         d->synthMutex.unlock();
     } else {
         // If we failed to lock the mutex, postpone this command until the next run of the event loop
@@ -222,7 +228,7 @@ void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
     }
 }
 
-void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
+void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand, quint64 currentTick)
 {
     if (d->clipSounds.contains(clipCommand->clip)) {
         SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
@@ -249,6 +255,7 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
                         for (SamplerSynthVoice *voice : track.voices) {
                             if (!voice->isVoiceActive()) {
                                 voice->setCurrentCommand(clipCommand);
+                                voice->setStartTick(currentTick);
                                 startVoice(voice, sound, clipCommand->midiChannel, clipCommand->midiNote, clipCommand->volume);
                                 break;
                             }
@@ -280,4 +287,30 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand)
 float SamplerSynth::cpuLoad() const
 {
     return d->cpuLoad;
+}
+
+void SamplerSynth::lock()
+{
+    if (d->synthMutex.tryLock(1)) {
+        d->syncLocked = true;
+    }
+}
+
+void SamplerSynth::handleClipCommand(ClipCommand *clipCommand, quint64 currentTick)
+{
+    if (d->syncLocked) {
+        d->synth->handleCommand(clipCommand, currentTick);
+    } else {
+        // Super not cool, we're not locked, so we're going to have to postpone some things...
+        qWarning() << "Did not achieve lock prior to calling, postponing until next tick";
+        QTimer::singleShot(0, this, [this, clipCommand](){ handleClipCommand(clipCommand); });
+    }
+}
+
+void SamplerSynth::unlock()
+{
+    if (d->syncLocked) {
+        d->syncLocked = false;
+        d->synthMutex.unlock();
+    }
 }
