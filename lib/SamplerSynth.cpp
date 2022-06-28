@@ -69,7 +69,7 @@ public:
                         rightBuffer[j] = 0.0f;
                 }
                 for (SamplerSynthVoice *voice : track.voices) {
-                    voice->process(leftBuffer, rightBuffer, nframes);
+                    voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
                 }
             }
             cpuLoad = jack_cpu_load(jackClient);
