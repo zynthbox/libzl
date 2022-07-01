@@ -18,6 +18,7 @@
 
 #define TRACKS_COUNT 10
 
+class AudioLevelsPrivate;
 /**
  * @brief The AudioLevels class provides a way to read audio levels of different ports
  *
@@ -72,6 +73,37 @@ public slots:
      */
     float add(float db1, float db2);
 
+    /**
+     * \brief Sets whether or not a track should be included when recording
+     * @param track The index of the track you wish to change the recording status of
+     * @param shouldRecord Whether or not the track should be recorded
+     */
+    void setTrackToRecord(int track, bool shouldRecord = true);
+    /**
+     * \brief Set the first part of the filename used when recording
+     * This should be the full first part of the filename, path and all. The recorder will then append
+     * a timestamp and the file suffix (.wav). You should also ensure that the path exists before calling
+     * startRecording.
+     * @param track The index of the track you wish to change the filename prefix for
+     * @param fileNamePrefix The prefix you wish to use as the basis of the given track's filenames
+     */
+    void setTrackFilenamePrefix(int track, const QString& fileNamePrefix);
+    /**
+     * \brief Start the recording process on all enabled tracks
+     *
+     * The logical progression of doing semi-automated multi-tracked recording is:
+     * - Mark all the tracks that need including for recording and those that shouldn't be (setTrackToRecord)
+     * - Set the filename prefixes for all the tracks that will be included (you can also set the others, it has no negative side effects)
+     * - Start the recording
+     * - Start playback after the recording, to ensure everything is included
+     * - Stop recording when needed
+     * - Stop playback
+     */
+    void startRecording();
+    /**
+     * \brief Stop any ongoing recordings
+     */
+    void stopRecording();
 Q_SIGNALS:
     void audioLevelsChanged();
 
@@ -103,4 +135,5 @@ private:
           tracksB[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
     void timerCallback() override;
+    AudioLevelsPrivate *d{nullptr};
 };
