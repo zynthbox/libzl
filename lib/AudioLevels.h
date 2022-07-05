@@ -60,6 +60,11 @@ Q_OBJECT
      */
     Q_PROPERTY(QVariantList tracks READ getTracksAudioLevels NOTIFY audioLevelsChanged)
 
+    /**
+     * \brief A list of the track indices of the tracks marked to be included when recording
+     */
+    Q_PROPERTY(QVariantList tracksToRecord READ tracksToRecord NOTIFY tracksToRecordChanged)
+
 public:
     AudioLevels(QObject *parent = nullptr);
     int _audioLevelsJackProcessCb(jack_nframes_t nframes);
@@ -79,6 +84,11 @@ public slots:
      * @param shouldRecord Whether or not the track should be recorded
      */
     void setTrackToRecord(int track, bool shouldRecord = true);
+    /**
+     * \brief Returns a list of track indices for tracks marked to be recorded
+     * @see setTrackToRecord(int, bool)
+     */
+    QVariantList tracksToRecord() const;
     /**
      * \brief Set the first part of the filename used when recording
      * This should be the full first part of the filename, path and all. The recorder will then append
@@ -106,6 +116,7 @@ public slots:
     void stopRecording();
 Q_SIGNALS:
     void audioLevelsChanged();
+    void tracksToRecordChanged();
 
 private:
     const QVariantList getTracksAudioLevels();

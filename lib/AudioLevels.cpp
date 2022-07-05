@@ -13,6 +13,7 @@
 #include <cmath>
 #include <QDateTime>
 #include <QDebug>
+#include <QDir>
 #include <QMutex>
 #include <QString>
 #include <QThread>
@@ -111,6 +112,7 @@ public:
   AudioLevelsPrivate() {
     for(int i = 0; i < TRACKS_COUNT; ++i) {
       trackWriters << new DiskWriter;
+      tracksToRecord << false;
     }
   }
   ~AudioLevelsPrivate() {
@@ -119,6 +121,7 @@ public:
     }
   }
   QList<DiskWriter*> trackWriters;
+  QVariantList tracksToRecord;
 };
 
 static int audioLevelsJackProcessCb(jack_nframes_t nframes, void* arg) {
@@ -249,6 +252,7 @@ void AudioLevels::timerCallback() {
     Q_EMIT audioLevelsChanged();
 }
 
+const float** recordingPassthroughBuffer = new const float* [2];
 int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     capturePeakA = 0.0f;
     capturePeakB = 0.0f;
@@ -305,8 +309,9 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     for (int trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
       if (d->trackWriters[trackIndex]->isRecording()) {
         // we need booooth left and right channels in a single array...
-        float** buffer[] = {&tracksBufA[trackIndex], &tracksBufB[trackIndex]};
-        d->trackWriters[trackIndex]->processBlock((const float**)buffer, (int)nframes);
+        recordingPassthroughBuffer[0] = tracksBufA[trackIndex];
+        recordingPassthroughBuffer[1] = tracksBufB[trackIndex];
+        d->trackWriters[trackIndex]->processBlock(recordingPassthroughBuffer, (int)nframes);
       }
     }
 
@@ -349,7 +354,14 @@ void AudioLevels::setTrackToRecord(int track, bool shouldRecord)
 {
   if (track > -1 && track < d->trackWriters.count()) {
     d->trackWriters[track]->setShouldRecord(shouldRecord);
+    d->tracksToRecord[track] = shouldRecord;
+    Q_EMIT tracksToRecordChanged();
   }
+}
+
+QVariantList AudioLevels::tracksToRecord() const
+{
+  return d->tracksToRecord;
 }
 
 void AudioLevels::setTrackFilenamePrefix(int track, const QString& fileNamePrefix)
@@ -363,9 +375,19 @@ void AudioLevels::startRecording()
 {
   const QString timestamp{QDateTime::currentDateTime().toString(Qt::ISODate)};
   const double sampleRate = jack_get_sample_rate(audioLevelsJackClient);
+  // Doing this in two goes, because when we ask recording to start, it will very extremely start,
+  // and we kind of want to at least get pretty close to them starting at the same time, so let's
+  // do this bit of the ol' filesystem work first
+  for (DiskWriter *trackWriter : d->trackWriters) {
+    QString dirPath = trackWriter->filenamePrefix().left(trackWriter->filenamePrefix().lastIndexOf('/'));
+    if (!QDir().exists(dirPath)) {
+      QDir().mkpath(dirPath);
+    }
+  }
   for (DiskWriter *trackWriter : d->trackWriters) {
     if (trackWriter->shouldRecord()) {
-      trackWriter->startRecording(QString("%1-%2.wav").arg(trackWriter->filenamePrefix()).arg(timestamp), sampleRate);
+      const QString filename = QString("%1-%2.wav").arg(trackWriter->filenamePrefix()).arg(timestamp);
+      trackWriter->startRecording(filename, sampleRate);
     }
   }
 }
