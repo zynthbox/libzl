@@ -6,6 +6,7 @@
 #include "Helper.h"
 #include "MidiRouter.h"
 #include "SamplerSynth.h"
+#include "TimerCommand.h"
 
 #include <QDebug>
 #include <QHash>
@@ -232,6 +233,7 @@ public:
     int beat = 0;
     QList<void (*)(int)> callbacks;
     QHash<quint64, QList<ClipCommand *> > clipStartQueues;
+    QHash<quint64, QList<TimerCommand *> > timerCommands;
     QList<ClipCommand*> sentOutClips;
 
     quint64 cumulativeBeat = 0;
@@ -412,6 +414,7 @@ public:
                             frameSteps << jackPlayhead;
 #endif
                         }
+
                         // Then do direct-control samplersynth things
                         if (clipStartQueues.contains(jackPlayhead)) {
                             const QList<ClipCommand *> &clips = clipStartQueues[jackPlayhead];
@@ -421,6 +424,23 @@ public:
                             }
                             sentOutClips.append(clips);
                         }
+
+                        // Do playback control things as the last thing, otherwise we might end up affecting things
+                        // currently happening (like, if we stop playback on the last step of a thing, we still want
+                        // notes on that step to have been played and so on)
+                        if (timerCommands.contains(jackPlayhead)) {
+                            const QList<TimerCommand*> &commands = timerCommands[jackPlayhead];
+                            for (TimerCommand *command : commands) {
+                                Q_EMIT q->timerCommand(command);
+                                if (command->operation == TimerCommand::StopPlaybackOperation) {
+                                    // Unlock the mutex, as the stop call locks that internally
+                                    mutex.unlock();
+                                    q->stop();
+                                    mutex.tryLock();
+                                }
+                            }
+                        }
+
                         // Next roll for next time
                         ++jackPlayhead;
                         jackNextPlaybackPosition += jackSubbeatLengthInMicroseconds;
@@ -655,6 +675,7 @@ void SyncTimer::stop() {
         Q_EMIT clipCommandSent(clipCommand);
     }
     d->sentOutClips.clear();
+    d->timerCommands.clear();
 #ifdef DEBUG_SYNCTIMER_TIMING
     qDebug() << d->intervals;
 #endif
@@ -768,6 +789,33 @@ void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
         }
         d->mutex.unlock();
     }
+}
+
+void SyncTimer::scheduleTimerCommand(quint64 delay, TimerCommand *command)
+{
+    // Don't schedule things that aren't going to be played, that's just silly
+    // (that is, don't do things with stuff that jack is already past anyway)
+    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
+        d->mutex.lock();
+        if (d->timerCommands.contains(d->cumulativeBeat + delay)) {
+            d->timerCommands[d->cumulativeBeat + delay] << command;
+        } else {
+            d->timerCommands[d->cumulativeBeat + delay] = QList<TimerCommand*>{command};
+        }
+        d->mutex.unlock();
+    }
+}
+
+void SyncTimer::scheduleTimerCommand(quint64 delay, int operation, int parameter1, int parameter2, const QVariant &variantParameter)
+{
+    TimerCommand* timerCommand = new TimerCommand;
+    timerCommand->operation = static_cast<TimerCommand::Operation>(operation);
+    timerCommand->parameter = parameter1;
+    timerCommand->parameter2 = parameter2;
+    if (variantParameter.isValid()) {
+        timerCommand->variantParameter = variantParameter;
+    }
+    scheduleTimerCommand(delay, timerCommand);
 }
 
 void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay)

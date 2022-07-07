@@ -2,7 +2,7 @@
 
 #include <QObject>
 #include <QList>
-#include <QQueue>
+#include <QVariant>
 
 using namespace std;
 
@@ -10,6 +10,7 @@ namespace juce {
     class MidiBuffer;
 }
 struct ClipCommand;
+struct TimerCommand;
 class ClipAudioSource;
 class SyncTimerPrivate;
 class SyncTimer : public QObject {
@@ -122,6 +123,36 @@ public:
     * @param clipCommand The clip command which has just been sent to SamplerSynth
     */
   Q_SIGNAL void clipCommandSent(ClipCommand *clipCommand);
+
+  /**
+   * \brief Schedule a playback command into the playback schedule to be sent with the given delay
+   * @note This function will take ownership of the command, and you should expect it to no longer exist after
+   * @param delay A delay in number of timer ticks counting from the current position (cumulativeBeat)
+   * @param operation A number signifying the operation to schedule (see TimerCommand::Operation)
+   * @param parameter1 An integer optionally used by the command's handler to perform its work
+   * @param parameter2 A second integer optionally used by the command's handler to perform its work
+   * @param variantParameter A QVariant used by the parameter's handler, if an integer is insufficient
+   */
+  void scheduleTimerCommand(quint64 delay, int operation, int parameter1 = 0, int parameter2 = 0, const QVariant &variantParameter = QVariant());
+
+  /**
+   * \brief Schedule a playback command into the playback schedule to be sent with the given delay
+   * Scheduled commands will be fired on the step, unless the timer is stopped, at which point they
+   * will be deleted and no longer be used. Unlike clip commands, they will not be combined, and instead
+   * are simply added to the end of the command list for the given step.
+   * @note This function will take ownership of the command, and you should expect it to no longer exist after
+   * @param delay A delay in number of timer ticks counting from the current position (cumulativeBeat)
+   * @param command A TimerCommand instance to be executed at the given time
+   */
+  void scheduleTimerCommand(quint64 delay, TimerCommand* command);
+
+  /**
+   * \brief Emitted when a timer command is found in the schedule
+   *
+   * @note This is called from the jack process call, and must complete in an extremely short amount of time
+   * If you cannot guarantee a quick operation, use a queued connection
+   */
+  Q_SIGNAL void timerCommand(TimerCommand *command);
 
   /**
    * \brief Schedule a note message to be sent on the next tick of the timer
