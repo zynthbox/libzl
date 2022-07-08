@@ -806,12 +806,13 @@ void SyncTimer::scheduleTimerCommand(quint64 delay, TimerCommand *command)
     }
 }
 
-void SyncTimer::scheduleTimerCommand(quint64 delay, int operation, int parameter1, int parameter2, const QVariant &variantParameter)
+void SyncTimer::scheduleTimerCommand(quint64 delay, int operation, int parameter1, int parameter2, int parameter3, const QVariant &variantParameter)
 {
     TimerCommand* timerCommand = new TimerCommand;
     timerCommand->operation = static_cast<TimerCommand::Operation>(operation);
     timerCommand->parameter = parameter1;
     timerCommand->parameter2 = parameter2;
+    timerCommand->parameter3 = parameter3;
     if (variantParameter.isValid()) {
         timerCommand->variantParameter = variantParameter;
     }
