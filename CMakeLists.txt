@@ -54,7 +54,8 @@ set(libzl_subheaders
     lib/ClipCommand.h
     lib/MidiRouter.h
     lib/SamplerSynth.h
-    lib/SyncTimer.h)
+    lib/SyncTimer.h
+    lib/TimerCommand.h)
 
 target_compile_definitions(libzl
     PUBLIC
