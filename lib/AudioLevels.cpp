@@ -52,13 +52,14 @@ public:
           // And now, swap over our active writer pointer so that the audio callback will start using it..
           const ScopedLock sl (m_writerLock);
           m_activeWriter = m_threadedWriter.get();
+          m_isRecording = true;
         }
       }
     }
   }
 
   // The input data must be an array with the same number of channels as the writer expects (that is, in our general case CHANNEL_COUNT)
-  void processBlock(const float** inputChannelData, int numSamples) {
+  void processBlock(const float** inputChannelData, int numSamples) const {
     const ScopedLock sl (m_writerLock);
     if (m_activeWriter.load() != nullptr) {
       m_activeWriter.load()->write (inputChannelData, numSamples);
@@ -71,6 +72,7 @@ public:
           const ScopedLock sl(m_writerLock);
           m_activeWriter = nullptr;
           m_sampleRate = 0;
+          m_isRecording = false;
       }
 
       // Now we can delete the writer object. It's done in this order because the deletion could
@@ -80,7 +82,7 @@ public:
   }
 
   bool isRecording() const {
-      return m_activeWriter.load() != nullptr;
+    return m_isRecording;
   }
   QString filenamePrefix() const {
     return m_fileNamePrefix;
@@ -97,6 +99,7 @@ public:
 private:
   QString m_fileNamePrefix;
   bool m_shouldRecord{false};
+  bool m_isRecording{false};
 
   juce::File m_file;
   juce::TimeSliceThread m_backgroundThread{"AudioLevel Disk Recorder"}; // the thread that will write our audio data to disk
@@ -253,18 +256,22 @@ void AudioLevels::timerCallback() {
 }
 
 const float** recordingPassthroughBuffer = new const float* [2];
+jack_default_audio_sample_t *captureBufA{nullptr},
+                            *captureBufB{nullptr},
+                            *playbackBufA{nullptr},
+                            *playbackBufB{nullptr},
+                            *tracksBufA[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
+                            *tracksBufB[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     capturePeakA = 0.0f;
     capturePeakB = 0.0f;
     playbackPeakA = 0.0f;
     playbackPeakB = 0.0f;
 
-    jack_default_audio_sample_t *captureBufA{(jack_default_audio_sample_t *)jack_port_get_buffer(capturePortA, nframes)},
-                                *captureBufB{(jack_default_audio_sample_t *)jack_port_get_buffer(capturePortB, nframes)},
-                                *playbackBufA{(jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortA, nframes)},
-                                *playbackBufB{(jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortB, nframes)},
-                                *tracksBufA[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
-                                *tracksBufB[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    captureBufA = (jack_default_audio_sample_t *)jack_port_get_buffer(capturePortA, nframes);
+    captureBufB = (jack_default_audio_sample_t *)jack_port_get_buffer(capturePortB, nframes);
+    playbackBufA = (jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortA, nframes);
+    playbackBufB = (jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortB, nframes);
 
     for (int i=0; i<TRACKS_COUNT; i++) {
         tracksPeakA[i] = 0.0f;
@@ -307,11 +314,12 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     }
     // Wait until here and then run through them all again, telling them each to get on with it
     for (int trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
-      if (d->trackWriters[trackIndex]->isRecording()) {
+      const DiskWriter *diskWriter = d->trackWriters[trackIndex];
+      if (diskWriter->isRecording()) {
         // we need booooth left and right channels in a single array...
         recordingPassthroughBuffer[0] = tracksBufA[trackIndex];
         recordingPassthroughBuffer[1] = tracksBufB[trackIndex];
-        d->trackWriters[trackIndex]->processBlock(recordingPassthroughBuffer, (int)nframes);
+        diskWriter->processBlock(recordingPassthroughBuffer, (int)nframes);
       }
     }
 
