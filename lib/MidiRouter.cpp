@@ -133,7 +133,7 @@ public:
         // Get all our output channels' buffers and clear them, if there was one previously set.
         // A little overly protective, given how lightweight the functions are, but might as well
         // be lighter-weight about it.
-        for (TrackOutput *output : outputs) {
+        for (TrackOutput *output : qAsConst(outputs)) {
             if (output->channelBuffer) {
                 jack_midi_clear_buffer(output->channelBuffer);
                 output->channelBuffer = nullptr;
@@ -203,7 +203,7 @@ public:
         // Now handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
         if (currentChannel > -1 && currentChannel < outputs.count()) {
             int adjustedCurrentChannel{currentChannel};
-            for (InputDevice *device : hardwareInputs) {
+            for (InputDevice *device : qAsConst(hardwareInputs)) {
                 if (device->enabled) {
                     inputBuffer = jack_port_get_buffer(device->port, nframes);
                     output = outputs[currentChannel];
