@@ -67,7 +67,7 @@ public:
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
             // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
         if (synthMutex.tryLock(period_usecs / 4000)) {
-            for(const SamplerTrack &track : tracks) {
+            for(const SamplerTrack &track : qAsConst(tracks)) {
                 jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
                 jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.rightPort, nframes);
                 for (jack_nframes_t j = 0; j < nframes; j++) {
@@ -75,7 +75,12 @@ public:
                         rightBuffer[j] = 0.0f;
                 }
                 for (SamplerSynthVoice *voice : track.voices) {
-                    voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
+                    // If we don't have a command set, there's definitely nothing playing (it gets set
+                    // before playback starts and cleared after playback ends), consequently there's no
+                    // reason to process this voice
+                    if (voice->currentCommand()) {
+                        voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
+                    }
                 }
             }
             cpuLoad = jack_cpu_load(jackClient);
