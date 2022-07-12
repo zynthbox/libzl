@@ -254,7 +254,7 @@ public:
 #endif
         while (cumulativeBeat < (jackPlayhead + q->scheduleAheadAmount())) {
             // Call any callbacks registered to us
-            for (auto cb : callbacks) {
+            for (auto cb : qAsConst(callbacks)) {
                 cb(beat);
             }
 
@@ -294,7 +294,7 @@ public:
             }
 
             // Finally, notify any listeners that commands have been sent out
-            for (ClipCommand *clipCommand : sentOutClips) {
+            for (ClipCommand *clipCommand : qAsConst(sentOutClips)) {
                 Q_EMIT q->clipCommandSent(clipCommand);
             }
             // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
@@ -747,47 +747,54 @@ void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
 {
     // Don't schedule things that aren't going to be played, that's just silly
     // (that is, don't do things with stuff that jack is already past anyway)
-    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
-        d->mutex.lock();
-        if (!d->clipStartQueues.contains(d->cumulativeBeat + delay)) {
-            d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipCommand*>{};
-        }
-        QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
-        bool foundExisting{false};
-        for (ClipCommand *clipCommand : clips) {
-            if (clipCommand->equivalentTo(clip)) {
-                if (clip->changeLooping) {
-                    clipCommand->looping = clip->looping;
-                    clipCommand->changeLooping = true;
-                }
-                if (clip->changePitch) {
-                    clipCommand->pitchChange = clip->pitchChange;
-                    clipCommand->changePitch = true;
-                }
-                if (clip->changeSpeed) {
-                    clipCommand->speedRatio = clip->speedRatio;
-                    clipCommand->changeSpeed = true;
-                }
-                if (clip->changeGainDb) {
-                    clipCommand->gainDb = clip->gainDb;
-                    clipCommand->changeGainDb = true;
-                }
-                if (clip->changeVolume) {
-                    clipCommand->volume = clip->volume;
-                    clipCommand->changeVolume = true;
-                }
-                if (clip->startPlayback) {
-                    clipCommand->startPlayback = true;
-                }
-                foundExisting = true;
+    if (d->mutex.tryLock()) {
+        if (d->jackPlayhead <= d->cumulativeBeat + delay) {
+            if (!d->clipStartQueues.contains(d->cumulativeBeat + delay)) {
+                d->clipStartQueues[d->cumulativeBeat + delay] = QList<ClipCommand*>{};
             }
-        }
-        if (foundExisting) {
-            delete clip;
+            QList<ClipCommand*> &clips = d->clipStartQueues[d->cumulativeBeat + delay];
+            bool foundExisting{false};
+            for (ClipCommand *clipCommand : clips) {
+                if (clipCommand->equivalentTo(clip)) {
+                    if (clip->changeLooping) {
+                        clipCommand->looping = clip->looping;
+                        clipCommand->changeLooping = true;
+                    }
+                    if (clip->changePitch) {
+                        clipCommand->pitchChange = clip->pitchChange;
+                        clipCommand->changePitch = true;
+                    }
+                    if (clip->changeSpeed) {
+                        clipCommand->speedRatio = clip->speedRatio;
+                        clipCommand->changeSpeed = true;
+                    }
+                    if (clip->changeGainDb) {
+                        clipCommand->gainDb = clip->gainDb;
+                        clipCommand->changeGainDb = true;
+                    }
+                    if (clip->changeVolume) {
+                        clipCommand->volume = clip->volume;
+                        clipCommand->changeVolume = true;
+                    }
+                    if (clip->startPlayback) {
+                        clipCommand->startPlayback = true;
+                    }
+                    foundExisting = true;
+                }
+            }
+            if (foundExisting) {
+                delete clip;
+            } else {
+                clips << clip;
+            }
+            d->mutex.unlock();
         } else {
-            clips << clip;
+//             qWarning() << Q_FUNC_INFO << "Didn't schedule clip command into the past: jack playhead" << d->jackPlayhead << "is already past" << d->cumulativeBeat + delay << " - rescheduling for next possible point";
+            d->mutex.unlock();
+            scheduleClipCommand(clip, d->jackPlayhead - d->cumulativeBeat);
         }
-        d->mutex.unlock();
+    } else {
+        qWarning() << Q_FUNC_INFO << "Failed to lock mutex to schedule clip command into the timer";
     }
 }
 
@@ -795,14 +802,21 @@ void SyncTimer::scheduleTimerCommand(quint64 delay, TimerCommand *command)
 {
     // Don't schedule things that aren't going to be played, that's just silly
     // (that is, don't do things with stuff that jack is already past anyway)
-    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
-        d->mutex.lock();
-        if (d->timerCommands.contains(d->cumulativeBeat + delay)) {
-            d->timerCommands[d->cumulativeBeat + delay] << command;
+    if (d->mutex.tryLock()) {
+        if (d->jackPlayhead <= d->cumulativeBeat + delay) {
+            if (d->timerCommands.contains(d->cumulativeBeat + delay)) {
+                d->timerCommands[d->cumulativeBeat + delay] << command;
+            } else {
+                d->timerCommands[d->cumulativeBeat + delay] = QList<TimerCommand*>{command};
+            }
+            d->mutex.unlock();
         } else {
-            d->timerCommands[d->cumulativeBeat + delay] = QList<TimerCommand*>{command};
+//             qWarning() << Q_FUNC_INFO << "Didn't schedule timer command into the past: jack playhead" << d->jackPlayhead << "is already past" << d->cumulativeBeat + delay << " - rescheduling for next possible point";
+            d->mutex.unlock();
+            scheduleTimerCommand(d->jackPlayhead - d->cumulativeBeat, command);
         }
-        d->mutex.unlock();
+    } else {
+        qWarning() << Q_FUNC_INFO << "Failed to lock mutex to schedule timer command into the timer";
     }
 }
 
@@ -823,29 +837,37 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
 {
     // Don't schedule things that aren't going to be played, that's just silly
     // (that is, don't do things with stuff that jack is already past anyway)
-    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
-        unsigned char note[3];
-        if (setOn) {
-            note[0] = 0x90 + midiChannel;
+    if (d->mutex.tryLock()) {
+        if (d->jackPlayhead <= d->cumulativeBeat + delay) {
+            unsigned char note[3];
+            if (setOn) {
+                note[0] = 0x90 + midiChannel;
+            } else {
+                note[0] = 0x80 + midiChannel;
+            }
+            note[1] = midiNote;
+            note[2] = velocity;
+            const int onOrOff = setOn ? 1 : 0;
+            if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
+                d->midiMessageQueues[d->cumulativeBeat + delay].addEvent(note, 3, onOrOff);
+            } else {
+                MidiBuffer buffer;
+                buffer.addEvent(note, 3, onOrOff);
+                d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
+            }
+            d->mutex.unlock();
+            if (setOn && duration > 0) {
+                // Schedule an off note for that position
+                scheduleNote(midiNote, midiChannel, false, 64, 0, delay + duration);
+            }
         } else {
-            note[0] = 0x80 + midiChannel;
+//             qWarning() << Q_FUNC_INFO << "Didn't schedule note into the past: jack playhead" << d->jackPlayhead << "is already past" << d->cumulativeBeat + delay << " - rescheduling for next possible point";
+            const quint64 newDelay = d->jackPlayhead - d->cumulativeBeat;
+            d->mutex.unlock();
+            scheduleNote(midiNote, midiChannel, setOn, velocity, duration - (newDelay - delay), newDelay);
         }
-        note[1] = midiNote;
-        note[2] = velocity;
-        const int onOrOff = setOn ? 1 : 0;
-        d->mutex.lock();
-        if (d->midiMessageQueues.contains(d->cumulativeBeat + delay)) {
-            d->midiMessageQueues[d->cumulativeBeat + delay].addEvent(note, 3, onOrOff);
-        } else {
-            MidiBuffer buffer;
-            buffer.addEvent(note, 3, onOrOff);
-            d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
-        }
-        d->mutex.unlock();
-        if (setOn && duration > 0) {
-            // Schedule an off note for that position
-            scheduleNote(midiNote, midiChannel, false, 64, 0, delay + duration);
-        }
+    } else {
+        qWarning() << Q_FUNC_INFO << "Failed to lock mutex to schedule note into the timer";
     }
 }
 
@@ -853,41 +875,44 @@ void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay
 {
     // Don't schedule things that aren't going to be played, that's just silly
     // (that is, don't do things with stuff that jack is already past anyway)
-    if (d->jackPlayhead <= d->cumulativeBeat + delay) {
-        d->mutex.lock();
-        const bool queueContainsPosition{d->midiMessageQueues.contains(d->cumulativeBeat + delay)};
-        d->mutex.unlock();
-        if (queueContainsPosition) {
-            d->mutex.lock();
-            juce::MidiBuffer &addToThis = d->midiMessageQueues[d->cumulativeBeat + delay];
-            d->mutex.unlock();
-            for (const juce::MidiMessageMetadata &newMeta : buffer) {
-                bool alreadyExists{false};
-                for (const juce::MidiMessageMetadata &existingMeta : addToThis) {
-                    if (existingMeta.samplePosition == newMeta.samplePosition
-                        && existingMeta.numBytes == newMeta.numBytes
-                    ) {
-                        if (newMeta.numBytes == 2 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1]) {
-                            alreadyExists = true;
-                            break;
-                        } else if (newMeta.numBytes == 3 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1] && existingMeta.data[2] == newMeta.data[2]) {
-                            alreadyExists = true;
+    if (d->mutex.tryLock()) {
+        if (d->jackPlayhead <= d->cumulativeBeat + delay) {
+            const bool queueContainsPosition{d->midiMessageQueues.contains(d->cumulativeBeat + delay)};
+            if (queueContainsPosition) {
+                juce::MidiBuffer &addToThis = d->midiMessageQueues[d->cumulativeBeat + delay];
+                for (const juce::MidiMessageMetadata &newMeta : buffer) {
+                    bool alreadyExists{false};
+                    for (const juce::MidiMessageMetadata &existingMeta : addToThis) {
+                        if (existingMeta.samplePosition == newMeta.samplePosition
+                            && existingMeta.numBytes == newMeta.numBytes
+                        ) {
+                            if (newMeta.numBytes == 2 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1]) {
+                                alreadyExists = true;
+                                break;
+                            } else if (newMeta.numBytes == 3 && existingMeta.data[0] == newMeta.data[0] && existingMeta.data[1] == newMeta.data[1] && existingMeta.data[2] == newMeta.data[2]) {
+                                alreadyExists = true;
+                                break;
+                            }
+                        }
+                        if (alreadyExists) {
                             break;
                         }
                     }
-                    if (alreadyExists) {
-                        break;
+                    if (!alreadyExists) {
+                        addToThis.addEvent(newMeta.data, newMeta.numBytes, newMeta.samplePosition);
                     }
                 }
-                if (!alreadyExists) {
-                    addToThis.addEvent(newMeta.data, newMeta.numBytes, newMeta.samplePosition);
-                }
+            } else {
+                d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
             }
-        } else {
-            d->mutex.lock();
-            d->midiMessageQueues[d->cumulativeBeat + delay] = buffer;
             d->mutex.unlock();
+        } else {
+//             qWarning() << Q_FUNC_INFO << "Didn't schedule midi buffer into the past: jack playhead" << d->jackPlayhead << "is already past" << d->cumulativeBeat + delay << " - rescheduling for next possible point";
+            d->mutex.unlock();
+            scheduleMidiBuffer(buffer, d->jackPlayhead - d->cumulativeBeat);
         }
+    } else {
+        qWarning() << Q_FUNC_INFO << "Failed to lock mutex to schedule midi buffer into the timer";
     }
 }
 
