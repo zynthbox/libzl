@@ -252,7 +252,7 @@ public:
         intervals << (thisRound - lastRound).count();
         lastRound = thisRound;
 #endif
-        while (cumulativeBeat < (jackPlayhead + q->scheduleAheadAmount())) {
+        while (cumulativeBeat < (jackPlayhead + (q->scheduleAheadAmount() * 2))) {
             // Call any callbacks registered to us
             for (auto cb : qAsConst(callbacks)) {
                 cb(beat);
@@ -432,7 +432,15 @@ public:
                             const QList<TimerCommand*> &commands = timerCommands[jackPlayhead];
                             for (TimerCommand *command : commands) {
                                 Q_EMIT q->timerCommand(command);
-                                if (command->operation == TimerCommand::StopPlaybackOperation) {
+                                if (command->operation == TimerCommand::StartClipLoopOperation || command->operation == TimerCommand::StopClipLoopOperation) {
+                                    ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
+                                    if (clipCommand) {
+                                        samplerSynth->handleClipCommand(clipCommand);
+                                        sentOutClips.append(clipCommand);
+                                    } else {
+                                        qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
+                                    }
+                                } else if (command->operation == TimerCommand::StopPlaybackOperation) {
                                     // Unlock the mutex, as the stop call locks that internally
                                     mutex.unlock();
                                     q->stop();
