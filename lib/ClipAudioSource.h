@@ -101,6 +101,11 @@ public:
    * @param vol The volume you wish to set, using tracktion's slider position notation (0.0 through 1.0)
    */
   void setVolumeAbsolute(float vol);
+  /**
+   * \brief Get the volume in "slider position" (0.0 through 1.0)
+   * @return A number from 0.0 through 1.0 - that is, tracktion's slider position notation
+   */
+  float volumeAbsolute() const;
   void setAudioLevelChangedCallback(void (*functionPtr)(float));
   // Using the channel logic from SamplerSynth, -2 is no-effect global sounds, -1 is the effected global channel, and 0-9 are tracks 1 through 10 inclusive
   void play(bool loop = true, int midiChannel = -2);

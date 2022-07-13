@@ -324,6 +324,14 @@ void ClipAudioSource::setVolumeAbsolute(float vol)
   }
 }
 
+float ClipAudioSource::volumeAbsolute() const
+{
+  if (auto clip = d->getClip()) {
+    return clip->edit.getMasterVolumePlugin()->getSliderPos();
+  }
+  return 0.0f;
+}
+
 void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
   d->audioLevelChangedCallback = functionPtr;
 }
