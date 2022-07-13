@@ -435,7 +435,7 @@ public:
                                 if (command->operation == TimerCommand::StartClipLoopOperation || command->operation == TimerCommand::StopClipLoopOperation) {
                                     ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
                                     if (clipCommand) {
-                                        samplerSynth->handleClipCommand(clipCommand);
+                                        samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
                                         sentOutClips.append(clipCommand);
                                     } else {
                                         qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
