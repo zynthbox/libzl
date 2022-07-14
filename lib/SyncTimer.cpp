@@ -441,11 +441,6 @@ public:
                                         qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
                                     }
                                     command->variantParameter.clear();
-                                } else if (command->operation == TimerCommand::StopPlaybackOperation) {
-                                    // Unlock the mutex, as the stop call locks that internally
-                                    mutex.unlock();
-                                    q->stop();
-                                    mutex.tryLock();
                                 }
                             }
                         }
