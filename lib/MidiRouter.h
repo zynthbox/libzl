@@ -18,6 +18,7 @@ class MidiRouterPrivate;
  * to to get all notes going to those specific locations:
  *
  * ZLRouter:Passthrough sends out all notes except those on input channels set to no destination
+ * ZLRouter:InternalPassthrough sends out all notes which did not come from and is not going to externally connected midi hardware (NoDestination notes are included)
  * ZLRouter:HardwareInPassthrough sends out all notes that came in from externally connected midi hardware
  * ZLRouter:ExternalOut will send out notes also sent to the enabled external ports
  * ZLRouter:ZynthianOut will send out notes also sent to Zynthian destinations

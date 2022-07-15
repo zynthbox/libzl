@@ -86,6 +86,7 @@ public:
     jack_port_t *midiInPort{nullptr};
 
     jack_port_t *passthroughPort{nullptr};
+    jack_port_t *internalPassthrough{nullptr};
     jack_port_t *hardwareInPassthrough{nullptr};
     jack_port_t *zynthianOutput{nullptr};
     jack_port_t *samplerOutput{nullptr};
@@ -142,6 +143,8 @@ public:
         // Get and clear our passthrough buffers
         void *passthroughBuffer = jack_port_get_buffer(passthroughPort, nframes);
         jack_midi_clear_buffer(passthroughBuffer);
+        void *internalPassthroughBuffer = jack_port_get_buffer(internalPassthrough, nframes);
+        jack_midi_clear_buffer(internalPassthroughBuffer);
         void *hardwareInPassthroughBuffer = jack_port_get_buffer(hardwareInPassthrough, nframes);
         jack_midi_clear_buffer(hardwareInPassthroughBuffer);
         void *zynthianOutputBuffer = jack_port_get_buffer(zynthianOutput, nframes);
@@ -173,6 +176,7 @@ public:
                 switch (output->destination) {
                     case MidiRouter::ZynthianDestination:
                         writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
+                        writeEventToBuffer(event, internalPassthroughBuffer, currentChannel, output);
                         writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, output);
                         for (const int &zynthianChannel : output->zynthianChannels) {
                             writeEventToBuffer(event, output->channelBuffer, eventChannel, output, zynthianChannel);
@@ -180,18 +184,21 @@ public:
                         break;
                     case MidiRouter::SamplerDestination:
                         writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
+                        writeEventToBuffer(event, internalPassthroughBuffer, currentChannel, output);
                         writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
                         writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
                         break;
                     case MidiRouter::ExternalDestination:
                     {
                         writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
+                        // Not writing to internal passthrough, as this is heading to an external device
                         int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
                         writeEventToBuffer(event, externalOutputBuffer, eventChannel, output, externalChannel);
                         writeEventToBuffer(event, output->channelBuffer, eventChannel, output, externalChannel);
                     }
                     case MidiRouter::NoDestination:
                     default:
+                        writeEventToBuffer(event, internalPassthroughBuffer, currentChannel, output);
                         // Do nothing here
                         break;
                 }
@@ -457,6 +464,10 @@ MidiRouter::MidiRouter(QObject *parent)
             d->passthroughPort = jack_port_register(d->jackClient, "Passthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
             if (!d->passthroughPort) {
                 qWarning() << "ZLRouter: Could not register ZLRouter Jack passthrough port";
+            }
+            d->internalPassthrough = jack_port_register(d->jackClient, "InternalPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+            if (!d->internalPassthrough) {
+                qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
             }
             d->hardwareInPassthrough = jack_port_register(d->jackClient, "HardwareInPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
             if (!d->hardwareInPassthrough) {
