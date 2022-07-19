@@ -305,7 +305,13 @@ void ClipAudioSource::setGain(float db) {
 void ClipAudioSource::setVolume(float vol) {
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume : " << vol << endl;
-    clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
+    // Knowing that -40 is our "be quiet now thanks" volume level, but tracktion thinks it should be -100, we'll just adjust that a bit
+    // It means the last step is a bigger jump than perhaps desirable, but it'll still be more correct
+    if (vol <= -40.0f) {
+      clip->edit.setMasterVolumeSliderPos(0);
+    } else {
+      clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
+    }
     d->volumeAbsolute = clip->edit.getMasterVolumePlugin()->getSliderPos();
     Q_EMIT volumeAbsoluteChanged();
   }
