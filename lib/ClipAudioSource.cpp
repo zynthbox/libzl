@@ -306,10 +306,8 @@ void ClipAudioSource::setVolume(float vol) {
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(te::decibelsToVolumeFaderPosition(vol));
-    ClipCommand *command = ClipCommand::noEffectCommand(this);
-    command->changeVolume = true;
-    command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
-    SamplerSynth::instance()->handleClipCommand(command);
+    d->volumeAbsolute = clip->edit.getMasterVolumePlugin()->getSliderPos();
+    Q_EMIT volumeAbsoluteChanged();
   }
 }
 
