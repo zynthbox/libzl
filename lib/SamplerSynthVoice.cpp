@@ -200,6 +200,7 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
             const float* const inL = data.getReadPointer (0);
             const float* const inR = data.getNumChannels() > 1 ? data.getReadPointer (1) : nullptr;
 
+            const float clipVolume = d->clip->volumeAbsolute();
             const int stopPosition = playingSound->stopPosition(d->clipCommand->slice);
             const int sampleDuration = playingSound->length();
             for(jack_nframes_t frame = 0; frame < nframes; ++frame) {
@@ -213,8 +214,8 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
 
                 auto envelopeValue = d->adsr.getNextSample();
 
-                l *= d->lgain * envelopeValue;
-                r *= d->rgain * envelopeValue;
+                l *= d->lgain * envelopeValue * clipVolume;
+                r *= d->rgain * envelopeValue * clipVolume;
 
                 leftBuffer[frame] += l;
                 rightBuffer[frame] += r;

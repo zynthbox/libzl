@@ -62,6 +62,7 @@ public:
   float startPositionInSeconds = 0;
   float lengthInSeconds = -1;
   float lengthInBeats = -1;
+  float volumeAbsolute{-1.0f}; // This is a cached value
   float pitchChange = 0;
   float speedRatio = 1.0;
   double currentLeveldB{-400.0};
@@ -317,19 +318,19 @@ void ClipAudioSource::setVolumeAbsolute(float vol)
   if (auto clip = d->getClip()) {
     IF_DEBUG_CLIP cerr << "Setting volume absolutely : " << vol << endl;
     clip->edit.setMasterVolumeSliderPos(qMax(0.0f, qMin(vol, 1.0f)));
-    ClipCommand *command = ClipCommand::noEffectCommand(this);
-    command->changeVolume = true;
-    command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
-    SamplerSynth::instance()->handleClipCommand(command);
+    d->volumeAbsolute = clip->edit.getMasterVolumePlugin()->getSliderPos();
+    Q_EMIT volumeAbsoluteChanged();
   }
 }
 
 float ClipAudioSource::volumeAbsolute() const
 {
-  if (auto clip = d->getClip()) {
-    return clip->edit.getMasterVolumePlugin()->getSliderPos();
+  if (d->volumeAbsolute < 0) {
+    if (auto clip = d->getClip()) {
+      d->volumeAbsolute = clip->edit.getMasterVolumePlugin()->getSliderPos();
+    }
   }
-  return 0.0f;
+  return d->volumeAbsolute;
 }
 
 void ClipAudioSource::setAudioLevelChangedCallback(void (*functionPtr)(float)) {
@@ -406,7 +407,7 @@ void ClipAudioSource::play(bool loop, int midiChannel) {
   ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
   command->midiNote = 60;
   command->changeVolume = true;
-  command->volume = clip->edit.getMasterVolumePlugin()->getSliderPos();
+  command->volume = 1.0f;
   command->looping = loop;
   command->startPlayback = true;
   SamplerSynth::instance()->handleClipCommand(command);

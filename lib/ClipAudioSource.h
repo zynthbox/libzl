@@ -29,6 +29,10 @@ class ClipAudioSource : public QObject {
     Q_OBJECT
     Q_PROPERTY(int id READ id WRITE setId NOTIFY idChanged)
     /**
+     * \brief The volume of the clip in an absolute style (from 0.0 through 1.0)
+     */
+    Q_PROPERTY(float volumeAbsolute READ volumeAbsolute WRITE setVolumeAbsolute NOTIFY volumeAbsoluteChanged)
+    /**
      * \brief The current audio level in dB as a float (might be anywhere from -200 to 30, but can exist above that level as well)
      */
     Q_PROPERTY(float audioLevel READ audioLevel NOTIFY audioLevelChanged)
@@ -106,6 +110,7 @@ public:
    * @return A number from 0.0 through 1.0 - that is, tracktion's slider position notation
    */
   float volumeAbsolute() const;
+  Q_SIGNAL void volumeAbsoluteChanged();
   void setAudioLevelChangedCallback(void (*functionPtr)(float));
   // Using the channel logic from SamplerSynth, -2 is no-effect global sounds, -1 is the effected global channel, and 0-9 are tracks 1 through 10 inclusive
   void play(bool loop = true, int midiChannel = -2);
