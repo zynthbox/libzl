@@ -116,6 +116,7 @@ public:
     for(int i = 0; i < TRACKS_COUNT; ++i) {
       trackWriters << new DiskWriter;
       tracksToRecord << false;
+      levels.append(QVariant::fromValue<float>(0));
     }
   }
   ~AudioLevelsPrivate() {
@@ -125,6 +126,7 @@ public:
   }
   QList<DiskWriter*> trackWriters;
   QVariantList tracksToRecord;
+  QVariantList levels;
 };
 
 static int audioLevelsJackProcessCb(jack_nframes_t nframes, void* arg) {
@@ -255,6 +257,9 @@ void AudioLevels::timerCallback() {
     Q_EMIT audioLevelsChanged();
 }
 
+inline float addFloat(const float& db1, const float &db2) {
+   return 10 * log10f(pow(10, db1/10) + pow(10, db2/10));
+}
 const float** recordingPassthroughBuffer = new const float* [2];
 jack_default_audio_sample_t *captureBufA{nullptr},
                             *captureBufB{nullptr},
@@ -262,6 +267,8 @@ jack_default_audio_sample_t *captureBufA{nullptr},
                             *playbackBufB{nullptr},
                             *tracksBufA[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
                             *tracksBufB[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+int trackIndex{0};
+jack_nframes_t frameIndex{0};
 int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     capturePeakA = 0.0f;
     capturePeakB = 0.0f;
@@ -273,18 +280,18 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     playbackBufA = (jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortA, nframes);
     playbackBufB = (jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortB, nframes);
 
-    for (int i=0; i<TRACKS_COUNT; i++) {
-        tracksPeakA[i] = 0.0f;
-        tracksPeakB[i] = 0.0f;
-        tracksBufA[i] = (jack_default_audio_sample_t *)jack_port_get_buffer(tracksPortA[i], nframes);
-        tracksBufB[i] = (jack_default_audio_sample_t *)jack_port_get_buffer(tracksPortB[i], nframes);
+    for (trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
+        tracksPeakA[trackIndex] = 0.0f;
+        tracksPeakB[trackIndex] = 0.0f;
+        tracksBufA[trackIndex] = (jack_default_audio_sample_t *)jack_port_get_buffer(tracksPortA[trackIndex], nframes);
+        tracksBufB[trackIndex] = (jack_default_audio_sample_t *)jack_port_get_buffer(tracksPortB[trackIndex], nframes);
     }
 
-    for (jack_nframes_t i=0; i<nframes; i++) {
-        const float captureSampleA = fabs(captureBufA[i]) * 0.2,
-                    captureSampleB = fabs(captureBufB[i]) * 0.2,
-                    playbackSampleA = fabs(playbackBufA[i]) * 0.2,
-                    playbackSampleB = fabs(playbackBufB[i]) * 0.2;
+    for (frameIndex=0; frameIndex<nframes; frameIndex++) {
+        const float captureSampleA = fabs(captureBufA[frameIndex]),
+                    captureSampleB = fabs(captureBufB[frameIndex]),
+                    playbackSampleA = fabs(playbackBufA[frameIndex]),
+                    playbackSampleB = fabs(playbackBufB[frameIndex]);
 
         if (captureSampleA > capturePeakA) {
             capturePeakA = captureSampleA;
@@ -300,21 +307,36 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
             playbackPeakB = playbackSampleB;
         }
 
-        for (int j=0; j<TRACKS_COUNT; j++) {
-            const float tracksSampleA = fabs(tracksBufA[j][i]) * 0.2,
-                        tracksSampleB = fabs(tracksBufB[j][i]) * 0.2;
-
-            if (tracksSampleA > tracksPeakA[j]) {
-                tracksPeakA[j] = tracksSampleA;
+        for (trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
+            const float tracksSampleA = fabs(tracksBufA[trackIndex][frameIndex]);
+            if (tracksSampleA > tracksPeakA[trackIndex]) {
+                tracksPeakA[trackIndex] = tracksSampleA;
             }
-            if (tracksSampleB > tracksPeakB[j]) {
-                tracksPeakB[j] = tracksSampleB;
+            const float tracksSampleB = fabs(tracksBufB[trackIndex][frameIndex]);
+            if (tracksSampleB > tracksPeakB[trackIndex]) {
+                tracksPeakB[trackIndex] = tracksSampleB;
             }
         }
     }
-    // Wait until here and then run through them all again, telling them each to get on with it
-    for (int trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
-      const DiskWriter *diskWriter = d->trackWriters[trackIndex];
+
+    const float captureDbA{convertTodbFS(capturePeakA * 0.2)},
+                captureDbB{convertTodbFS(capturePeakB * 0.2)},
+                playbackDbA{convertTodbFS(playbackPeakA * 0.2)},
+                playbackDbB{convertTodbFS(playbackPeakB * 0.2)};
+
+    captureA = captureDbA <= -200 ? -200 : captureDbA;
+    captureB = captureDbB <= -200 ? -200 : captureDbB;
+    playbackA = playbackDbA <= -200 ? -200 : playbackDbA;
+    playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
+
+    for (trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
+      const float dbA = convertTodbFS(tracksPeakA[trackIndex] * 0.2),
+                  dbB = convertTodbFS(tracksPeakB[trackIndex] * 0.2);
+
+      tracksA[trackIndex] = dbA <= -200 ? -200 : dbA;
+      tracksB[trackIndex] = dbB <= -200 ? -200 : dbB;
+
+      const DiskWriter *diskWriter = d->trackWriters.at(trackIndex);
       if (diskWriter->isRecording()) {
         // we need booooth left and right channels in a single array...
         recordingPassthroughBuffer[0] = tracksBufA[trackIndex];
@@ -323,39 +345,19 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
       }
     }
 
-    const float captureDbA{convertTodbFS(capturePeakA)},
-                captureDbB{convertTodbFS(capturePeakB)},
-                playbackDbA{convertTodbFS(playbackPeakA)},
-                playbackDbB{convertTodbFS(playbackPeakB)};
-
-    captureA = captureDbA <= -200 ? -200 : captureDbA;
-    captureB = captureDbB <= -200 ? -200 : captureDbB;
-    playbackA = playbackDbA <= -200 ? -200 : playbackDbA;
-    playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
-
-    for (int i=0; i<TRACKS_COUNT; i++) {
-        const float dbA = convertTodbFS(tracksPeakA[i]),
-                    dbB = convertTodbFS(tracksPeakB[i]);
-
-        tracksA[i] = dbA <= -200 ? -200 : dbA;
-        tracksB[i] = dbB <= -200 ? -200 : dbB;
-    }
-
     return 0;
 }
 
 float AudioLevels::add(float db1, float db2) {
-    return 10 * log10f(pow(10, db1/10) + pow(10, db2/10));
+    return addFloat(db1, db2);
 }
 
 const QVariantList AudioLevels::getTracksAudioLevels() {
-    QVariantList levels;
-
-    for (int i=0; i<TRACKS_COUNT; i++) {
-        levels << add(tracksA[i], tracksB[i]);
+    for (int trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
+      d->levels[trackIndex].setValue<float>(addFloat(tracksA[trackIndex], tracksB[trackIndex]));
     }
 
-    return levels;
+    return d->levels;
 }
 
 void AudioLevels::setTrackToRecord(int track, bool shouldRecord)
