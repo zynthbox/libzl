@@ -492,8 +492,9 @@ void client_latency_callback(jack_latency_callback_mode_t mode, void *arg)
         jack_latency_range_t range;
         jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
         if (range.max != d->jackLatency) {
+            jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
             jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
-            d->jackLatency = (1000 * (double)range.max) / (double)sampleRate;
+            d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
             qDebug() << "Latency changed, max is now" << range.max << "That means we will now suggest scheduling things" << d->q->scheduleAheadAmount() << "steps into the future";
             Q_EMIT d->q->scheduleAheadAmountChanged();
         }
@@ -552,8 +553,9 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                             jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
                             jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
                             jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
-                            d->jackLatency = (1000 * (double)range.max) / (double)sampleRate;
-                            qDebug() << "Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that includes the amount of extra buffers alsa might (and likely does) use. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
+                            d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
+                            qDebug() << "Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
+                            qDebug() << "However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
                             Q_EMIT scheduleAheadAmountChanged();
                         } else {
                             qWarning() << "Failed to connect the SyncTimer's Jack output to ZLRouter:MidiIn";
