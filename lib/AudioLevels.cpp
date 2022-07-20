@@ -402,11 +402,19 @@ void AudioLevels::startRecording()
   // Doing this in two goes, because when we ask recording to start, it will very extremely start,
   // and we kind of want to at least get pretty close to them starting at the same time, so let's
   // do this bit of the ol' filesystem work first
+  QString dirPath = d->globalPlaybackWriter->filenamePrefix().left(d->globalPlaybackWriter->filenamePrefix().lastIndexOf('/'));
+  if (!QDir().exists(dirPath)) {
+    QDir().mkpath(dirPath);
+  }
   for (DiskWriter *trackWriter : d->trackWriters) {
     QString dirPath = trackWriter->filenamePrefix().left(trackWriter->filenamePrefix().lastIndexOf('/'));
     if (!QDir().exists(dirPath)) {
       QDir().mkpath(dirPath);
     }
+  }
+  if (d->globalPlaybackWriter->shouldRecord()) {
+    const QString filename = QString("%1-%2.wav").arg(d->globalPlaybackWriter->filenamePrefix()).arg(timestamp);
+    d->globalPlaybackWriter->startRecording(filename, sampleRate);
   }
   for (DiskWriter *trackWriter : d->trackWriters) {
     if (trackWriter->shouldRecord()) {
@@ -418,6 +426,7 @@ void AudioLevels::startRecording()
 
 void AudioLevels::stopRecording()
 {
+  d->globalPlaybackWriter->stop();
   for (DiskWriter *trackWriter : d->trackWriters) {
     trackWriter->stop();
   }
