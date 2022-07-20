@@ -61,6 +61,11 @@ Q_OBJECT
     Q_PROPERTY(QVariantList tracks READ getTracksAudioLevels NOTIFY audioLevelsChanged)
 
     /**
+     * \brief Set whether or not to record the global playback
+     * @param shouldRecord Whether or not to include the global playback when calling startRecording
+     */
+    Q_PROPERTY(bool recordGlobalPlayback READ recordGlobalPlayback WRITE setRecordGlobalPlayback NOTIFY recordGlobalPlaybackChanged)
+    /**
      * \brief A list of the track indices of the tracks marked to be included when recording
      */
     Q_PROPERTY(QVariantList tracksToRecord READ tracksToRecord NOTIFY tracksToRecordChanged)
@@ -69,7 +74,7 @@ public:
     AudioLevels(QObject *parent = nullptr);
     int _audioLevelsJackProcessCb(jack_nframes_t nframes);
 
-public slots:
+public Q_SLOTS:
     /**
      * \brief Add two decibel values
      * @param db1 Audio level in decibels
@@ -77,6 +82,16 @@ public slots:
      * @return db1+db2
      */
     float add(float db1, float db2);
+
+    void setRecordGlobalPlayback(bool shouldRecord = true);
+    bool recordGlobalPlayback() const;
+    /**
+     * \brief Set the first part of the filename used when recording the global playback
+     * This should be the full first part of the filename, path and all. The recorder will then append
+     * a timestamp and the file suffix (.wav). You should also ensure that the path exists before calling
+     * @param fileNamePrefix The prefix you wish to use as the basis for the global playback recording's filenames
+     */
+    void setGlobalPlaybackFilenamePrefix(const QString& fileNamePrefix);
 
     /**
      * \brief Sets whether or not a track should be included when recording
@@ -98,11 +113,12 @@ public slots:
      * @param fileNamePrefix The prefix you wish to use as the basis of the given track's filenames
      */
     void setTrackFilenamePrefix(int track, const QString& fileNamePrefix);
+
     /**
      * \brief Start the recording process on all enabled tracks
      *
      * The logical progression of doing semi-automated multi-tracked recording is:
-     * - Mark all the tracks that need including for recording and those that shouldn't be (setTrackToRecord)
+     * - Mark all the tracks that need including for recording and those that shouldn't be (setTrackToRecord and setRecordGlobalPlayback)
      * - Set the filename prefixes for all the tracks that will be included (you can also set the others, it has no negative side effects)
      * - Start the recording
      * - Start playback after the recording, to ensure everything is included
@@ -116,13 +132,13 @@ public slots:
     void stopRecording();
 Q_SIGNALS:
     void audioLevelsChanged();
+    void recordGlobalPlaybackChanged();
     void tracksToRecordChanged();
 
 private:
     const QVariantList getTracksAudioLevels();
 
     float convertTodbFS(float raw);
-    float peakdBFSFromJackOutput(jack_port_t* port, jack_nframes_t nframes);
 
     jack_client_t* audioLevelsJackClient{nullptr};
     jack_status_t audioLevelsJackStatus{};

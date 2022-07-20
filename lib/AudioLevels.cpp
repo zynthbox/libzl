@@ -123,7 +123,9 @@ public:
     for (DiskWriter* trackWriter : trackWriters) {
       delete trackWriter;
     }
+    delete globalPlaybackWriter;
   }
+  DiskWriter* globalPlaybackWriter{new DiskWriter};
   QList<DiskWriter*> trackWriters;
   QVariantList tracksToRecord;
   QVariantList levels;
@@ -216,18 +218,6 @@ AudioLevels::AudioLevels(QObject *parent)
               qDebug() << "Successfully connected audio level jack output to the system capture port B";
           } else {
               qWarning() << "Failed to connect audio level jack output to the system capture port B";
-          }
-
-          if (jack_connect(audioLevelsJackClient, "system:playback_1", jack_port_name(playbackPortA)) == 0) {
-              qDebug() << "Successfully connected audio level jack output to the system playback port A";
-          } else {
-              qWarning() << "Failed to connect audio level jack output to the system playback port A";
-          }
-
-          if (jack_connect(audioLevelsJackClient, "system:playback_2", jack_port_name(playbackPortB)) == 0) {
-              qDebug() << "Successfully connected audio level jack output to the system playback port B";
-          } else {
-              qWarning() << "Failed to connect audio level jack output to the system playback port B";
           }
         } else {
           qWarning() << "Failed to activate Audio Levels Jack client";
@@ -326,8 +316,14 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
 
     captureA = captureDbA <= -200 ? -200 : captureDbA;
     captureB = captureDbB <= -200 ? -200 : captureDbB;
+
     playbackA = playbackDbA <= -200 ? -200 : playbackDbA;
     playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
+    if (d->globalPlaybackWriter->isRecording()) {
+      recordingPassthroughBuffer[0] = playbackBufA;
+      recordingPassthroughBuffer[1] = playbackBufB;
+      d->globalPlaybackWriter->processBlock(recordingPassthroughBuffer, (int)nframes);
+    }
 
     for (trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
       const float dbA = convertTodbFS(tracksPeakA[trackIndex] * 0.2),
@@ -358,6 +354,24 @@ const QVariantList AudioLevels::getTracksAudioLevels() {
     }
 
     return d->levels;
+}
+
+void AudioLevels::setRecordGlobalPlayback(bool shouldRecord)
+{
+  if (d->globalPlaybackWriter->shouldRecord() != shouldRecord) {
+    d->globalPlaybackWriter->setShouldRecord(shouldRecord);
+    Q_EMIT recordGlobalPlaybackChanged();
+  }
+}
+
+bool AudioLevels::recordGlobalPlayback() const
+{
+  return d->globalPlaybackWriter->shouldRecord();
+}
+
+void AudioLevels::setGlobalPlaybackFilenamePrefix(const QString &fileNamePrefix)
+{
+  d->globalPlaybackWriter->setFilenamePrefix(fileNamePrefix);
 }
 
 void AudioLevels::setTrackToRecord(int track, bool shouldRecord)
