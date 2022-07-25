@@ -405,42 +405,49 @@ void ClipAudioSource::Private::timerCallback() {
 }
 
 void ClipAudioSource::play(bool loop, int midiChannel) {
-  auto clip = d->getClip();
-  IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << getFilePath() << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
+  Helper::callFunctionOnMessageThread([=](){
+    auto clip = d->getClip();
+    IF_DEBUG_CLIP cerr << "libzl : Starting clip " << this << getFilePath() << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0) << endl;
 
-  ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
-  command->midiNote = 60;
-  command->changeVolume = true;
-  command->volume = 1.0f;
-  command->looping = loop;
-  command->startPlayback = true;
-  SamplerSynth::instance()->handleClipCommand(command);
+    ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
+    command->midiNote = 60;
+    command->changeVolume = true;
+    command->volume = 1.0f;
+    command->looping = loop;
+    if (loop) {
+      command->stopPlayback = true; // this stops any current loop plays, and immediately starts a new one
+    }
+    command->startPlayback = true;
+    SamplerSynth::instance()->handleClipCommand(command);
+  }, true);
 }
 
 void ClipAudioSource::stop(int midiChannel) {
-  IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << " on channel" << midiChannel << " path: " << getFilePath() << endl;
-  if (midiChannel > -3) {
-    ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
-    command->midiNote = 60;
-    command->stopPlayback = true;
-    SamplerSynth::instance()->handleClipCommand(command);
-  } else {
-    ClipCommand *command = ClipCommand::noEffectCommand(this);
-    command->stopPlayback = true;
-    SamplerSynth::instance()->handleClipCommand(command);
-    // Less than the best thing - having to do this to ensure we stop the ones looper
-    // queued for starting as well, otherwise they'll get missed for stopping... We'll
-    // want to handle this more precisely later, but for now this should do the trick.
-    command = ClipCommand::effectedCommand(this);
-    command->stopPlayback = true;
-    SamplerSynth::instance()->handleClipCommand(command);
-    for (int i = 0; i < 10; ++i) {
-      command = ClipCommand::trackCommand(this, i);
+  Helper::callFunctionOnMessageThread([=](){
+    IF_DEBUG_CLIP cerr << "libzl : Stopping clip " << this << " on channel" << midiChannel << " path: " << getFilePath() << endl;
+    if (midiChannel > -3) {
+      ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
       command->midiNote = 60;
       command->stopPlayback = true;
       SamplerSynth::instance()->handleClipCommand(command);
+    } else {
+      ClipCommand *command = ClipCommand::noEffectCommand(this);
+      command->stopPlayback = true;
+      SamplerSynth::instance()->handleClipCommand(command);
+      // Less than the best thing - having to do this to ensure we stop the ones looper
+      // queued for starting as well, otherwise they'll get missed for stopping... We'll
+      // want to handle this more precisely later, but for now this should do the trick.
+      command = ClipCommand::effectedCommand(this);
+      command->stopPlayback = true;
+      SamplerSynth::instance()->handleClipCommand(command);
+      for (int i = 0; i < 10; ++i) {
+        command = ClipCommand::trackCommand(this, i);
+        command->midiNote = 60;
+        command->stopPlayback = true;
+        SamplerSynth::instance()->handleClipCommand(command);
+      }
     }
-  }
+  }, true);
 }
 
 int ClipAudioSource::id() const
