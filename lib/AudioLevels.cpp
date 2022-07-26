@@ -277,6 +277,22 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
         tracksBufB[trackIndex] = (jack_default_audio_sample_t *)jack_port_get_buffer(tracksPortB[trackIndex], nframes);
     }
 
+    if (d->globalPlaybackWriter->isRecording()) {
+      recordingPassthroughBuffer[0] = playbackBufA;
+      recordingPassthroughBuffer[1] = playbackBufB;
+      d->globalPlaybackWriter->processBlock(recordingPassthroughBuffer, (int)nframes);
+    }
+
+    for (trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
+      const DiskWriter *diskWriter = d->trackWriters.at(trackIndex);
+      if (diskWriter->isRecording()) {
+        // we need booooth left and right channels in a single array...
+        recordingPassthroughBuffer[0] = tracksBufA[trackIndex];
+        recordingPassthroughBuffer[1] = tracksBufB[trackIndex];
+        diskWriter->processBlock(recordingPassthroughBuffer, (int)nframes);
+      }
+    }
+
     for (frameIndex=0; frameIndex<nframes; frameIndex++) {
         const float captureSampleA = fabs(captureBufA[frameIndex]),
                     captureSampleB = fabs(captureBufB[frameIndex]),
@@ -319,26 +335,12 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
 
     playbackA = playbackDbA <= -200 ? -200 : playbackDbA;
     playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
-    if (d->globalPlaybackWriter->isRecording()) {
-      recordingPassthroughBuffer[0] = playbackBufA;
-      recordingPassthroughBuffer[1] = playbackBufB;
-      d->globalPlaybackWriter->processBlock(recordingPassthroughBuffer, (int)nframes);
-    }
 
     for (trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
       const float dbA = convertTodbFS(tracksPeakA[trackIndex] * 0.2),
                   dbB = convertTodbFS(tracksPeakB[trackIndex] * 0.2);
-
       tracksA[trackIndex] = dbA <= -200 ? -200 : dbA;
       tracksB[trackIndex] = dbB <= -200 ? -200 : dbB;
-
-      const DiskWriter *diskWriter = d->trackWriters.at(trackIndex);
-      if (diskWriter->isRecording()) {
-        // we need booooth left and right channels in a single array...
-        recordingPassthroughBuffer[0] = tracksBufA[trackIndex];
-        recordingPassthroughBuffer[1] = tracksBufB[trackIndex];
-        diskWriter->processBlock(recordingPassthroughBuffer, (int)nframes);
-      }
     }
 
     return 0;
