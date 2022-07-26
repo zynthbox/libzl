@@ -196,5 +196,5 @@ public:
   Q_SIGNAL void addedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
   Q_SIGNAL void removedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
 private:
-  SyncTimerPrivate *d = nullptr;
+  SyncTimerPrivate *d{nullptr};
 };

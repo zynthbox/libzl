@@ -65,7 +65,7 @@ public:
         jack_time_t next_usecs;
         float period_usecs;
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
-            // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
+        // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
         if (synthMutex.tryLock(period_usecs / 4000)) {
             for(const SamplerTrack &track : qAsConst(tracks)) {
                 jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
@@ -111,12 +111,13 @@ SamplerSynth::SamplerSynth(QObject *parent)
     , d(new SamplerSynthPrivate)
 {
     d->synth = new SamplerSynthImpl();
-    d->synth->d = d.get();
+    d->synth->d = d;
 }
 
 SamplerSynth::~SamplerSynth()
 {
     delete d->synth;
+    delete d;
 }
 
 static int client_process(jack_nframes_t nframes, void* arg) {
@@ -168,7 +169,7 @@ void SamplerSynth::initialize(tracktion_engine::Engine *engine)
             d->tracks[trackIndex].rightPort = jack_port_register(d->jackClient, d->tracks[trackIndex].portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
         }
         // Set the process callback.
-        if (jack_set_process_callback(d->jackClient, client_process, static_cast<void*>(d.get())) != 0) {
+        if (jack_set_process_callback(d->jackClient, client_process, d) != 0) {
             qWarning() << "Failed to set the SamplerSynth Jack processing callback";
         } else {
             // Activate the client.
@@ -192,7 +193,7 @@ tracktion_engine::Engine *SamplerSynth::engine() const
 
 void SamplerSynth::registerClip(ClipAudioSource *clip)
 {
-    d->synthMutex.lock();
+    QMutexLocker locker(&d->synthMutex);
     if (!d->clipSounds.contains(clip)) {
         SamplerSynthSound *sound = new SamplerSynthSound(clip);
         d->clipSounds[clip] = sound;
@@ -200,12 +201,11 @@ void SamplerSynth::registerClip(ClipAudioSource *clip)
     } else {
         qDebug() << "Clip list already contains the clip up for registration" << clip << clip->getFilePath();
     }
-    d->synthMutex.unlock();
 }
 
 void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 {
-    d->synthMutex.lock();
+    QMutexLocker locker(&d->synthMutex);
     if (d->clipSounds.contains(clip)) {
         d->clipSounds.remove(clip);
         for (int i = 0; i < d->synth->getNumSounds(); ++i) {
@@ -218,7 +218,6 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
             }
         }
     }
-    d->synthMutex.unlock();
 }
 
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)

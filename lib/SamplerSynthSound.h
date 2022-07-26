@@ -2,7 +2,6 @@
 
 #include "JUCEHeaders.h"
 #include "ClipAudioSource.h"
-#include <memory>
 
 class SamplerSynthSoundPrivate;
 class SamplerSynthSound : public juce::SynthesiserSound {
@@ -21,5 +20,5 @@ public:
     double sourceSampleRate() const;
     ADSR::Parameters &params() const;
 private:
-    std::unique_ptr<SamplerSynthSoundPrivate> d;
+    SamplerSynthSoundPrivate *d{nullptr};
 };

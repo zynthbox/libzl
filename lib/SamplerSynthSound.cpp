@@ -1,6 +1,7 @@
 
 #include "SamplerSynthSound.h"
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QFileInfo>
 #include <QString>
@@ -10,6 +11,8 @@ class SamplerSynthSoundPrivate : public QObject {
     Q_OBJECT
 public:
     SamplerSynthSoundPrivate() {
+        soundLoader.moveToThread(qApp->thread());
+        soundLoader.setInterval(1);
         soundLoader.setSingleShot(true);
         connect(&soundLoader, &QTimer::timeout, this, &SamplerSynthSoundPrivate::loadSoundData);
     }
@@ -48,7 +51,7 @@ public:
                 qDebug() << Q_FUNC_INFO << "Loaded data at sample rate" << sourceSampleRate << "from playback file" << clip->getPlaybackFile().getFile().getFullPathName().toRawUTF8();
                 delete format;
             } else {
-                qWarning() << "Failed to create a format reader for" << file.getFullPathName().toUTF8();
+                qWarning() << Q_FUNC_INFO << "Failed to create a format reader for" << file.getFullPathName().toUTF8();
             }
         } else {
             qDebug() << Q_FUNC_INFO << "Postponing loading sound data for" << clip->getFilePath() << "100ms as the playback file is not there yet...";
@@ -70,6 +73,7 @@ SamplerSynthSound::SamplerSynthSound(ClipAudioSource *clip)
 
 SamplerSynthSound::~SamplerSynthSound()
 {
+    delete d;
 }
 
 ClipAudioSource *SamplerSynthSound::clip() const

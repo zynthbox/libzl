@@ -482,6 +482,17 @@ public:
                             qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
                         }
                         command->variantParameter.clear();
+                    } else if (command->operation == TimerCommand::RegisterCASOperation || command->operation == TimerCommand::UnregisterCASOperation) {
+                        ClipAudioSource *clip = static_cast<ClipAudioSource*>(command->variantParameter.value<void*>());
+                        if (clip) {
+                            if (command->operation == TimerCommand::RegisterCASOperation) {
+                                samplerSynth->registerClip(clip);
+                            } else {
+                                samplerSynth->unregisterClip(clip);
+                            }
+                        } else {
+                            qWarning() << Q_FUNC_INFO << "Failed to retrieve clip from clip registration timer command";
+                        }
                     }
                 }
                 stepData->played = true;
@@ -715,7 +726,7 @@ void SyncTimer::stop() {
                 // set all the volumes to 0 so we don't make the users' ears bleed
                 clipCommand->changeVolume = true;
                 clipCommand->volume = 0;
-                SamplerSynth::instance()->handleClipCommand(clipCommand);
+                scheduleClipCommand(clipCommand, 0);
                 Q_EMIT clipCommandSent(clipCommand);
             }
             stepData->played = true;
