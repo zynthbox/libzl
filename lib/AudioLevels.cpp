@@ -22,6 +22,13 @@
 
 #include "JUCEHeaders.h"
 
+#define DebugAudioLevels false
+
+struct RecordPort {
+  QString portName;
+  int channel{-1};
+};
+
 // that is one left and one right channel
 #define CHANNEL_COUNT 2
 class DiskWriter {
@@ -110,6 +117,7 @@ private:
   std::atomic<AudioFormatWriter::ThreadedWriter*> m_activeWriter { nullptr };
 };
 
+
 class AudioLevelsPrivate {
 public:
   AudioLevelsPrivate() {
@@ -124,11 +132,42 @@ public:
       delete trackWriter;
     }
     delete globalPlaybackWriter;
+    delete portsRecorder;
   }
   DiskWriter* globalPlaybackWriter{new DiskWriter};
+  DiskWriter* portsRecorder{new DiskWriter};
+  QList<RecordPort> recordPorts;
   QList<DiskWriter*> trackWriters;
   QVariantList tracksToRecord;
   QVariantList levels;
+  jack_client_t* jackClient{nullptr};
+
+  void connectPorts(const QString &from, const QString &to) {
+      int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
+      if (result == 0 || result == EEXIST) {
+          if (DebugAudioLevels) { qDebug() << "AudioLevels:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to; }
+      } else {
+          qWarning() << "AudioLevels: Failed to connect" << from << "with" << to << "with error code" << result;
+          // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
+      }
+  }
+  void disconnectPorts(const QString &from, const QString &to) {
+      // Don't attempt to connect already connected ports
+      int result = jack_disconnect(jackClient, from.toUtf8(), to.toUtf8());
+      if (result == 0) {
+          if (DebugAudioLevels) { qDebug() << "AudioLevels: Successfully disconnected" << from << "from" << to; }
+      } else {
+          qWarning() << "AudioLevels: Failed to disconnect" << from << "from" << to << "with error code" << result;
+      }
+  }
+
+  const QStringList recorderPortNames{QLatin1String{"recorder_port_a"}, QLatin1String{"recorder_port_b"}};
+  void disconnectPort(const QString& portName, int channel) {
+    disconnectPorts(portName, recorderPortNames[channel]);
+  }
+  void connectPort(const QString& portName, int channel) {
+    connectPorts(portName, recorderPortNames[channel]);
+  }
 };
 
 static int audioLevelsJackProcessCb(jack_nframes_t nframes, void* arg) {
@@ -144,6 +183,7 @@ AudioLevels::AudioLevels(QObject *parent)
       JackNullOption,
       &audioLevelsJackStatus
     );
+    d->jackClient = audioLevelsJackClient;
 
     if (audioLevelsJackClient) {
       qWarning() << "Initialized Audio Levels Jack Client zynthiloops_client";
@@ -173,6 +213,21 @@ AudioLevels::AudioLevels(QObject *parent)
       playbackPortB = jack_port_register(
         audioLevelsJackClient,
         "playback_port_b",
+        JACK_DEFAULT_AUDIO_TYPE,
+        JackPortIsInput,
+        0
+      );
+
+      recorderPortA = jack_port_register(
+        audioLevelsJackClient,
+        "recorder_port_a",
+        JACK_DEFAULT_AUDIO_TYPE,
+        JackPortIsInput,
+        0
+      );
+      recorderPortB = jack_port_register(
+        audioLevelsJackClient,
+        "recorder_port_b",
         JACK_DEFAULT_AUDIO_TYPE,
         JackPortIsInput,
         0
@@ -255,6 +310,8 @@ jack_default_audio_sample_t *captureBufA{nullptr},
                             *captureBufB{nullptr},
                             *playbackBufA{nullptr},
                             *playbackBufB{nullptr},
+                            *portsBufA{nullptr},
+                            *portsBufB{nullptr},
                             *tracksBufA[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
                             *tracksBufB[TRACKS_COUNT] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 int trackIndex{0};
@@ -269,6 +326,8 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     captureBufB = (jack_default_audio_sample_t *)jack_port_get_buffer(capturePortB, nframes);
     playbackBufA = (jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortA, nframes);
     playbackBufB = (jack_default_audio_sample_t *)jack_port_get_buffer(playbackPortB, nframes);
+    portsBufA = (jack_default_audio_sample_t *)jack_port_get_buffer(recorderPortA, nframes);
+    portsBufB = (jack_default_audio_sample_t *)jack_port_get_buffer(recorderPortB, nframes);
 
     for (trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
         tracksPeakA[trackIndex] = 0.0f;
@@ -281,6 +340,11 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
       recordingPassthroughBuffer[0] = playbackBufA;
       recordingPassthroughBuffer[1] = playbackBufB;
       d->globalPlaybackWriter->processBlock(recordingPassthroughBuffer, (int)nframes);
+    }
+    if (d->portsRecorder->isRecording()) {
+      recordingPassthroughBuffer[0] = portsBufA;
+      recordingPassthroughBuffer[1] = portsBufB;
+      d->portsRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
     }
 
     for (trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
@@ -397,6 +461,58 @@ void AudioLevels::setTrackFilenamePrefix(int track, const QString& fileNamePrefi
   }
 }
 
+void AudioLevels::addRecordPort(const QString &portName, int channel)
+{
+  bool addPort{true};
+  for (const RecordPort &port : qAsConst(d->recordPorts)) {
+    if (port.portName == portName && port.channel == channel) {
+      addPort = false;
+      break;
+    }
+  }
+  if (addPort) {
+    RecordPort port;
+    port.portName = portName;
+    port.channel = channel;
+    d->recordPorts << port;
+    d->connectPort(portName, channel);
+  }
+}
+
+void AudioLevels::removeRecordPort(const QString &portName, int channel)
+{
+  QMutableListIterator<RecordPort> iterator(d->recordPorts);
+  while (iterator.hasNext()) {
+    const RecordPort &port = iterator.value();
+    if (port.portName == portName && port.channel == channel) {
+      d->disconnectPort(port.portName, port.channel);
+      iterator.remove();
+      break;
+    }
+  }
+}
+
+void AudioLevels::clearRecordPorts()
+{
+  for (const RecordPort &port : qAsConst(d->recordPorts)) {
+    d->disconnectPort(port.portName, port.channel);
+  }
+  d->recordPorts.clear();
+}
+
+void AudioLevels::setShouldRecordPorts(bool shouldRecord)
+{
+  if (d->portsRecorder->shouldRecord() != shouldRecord) {
+    d->portsRecorder->setShouldRecord(shouldRecord);
+    Q_EMIT shouldRecordPortsChanged();
+  }
+}
+
+bool AudioLevels::shouldRecordPorts() const
+{
+  return d->portsRecorder->shouldRecord();
+}
+
 void AudioLevels::startRecording()
 {
   const QString timestamp{QDateTime::currentDateTime().toString(Qt::ISODate)};
@@ -405,12 +521,16 @@ void AudioLevels::startRecording()
   // and we kind of want to at least get pretty close to them starting at the same time, so let's
   // do this bit of the ol' filesystem work first
   QString dirPath = d->globalPlaybackWriter->filenamePrefix().left(d->globalPlaybackWriter->filenamePrefix().lastIndexOf('/'));
-  if (!QDir().exists(dirPath)) {
+  if (d->globalPlaybackWriter->shouldRecord() && !QDir().exists(dirPath)) {
+    QDir().mkpath(dirPath);
+  }
+  dirPath = d->portsRecorder->filenamePrefix().left(d->portsRecorder->filenamePrefix().lastIndexOf('/'));
+  if (d->portsRecorder->shouldRecord() && !QDir().exists(dirPath)) {
     QDir().mkpath(dirPath);
   }
   for (DiskWriter *trackWriter : d->trackWriters) {
-    QString dirPath = trackWriter->filenamePrefix().left(trackWriter->filenamePrefix().lastIndexOf('/'));
-    if (!QDir().exists(dirPath)) {
+    dirPath = trackWriter->filenamePrefix().left(trackWriter->filenamePrefix().lastIndexOf('/'));
+    if (trackWriter->shouldRecord() && !QDir().exists(dirPath)) {
       QDir().mkpath(dirPath);
     }
   }
@@ -423,17 +543,28 @@ void AudioLevels::startRecording()
       d->globalPlaybackWriter->startRecording(filename, sampleRate);
     }
   }
+  if (d->portsRecorder->shouldRecord()) {
+    if (d->portsRecorder->filenamePrefix().endsWith(".wav")) {
+      // If prefix already ends with `.wav` do not add timestamp and suffix to filename
+      d->portsRecorder->startRecording(d->portsRecorder->filenamePrefix(), sampleRate);
+    } else {
+      const QString filename = QString("%1-%2.wav").arg(d->portsRecorder->filenamePrefix()).arg(timestamp);
+      d->portsRecorder->startRecording(filename, sampleRate);
+    }
+  }
   for (DiskWriter *trackWriter : d->trackWriters) {
     if (trackWriter->shouldRecord()) {
       const QString filename = QString("%1-%2.wav").arg(trackWriter->filenamePrefix()).arg(timestamp);
       trackWriter->startRecording(filename, sampleRate);
     }
   }
+  Q_EMIT isRecordingChanged();
 }
 
 void AudioLevels::stopRecording()
 {
   d->globalPlaybackWriter->stop();
+  d->portsRecorder->stop();
   for (DiskWriter *trackWriter : d->trackWriters) {
     trackWriter->stop();
   }
@@ -449,5 +580,5 @@ bool AudioLevels::isRecording() const
       }
     }
 
-    return d->globalPlaybackWriter->isRecording() || trackIsRecording;
+    return d->globalPlaybackWriter->isRecording() || d->portsRecorder->isRecording() || trackIsRecording;
 }
