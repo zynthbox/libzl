@@ -22,6 +22,7 @@ using namespace std::chrono;
 #include <QtQml/qqml.h>
 #include <QQmlEngine>
 #include <QQmlContext>
+#include <QString>
 
 #include "ClipAudioSource.h"
 #include "Helper.h"
@@ -362,3 +363,23 @@ void stopClips(int size, ClipAudioSource **clips) {
 }
 
 float dBFromVolume(float vol) { return te::volumeFaderPositionToDB(vol); }
+
+bool AudioLevels_isRecording() {
+  return audioLevelsInstance->isRecording();
+}
+
+void AudioLevels_setRecordGlobalPlayback(bool shouldRecord) {
+  audioLevelsInstance->setRecordGlobalPlayback(shouldRecord);
+}
+
+void AudioLevels_setGlobalPlaybackFilenamePrefix(const char *fileNamePrefix) {
+  audioLevelsInstance->setGlobalPlaybackFilenamePrefix(QString::fromUtf8(fileNamePrefix));
+}
+
+void AudioLevels_startRecording() {
+  audioLevelsInstance->startRecording();
+}
+
+void AudioLevels_stopRecording() {
+  audioLevelsInstance->stopRecording();
+}

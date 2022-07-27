@@ -130,6 +130,11 @@ public Q_SLOTS:
      * \brief Stop any ongoing recordings
      */
     void stopRecording();
+
+    /**
+     * @brief Check if a recording is in progress
+     */
+    bool isRecording() const;
 Q_SIGNALS:
     void audioLevelsChanged();
     void recordGlobalPlaybackChanged();

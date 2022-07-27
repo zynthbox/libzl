@@ -415,8 +415,13 @@ void AudioLevels::startRecording()
     }
   }
   if (d->globalPlaybackWriter->shouldRecord()) {
-    const QString filename = QString("%1-%2.wav").arg(d->globalPlaybackWriter->filenamePrefix()).arg(timestamp);
-    d->globalPlaybackWriter->startRecording(filename, sampleRate);
+    if (d->globalPlaybackWriter->filenamePrefix().endsWith(".wav")) {
+      // If prefix already ends with `.wav` do not add timestamp and suffix to filename
+      d->globalPlaybackWriter->startRecording(d->globalPlaybackWriter->filenamePrefix(), sampleRate);
+    } else {
+      const QString filename = QString("%1-%2.wav").arg(d->globalPlaybackWriter->filenamePrefix()).arg(timestamp);
+      d->globalPlaybackWriter->startRecording(filename, sampleRate);
+    }
   }
   for (DiskWriter *trackWriter : d->trackWriters) {
     if (trackWriter->shouldRecord()) {
@@ -432,4 +437,17 @@ void AudioLevels::stopRecording()
   for (DiskWriter *trackWriter : d->trackWriters) {
     trackWriter->stop();
   }
+}
+
+bool AudioLevels::isRecording() const
+{
+    bool trackIsRecording{false};
+    for (DiskWriter *trackWriter : d->trackWriters) {
+      if (trackWriter->isRecording()) {
+        trackIsRecording = true;
+        break;
+      }
+    }
+
+    return d->globalPlaybackWriter->isRecording() || trackIsRecording;
 }

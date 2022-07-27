@@ -75,4 +75,16 @@ void shutdownJuce();
 void registerGraphicTypes();
 void stopClips(int size, ClipAudioSource **clips);
 float dBFromVolume(float vol);
+
+//////////////
+/// AudioLevels API Bridge
+//////////////
+bool AudioLevels_isRecording();
+void AudioLevels_setRecordGlobalPlayback(bool shouldRecord = true);
+void AudioLevels_setGlobalPlaybackFilenamePrefix(const char *fileNamePrefix);
+void AudioLevels_startRecording();
+void AudioLevels_stopRecording();
+/// //////////////
+/// END AudioLevels API Bridge
+//////////////
 }
