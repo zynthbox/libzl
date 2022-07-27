@@ -357,36 +357,73 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
       }
     }
 
-    for (frameIndex=0; frameIndex<nframes; frameIndex++) {
-        const float captureSampleA = fabs(captureBufA[frameIndex]),
-                    captureSampleB = fabs(captureBufB[frameIndex]),
-                    playbackSampleA = fabs(playbackBufA[frameIndex]),
-                    playbackSampleB = fabs(playbackBufB[frameIndex]);
+    const jack_default_audio_sample_t *trackBuffer{nullptr};
+    const jack_default_audio_sample_t *trackBufferEnd{nullptr};
+    static const float multiplier{128};
 
-        if (captureSampleA > capturePeakA) {
-            capturePeakA = captureSampleA;
-        }
-        if (captureSampleB > capturePeakB) {
-            capturePeakB = captureSampleB;
-        }
+    // Peak checkery for capture A
+    trackBuffer = captureBufA;
+    trackBufferEnd = trackBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+    for (const float* trackSample = trackBuffer; trackSample < trackBufferEnd; ++trackSample) {
+      const int sampleValue = (multiplier * (*trackSample));
+      if (sampleValue > capturePeakA) {
+        capturePeakA = sampleValue;
+      }
+    }
+    // Peak checkery for capture B
+    trackBuffer = captureBufB;
+    trackBufferEnd = trackBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+    for (const float* trackSample = trackBuffer; trackSample < trackBufferEnd; ++trackSample) {
+      const int sampleValue = (multiplier * (*trackSample));
+      if (sampleValue > capturePeakB) {
+        capturePeakB = sampleValue;
+      }
+    }
 
-        if (playbackSampleA > playbackPeakA) {
-            playbackPeakA = playbackSampleA;
-        }
-        if (playbackSampleB > playbackPeakB) {
-            playbackPeakB = playbackSampleB;
-        }
+    // Peak checkery for playback A
+    trackBuffer = playbackBufA;
+    trackBufferEnd = trackBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+    for (const float* trackSample = trackBuffer; trackSample < trackBufferEnd; ++trackSample) {
+      const int sampleValue = (multiplier * (*trackSample));
+      if (sampleValue > playbackPeakA) {
+        playbackPeakA = sampleValue;
+      }
+    }
+    // Peak checkery for playback B
+    trackBuffer = playbackBufA;
+    trackBufferEnd = trackBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+    for (const float* trackSample = trackBuffer; trackSample < trackBufferEnd; ++trackSample) {
+      const int sampleValue = (multiplier * (*trackSample));
+      if (sampleValue > playbackPeakB) {
+        playbackPeakB = sampleValue;
+      }
+    }
 
-        for (trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
-            const float tracksSampleA = fabs(tracksBufA[trackIndex][frameIndex]);
-            if (tracksSampleA > tracksPeakA[trackIndex]) {
-                tracksPeakA[trackIndex] = tracksSampleA;
-            }
-            const float tracksSampleB = fabs(tracksBufB[trackIndex][frameIndex]);
-            if (tracksSampleB > tracksPeakB[trackIndex]) {
-                tracksPeakB[trackIndex] = tracksSampleB;
-            }
+    // Peak checkery for all the tracks
+    int trackPeak{0};
+    for (trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
+      // First A (left channel)
+      trackPeak = 0;
+      trackBuffer = tracksBufA[trackIndex];
+      trackBufferEnd = trackBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+      for (const float* trackSample = trackBuffer; trackSample < trackBufferEnd; ++trackSample) {
+        const int sampleValue = (multiplier * (*trackSample));
+        if (sampleValue > trackPeak) {
+          trackPeak = sampleValue;
         }
+      }
+      tracksPeakA[trackIndex] = trackPeak;
+      // And then for B (right channel)
+      trackPeak = 0;
+      trackBuffer = tracksBufB[trackIndex];
+      trackBufferEnd = trackBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+      for (const float* trackSample = trackBuffer; trackSample < trackBufferEnd; ++trackSample) {
+        const int sampleValue = (multiplier * (*trackSample));
+        if (sampleValue > trackPeak) {
+          trackPeak = sampleValue;
+        }
+      }
+      tracksPeakB[trackIndex] = trackPeak;
     }
 
     const float captureDbA{convertTodbFS(capturePeakA * 0.2)},
@@ -401,8 +438,8 @@ int AudioLevels::_audioLevelsJackProcessCb(jack_nframes_t nframes) {
     playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
 
     for (trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
-      const float dbA = convertTodbFS(tracksPeakA[trackIndex] * 0.2),
-                  dbB = convertTodbFS(tracksPeakB[trackIndex] * 0.2);
+      const float dbA = convertTodbFS(tracksPeakA[trackIndex] * 0.002),
+                  dbB = convertTodbFS(tracksPeakB[trackIndex] * 0.002);
       tracksA[trackIndex] = dbA <= -200 ? -200 : dbA;
       tracksB[trackIndex] = dbB <= -200 ? -200 : dbB;
     }
