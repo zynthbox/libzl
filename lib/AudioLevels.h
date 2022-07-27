@@ -138,23 +138,32 @@ public:
     Q_INVOKABLE void setTrackFilenamePrefix(int track, const QString& fileNamePrefix);
 
     /**
+     * \brief Set the first part of the filename used when recording
+     * This should be the full first part of the filename, path and all. The recorder will then append
+     * a timestamp and the file suffix (.wav). You should also ensure that the path exists before calling
+     * startRecording.
+     * @note If you pass in something that ends in .wav, the prefix will be used verbatim and no details added
+     * @param fileNamePrefix The prefix you wish to use as the basis of the given track's filenames
+     */
+    Q_INVOKABLE void setRecordPortsFilenamePrefix(const QString& fileNamePrefix);
+    /**
      * \brief Adds a port to the list of ports to be recorded
      * @param portName The audio type jack port to record
      * @param channel The logical channel (0 is left, 1 is right)
      */
-    void addRecordPort(const QString &portName, int channel);
+    Q_INVOKABLE void addRecordPort(const QString &portName, int channel);
     /**
      * \brief Removes a port from the list of ports to be recorded
      * @param portName The audio type jack port to stop recording
      * @param channel The logical channel (0 is left, 1 is right)
      */
-    void removeRecordPort(const QString &portName, int channel);
+    Q_INVOKABLE void removeRecordPort(const QString &portName, int channel);
     /**
      * \brief Clear the list of ports to be recorded
      */
-    void clearRecordPorts();
-    void setShouldRecordPorts(bool shouldRecord);
-    bool shouldRecordPorts() const;
+    Q_INVOKABLE void clearRecordPorts();
+    Q_INVOKABLE void setShouldRecordPorts(bool shouldRecord);
+    Q_INVOKABLE bool shouldRecordPorts() const;
 
     /**
      * \brief Start the recording process on all enabled tracks

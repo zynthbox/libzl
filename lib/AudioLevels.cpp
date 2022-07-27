@@ -461,6 +461,11 @@ void AudioLevels::setTrackFilenamePrefix(int track, const QString& fileNamePrefi
   }
 }
 
+void AudioLevels::setRecordPortsFilenamePrefix(const QString &fileNamePrefix)
+{
+  d->portsRecorder->setFilenamePrefix(fileNamePrefix);
+}
+
 void AudioLevels::addRecordPort(const QString &portName, int channel)
 {
   bool addPort{true};
