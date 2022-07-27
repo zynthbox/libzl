@@ -13,6 +13,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QStringList>
+#include <QCoreApplication>
 #include <jack/jack.h>
 #include <juce_events/juce_events.h>
 
@@ -84,7 +85,7 @@ public:
         static AudioLevels* instance{nullptr};
 
         if (!instance) {
-            instance = new AudioLevels();
+            instance = new AudioLevels(qApp);
         }
 
         return instance;
