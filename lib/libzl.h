@@ -80,10 +80,15 @@ float dBFromVolume(float vol);
 /// AudioLevels API Bridge
 //////////////
 bool AudioLevels_isRecording();
-void AudioLevels_setRecordGlobalPlayback(bool shouldRecord = true);
+void AudioLevels_setRecordGlobalPlayback(bool shouldRecord);
 void AudioLevels_setGlobalPlaybackFilenamePrefix(const char *fileNamePrefix);
 void AudioLevels_startRecording();
 void AudioLevels_stopRecording();
+void AudioLevels_setRecordPortsFilenamePrefix(const char *fileNamePrefix);
+void AudioLevels_addRecordPort(const char *portName, int channel);
+void AudioLevels_removeRecordPort(const char *portName, int channel);
+void AudioLevels_clearRecordPorts();
+void AudioLevels_setShouldRecordPorts(bool shouldRecord);
 /// //////////////
 /// END AudioLevels API Bridge
 //////////////
