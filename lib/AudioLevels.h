@@ -80,7 +80,20 @@ Q_OBJECT
      */
     Q_PROPERTY(bool isRecording READ isRecording NOTIFY isRecordingChanged)
 public:
-    AudioLevels(QObject *parent = nullptr);
+    static AudioLevels* getInstance() {
+        static AudioLevels* instance{nullptr};
+
+        if (!instance) {
+            instance = new AudioLevels();
+        }
+
+        return instance;
+    }
+
+    // Delete the methods we dont want to avoid having copies of the singleton class
+    AudioLevels(AudioLevels const&) = delete;
+    void operator=(AudioLevels const&) = delete;
+
     int _audioLevelsJackProcessCb(jack_nframes_t nframes);
 
     /**
@@ -173,6 +186,8 @@ Q_SIGNALS:
     void isRecordingChanged();
 
 private:
+    explicit AudioLevels(QObject *parent = nullptr);
+
     const QVariantList getTracksAudioLevels();
 
     float convertTodbFS(float raw);

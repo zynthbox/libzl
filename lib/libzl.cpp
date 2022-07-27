@@ -38,7 +38,6 @@ ScopedJuceInitialiser_GUI *initializer = nullptr;
 SyncTimer *syncTimer = new SyncTimer();
 te::Engine *tracktionEngine{nullptr};
 QList<ClipAudioSource*> createdClips;
-AudioLevels *audioLevelsInstance{nullptr};
 
 class JuceEventLoopThread : public Thread {
 public:
@@ -337,15 +336,13 @@ void initJuce() {
   qDebug() << "Initialising SamplerSynth";
   SamplerSynth::instance()->initialize(tracktionEngine);
 
-  if (audioLevelsInstance == nullptr) {
-    audioLevelsInstance = new AudioLevels();
-    QQmlEngine::setObjectOwnership(audioLevelsInstance, QQmlEngine::CppOwnership);
-  }
+  // Make sure to have the AudioLevels instantiated by explicitly calling getInstance
+  AudioLevels::getInstance();
 
   qmlRegisterSingletonType<AudioLevels>("libzl", 1, 0, "AudioLevels", [](QQmlEngine */*engine*/, QJSEngine *scriptEngine) -> QObject * {
     Q_UNUSED(scriptEngine)
 
-    return audioLevelsInstance;
+    return AudioLevels::getInstance();
   });
 }
 
@@ -365,21 +362,21 @@ void stopClips(int size, ClipAudioSource **clips) {
 float dBFromVolume(float vol) { return te::volumeFaderPositionToDB(vol); }
 
 bool AudioLevels_isRecording() {
-  return audioLevelsInstance->isRecording();
+  return AudioLevels::getInstance()->isRecording();
 }
 
 void AudioLevels_setRecordGlobalPlayback(bool shouldRecord) {
-  audioLevelsInstance->setRecordGlobalPlayback(shouldRecord);
+  AudioLevels::getInstance()->setRecordGlobalPlayback(shouldRecord);
 }
 
 void AudioLevels_setGlobalPlaybackFilenamePrefix(const char *fileNamePrefix) {
-  audioLevelsInstance->setGlobalPlaybackFilenamePrefix(QString::fromUtf8(fileNamePrefix));
+  AudioLevels::getInstance()->setGlobalPlaybackFilenamePrefix(QString::fromUtf8(fileNamePrefix));
 }
 
 void AudioLevels_startRecording() {
-  audioLevelsInstance->startRecording();
+  AudioLevels::getInstance()->startRecording();
 }
 
 void AudioLevels_stopRecording() {
-  audioLevelsInstance->stopRecording();
+  AudioLevels::getInstance()->stopRecording();
 }
