@@ -336,13 +336,13 @@ void initJuce() {
   qDebug() << "Initialising SamplerSynth";
   SamplerSynth::instance()->initialize(tracktionEngine);
 
-  // Make sure to have the AudioLevels instantiated by explicitly calling getInstance
-  AudioLevels::getInstance();
+  // Make sure to have the AudioLevels instantiated by explicitly calling instance
+  AudioLevels::instance();
 
   qmlRegisterSingletonType<AudioLevels>("libzl", 1, 0, "AudioLevels", [](QQmlEngine */*engine*/, QJSEngine *scriptEngine) -> QObject * {
     Q_UNUSED(scriptEngine)
 
-    return AudioLevels::getInstance();
+    return AudioLevels::instance();
   });
 }
 
@@ -362,21 +362,21 @@ void stopClips(int size, ClipAudioSource **clips) {
 float dBFromVolume(float vol) { return te::volumeFaderPositionToDB(vol); }
 
 bool AudioLevels_isRecording() {
-  return AudioLevels::getInstance()->isRecording();
+  return AudioLevels::instance()->isRecording();
 }
 
 void AudioLevels_setRecordGlobalPlayback(bool shouldRecord) {
-  AudioLevels::getInstance()->setRecordGlobalPlayback(shouldRecord);
+  AudioLevels::instance()->setRecordGlobalPlayback(shouldRecord);
 }
 
 void AudioLevels_setGlobalPlaybackFilenamePrefix(const char *fileNamePrefix) {
-  AudioLevels::getInstance()->setGlobalPlaybackFilenamePrefix(QString::fromUtf8(fileNamePrefix));
+  AudioLevels::instance()->setGlobalPlaybackFilenamePrefix(QString::fromUtf8(fileNamePrefix));
 }
 
 void AudioLevels_startRecording() {
-  AudioLevels::getInstance()->startRecording();
+  AudioLevels::instance()->startRecording();
 }
 
 void AudioLevels_stopRecording() {
-  AudioLevels::getInstance()->stopRecording();
+  AudioLevels::instance()->stopRecording();
 }

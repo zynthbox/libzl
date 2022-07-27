@@ -81,11 +81,11 @@ Q_OBJECT
      */
     Q_PROPERTY(bool isRecording READ isRecording NOTIFY isRecordingChanged)
 public:
-    static AudioLevels* getInstance() {
+    static AudioLevels* instance() {
         static AudioLevels* instance{nullptr};
 
         if (!instance) {
-            instance = new AudioLevels(qApp);
+            instance = new AudioLevels(QCoreApplication::instance());
         }
 
         return instance;
