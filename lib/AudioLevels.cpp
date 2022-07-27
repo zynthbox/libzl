@@ -161,7 +161,7 @@ public:
       }
   }
 
-  const QStringList recorderPortNames{QLatin1String{"recorder_port_a"}, QLatin1String{"recorder_port_b"}};
+  const QStringList recorderPortNames{QLatin1String{"zynthiloops_audio_levels_client:recorder_port_a"}, QLatin1String{"zynthiloops_audio_levels_client:recorder_port_b"}};
   void disconnectPort(const QString& portName, int channel) {
     disconnectPorts(portName, recorderPortNames[channel]);
   }
