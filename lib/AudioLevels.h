@@ -83,17 +83,16 @@ public:
     AudioLevels(QObject *parent = nullptr);
     int _audioLevelsJackProcessCb(jack_nframes_t nframes);
 
-public Q_SLOTS:
     /**
      * \brief Add two decibel values
      * @param db1 Audio level in decibels
      * @param db2 Audio level in decibels
      * @return db1+db2
      */
-    float add(float db1, float db2);
+    Q_INVOKABLE float add(float db1, float db2);
 
-    void setRecordGlobalPlayback(bool shouldRecord = true);
-    bool recordGlobalPlayback() const;
+    Q_INVOKABLE void setRecordGlobalPlayback(bool shouldRecord = true);
+    Q_INVOKABLE bool recordGlobalPlayback() const;
     /**
      * \brief Set the first part of the filename used when recording the global playback
      * This should be the full first part of the filename, path and all. The recorder will then append
@@ -101,19 +100,19 @@ public Q_SLOTS:
      * @note If you pass in something that ends in .wav, the prefix will be used verbatim and no details added
      * @param fileNamePrefix The prefix you wish to use as the basis for the global playback recording's filenames
      */
-    void setGlobalPlaybackFilenamePrefix(const QString& fileNamePrefix);
+    Q_INVOKABLE void setGlobalPlaybackFilenamePrefix(const QString& fileNamePrefix);
 
     /**
      * \brief Sets whether or not a track should be included when recording
      * @param track The index of the track you wish to change the recording status of
      * @param shouldRecord Whether or not the track should be recorded
      */
-    void setTrackToRecord(int track, bool shouldRecord = true);
+    Q_INVOKABLE void setTrackToRecord(int track, bool shouldRecord = true);
     /**
      * \brief Returns a list of track indices for tracks marked to be recorded
      * @see setTrackToRecord(int, bool)
      */
-    QVariantList tracksToRecord() const;
+    Q_INVOKABLE QVariantList tracksToRecord() const;
     /**
      * \brief Set the first part of the filename used when recording
      * This should be the full first part of the filename, path and all. The recorder will then append
@@ -122,7 +121,7 @@ public Q_SLOTS:
      * @param track The index of the track you wish to change the filename prefix for
      * @param fileNamePrefix The prefix you wish to use as the basis of the given track's filenames
      */
-    void setTrackFilenamePrefix(int track, const QString& fileNamePrefix);
+    Q_INVOKABLE void setTrackFilenamePrefix(int track, const QString& fileNamePrefix);
 
     /**
      * \brief Adds a port to the list of ports to be recorded
@@ -154,17 +153,18 @@ public Q_SLOTS:
      * - Stop recording when needed
      * - Stop playback
      */
-    void startRecording();
+    Q_INVOKABLE void startRecording();
     /**
      * \brief Stop any ongoing recordings
      */
-    void stopRecording();
+    Q_INVOKABLE void stopRecording();
 
     /**
      * @brief Check if a recording is in progress
      * @return Whether a recording is currently in progress
      */
-    bool isRecording() const;
+    Q_INVOKABLE bool isRecording() const;
+
 Q_SIGNALS:
     void audioLevelsChanged();
     void recordGlobalPlaybackChanged();
