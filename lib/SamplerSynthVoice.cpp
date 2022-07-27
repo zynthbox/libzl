@@ -96,6 +96,7 @@ void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
     } else {
         d->clipCommand = clipCommand;
     }
+    isPlaying = d->clipCommand;
 }
 
 ClipCommand *SamplerSynthVoice::currentCommand() const
@@ -176,6 +177,7 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
         if (d->clipCommand) {
             d->clipCommandsForDeleting << d->clipCommand;
             d->clipCommand = nullptr;
+            isPlaying = false;
         }
         d->nextLoopTick = 0;
         d->nextLoopUsecs = 0;
