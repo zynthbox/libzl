@@ -69,16 +69,20 @@ public:
         if (synthMutex.tryLock(period_usecs / 4000)) {
             for(const SamplerTrack &track : qAsConst(tracks)) {
                 jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
+                jack_default_audio_sample_t* leftBufferEnd = leftBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+                for (jack_default_audio_sample_t* trackSample = leftBuffer; trackSample < leftBufferEnd; ++trackSample) {
+                    *trackSample = 0.0f;
+                }
                 jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.rightPort, nframes);
-                for (jack_nframes_t j = 0; j < nframes; j++) {
-                        leftBuffer[j] = 0.0f;
-                        rightBuffer[j] = 0.0f;
+                jack_default_audio_sample_t* rightBufferEnd = rightBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+                for (jack_default_audio_sample_t* trackSample = rightBuffer; trackSample < rightBufferEnd; ++trackSample) {
+                    *trackSample = 0.0f;
                 }
                 for (SamplerSynthVoice *voice : track.voices) {
                     // If we don't have a command set, there's definitely nothing playing (it gets set
                     // before playback starts and cleared after playback ends), consequently there's no
                     // reason to process this voice
-                    if (voice->currentCommand()) {
+                    if (voice->isPlaying) {
                         voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
                     }
                 }
