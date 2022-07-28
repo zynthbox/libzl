@@ -71,12 +71,16 @@ public:
                 jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
                 jack_default_audio_sample_t* leftBufferEnd = leftBuffer + nframes;
                 for (jack_default_audio_sample_t* trackSample = leftBuffer; trackSample < leftBufferEnd; ++trackSample) {
-                    *trackSample = 0.0f;
+                    if (trackSample) { // For some reason we will occasionally be given an enormous, incorrect buffer count, and we want very much to not crash
+                        *trackSample = 0.0f;
+                    }
                 }
                 jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.rightPort, nframes);
                 jack_default_audio_sample_t* rightBufferEnd = rightBuffer + nframes;
                 for (jack_default_audio_sample_t* trackSample = rightBuffer; trackSample < rightBufferEnd; ++trackSample) {
-                    *trackSample = 0.0f;
+                    if (trackSample) { // For some reason we will occasionally be given an enormous, incorrect buffer count, and we want very much to not crash
+                        *trackSample = 0.0f;
+                    }
                 }
                 for (SamplerSynthVoice *voice : qAsConst(track.voices)) {
                     // If we don't have a command set, there's definitely nothing playing (it gets set
