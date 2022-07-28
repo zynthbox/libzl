@@ -69,12 +69,12 @@ public:
         if (synthMutex.tryLock(period_usecs / 4000)) {
             for(const SamplerTrack &track : qAsConst(tracks)) {
                 jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.leftPort, nframes);
-                jack_default_audio_sample_t* leftBufferEnd = leftBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+                jack_default_audio_sample_t* leftBufferEnd = leftBuffer + nframes;
                 for (jack_default_audio_sample_t* trackSample = leftBuffer; trackSample < leftBufferEnd; ++trackSample) {
                     *trackSample = 0.0f;
                 }
                 jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track.rightPort, nframes);
-                jack_default_audio_sample_t* rightBufferEnd = rightBuffer + (nframes / sizeof(jack_default_audio_sample_t*));
+                jack_default_audio_sample_t* rightBufferEnd = rightBuffer + nframes;
                 for (jack_default_audio_sample_t* trackSample = rightBuffer; trackSample < rightBufferEnd; ++trackSample) {
                     *trackSample = 0.0f;
                 }
