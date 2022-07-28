@@ -298,10 +298,6 @@ inline float AudioLevels::convertTodbFS(float raw) {
     return fValue;
 }
 
-void AudioLevels::timerCallback() {
-    Q_EMIT audioLevelsChanged();
-}
-
 inline float addFloat(const float& db1, const float &db2) {
    return 10 * log10f(pow(10, db1/10) + pow(10, db2/10));
 }
@@ -441,7 +437,7 @@ float AudioLevels::add(float db1, float db2) {
     return addFloat(db1, db2);
 }
 
-const QVariantList AudioLevels::getTracksAudioLevels() {
+void AudioLevels::timerCallback() {
   // 0.2/131072 = 0.00000152587
   static const float intToFloatMultiplier{0.00000152587};
 
@@ -456,17 +452,17 @@ const QVariantList AudioLevels::getTracksAudioLevels() {
   playbackA = playbackDbA <= -200 ? -200 : playbackDbA;
   playbackB = playbackDbB <= -200 ? -200 : playbackDbB;
 
-  for (trackIndex = 0; trackIndex < TRACKS_COUNT; ++trackIndex) {
+  for (int trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
     const float dbA = convertTodbFS(tracksPeakA[trackIndex] * intToFloatMultiplier),
                 dbB = convertTodbFS(tracksPeakB[trackIndex] * intToFloatMultiplier);
     tracksA[trackIndex] = dbA <= -200 ? -200 : dbA;
     tracksB[trackIndex] = dbB <= -200 ? -200 : dbB;
-  }
-
-  for (int trackIndex=0; trackIndex<TRACKS_COUNT; trackIndex++) {
     d->levels[trackIndex].setValue<float>(addFloat(tracksA[trackIndex], tracksB[trackIndex]));
   }
+  Q_EMIT audioLevelsChanged();
+}
 
+const QVariantList AudioLevels::getTracksAudioLevels() {
   return d->levels;
 }
 
