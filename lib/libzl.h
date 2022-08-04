@@ -34,6 +34,7 @@ const char *ClipAudioSource_getFileName(ClipAudioSource *c);
 void ClipAudioSource_setStartPosition(ClipAudioSource *c,
                                       float startPositionInSeconds);
 void ClipAudioSource_setLength(ClipAudioSource *c, float beat, int bpm);
+void ClipAudioSource_setPan(ClipAudioSource *c, float pan);
 void ClipAudioSource_setSpeedRatio(ClipAudioSource *c, float speedRatio);
 void ClipAudioSource_setPitch(ClipAudioSource *c, float pitchChange);
 void ClipAudioSource_setGain(ClipAudioSource *c, float db);

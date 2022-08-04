@@ -78,6 +78,11 @@ class ClipAudioSource : public QObject {
      * @default 60
      */
     Q_PROPERTY(int rootNote READ rootNote WRITE setRootNote NOTIFY rootNoteChanged)
+    /**
+     * \brief The pan value denoting how much of a source signal is sent to the left and right channels
+     * @default 0.0f
+     */
+    Q_PROPERTY(float pan READ pan WRITE setPan NOTIFY panChanged)
 public:
   explicit ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *syncTimer, const char *filepath,
                   bool muted = false, QObject *parent = nullptr);
@@ -178,6 +183,27 @@ public:
   int rootNote() const;
   void setRootNote(int rootNote);
   Q_SIGNAL void rootNoteChanged();
+
+  /**
+   * @brief Get the current pan value in degress
+   * @return A float denoting current pan value ranging from -1.0(Pan left) to +1.0(Pan right). Default : 0(No panning)
+   */
+  float pan();
+  /**
+   * @brief Sets how much of a source signal is sent to the left and right channels
+   * M/S Panning is implemented as per the following algo :
+   * <code>
+   * mSignal = 0.5 * (left + right);
+     sSignal = left - right;
+     float pan; // [-1; +1]
+     left  = 0.5 * (1.0 + pan) * mSignal + sSignal;
+     right = 0.5 * (1.0 - pan) * mSignal - sSignal;
+     </code>
+     @note Source : https://forum.juce.com/t/how-do-stereo-panning-knobs-work/25773/9
+   * @param pan The pan value you wish to set ranging from  ranging from -1.0(Pan left) to +1.0(Pan right)
+   */
+  void setPan(float pan);
+  Q_SIGNAL void panChanged();
 private:
   class Private;
   Private *d;

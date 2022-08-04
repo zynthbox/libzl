@@ -66,6 +66,7 @@ public:
   float volumeAbsolute{-1.0f}; // This is a cached value
   float pitchChange = 0;
   float speedRatio = 1.0;
+  float pan{0.0f};
   double currentLeveldB{-400.0};
   double prevLeveldB{-400.0};
   int id{0};
@@ -606,5 +607,17 @@ void ClipAudioSource::setRootNote(int rootNote)
   if (d->rootNote != rootNote) {
     d->rootNote = rootNote;
     Q_EMIT rootNoteChanged();
+  }
+}
+
+float ClipAudioSource::pan() {
+    return d->pan;
+}
+
+void ClipAudioSource::setPan(float pan) {
+  if (auto clip = d->getClip() and d->pan != pan) {
+    IF_DEBUG_CLIP cerr << "Setting pan : " << pan;
+    d->pan = pan;
+    Q_EMIT panChanged();
   }
 }

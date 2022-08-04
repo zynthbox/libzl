@@ -62,6 +62,10 @@ public:
     c->setLength(beat, bpm);
   }
 
+  void setClipPan(ClipAudioSource *c, float pan) {
+    c->setPan(pan);
+  }
+
   void setClipStartPosition(ClipAudioSource *c, float startPositionInSeconds) {
     c->setStartPosition(startPositionInSeconds);
   }
@@ -175,6 +179,13 @@ void ClipAudioSource_setLength(ClipAudioSource *c, float beat, int bpm) {
   Helper::callFunctionOnMessageThread(
       [&]() {
         elThread.setClipLength(c, beat, bpm);
+      }, true);
+}
+
+void ClipAudioSource_setPan(ClipAudioSource *c, float pan) {
+  Helper::callFunctionOnMessageThread(
+      [&]() {
+        elThread.setClipPan(c, pan);
       }, true);
 }
 
