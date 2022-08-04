@@ -209,15 +209,23 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
                 auto pos = (int) d->sourceSamplePosition;
                 auto alpha = (float) (d->sourceSamplePosition - pos);
                 auto invAlpha = 1.0f - alpha;
+                auto pan = (float) d->clip->pan();
 
                 // just using a very simple linear interpolation here..
                 float l = sampleDuration > pos ? (inL[pos] * invAlpha + inL[pos + 1] * alpha) : 0;
                 float r = (inR != nullptr && sampleDuration > pos) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha) : l;
+                float mSignal, sSignal;
 
                 auto envelopeValue = d->adsr.getNextSample();
 
                 l *= d->lgain * envelopeValue * clipVolume;
                 r *= d->rgain * envelopeValue * clipVolume;
+
+                // Implement M/S Panning
+                mSignal = 0.5 * (l + r);
+                sSignal = l - r;
+                l = 0.5 * (1.0 + pan) * mSignal + sSignal;
+                r = 0.5 * (1.0 - pan) * mSignal - sSignal;
 
                 leftBuffer[frame] += l;
                 rightBuffer[frame] += r;
