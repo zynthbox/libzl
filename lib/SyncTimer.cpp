@@ -356,7 +356,19 @@ public:
     jack_time_t jackNextPlaybackPosition{0};
     jack_time_t jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
+    QAtomicInt jack_has_xrun{0};
     int process(jack_nframes_t nframes) {
+        if (jack_has_xrun > 0) {
+            /*******************************************************************
+             * EARLY RETURN
+             * We return early here, to avoid touching anything else. The logic
+             * here is that xrun handling is critical and needs to be immediate.
+             *******************************************************************/
+            qWarning() << Q_FUNC_INFO << "XRun detected, skipping one progress to catch up next time. Reported xruns:" << jack_has_xrun;
+            jack_has_xrun = 0;
+            return 0;
+        }
+
         auto buffer = jack_port_get_buffer(jackPort, nframes);
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -522,6 +534,7 @@ public:
         return 0;
     }
     int xrun() {
+        jack_has_xrun++;
 #ifdef DEBUG_SYNCTIMER_JACK
         qDebug() << "SyncTimer detected XRun";
 #endif
@@ -544,9 +557,12 @@ void client_latency_callback(jack_latency_callback_mode_t mode, void *arg)
         if (range.max != d->jackLatency) {
             jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
             jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
-            d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
-            qDebug() << "Latency changed, max is now" << range.max << "That means we will now suggest scheduling things" << d->q->scheduleAheadAmount() << "steps into the future";
-            Q_EMIT d->q->scheduleAheadAmountChanged();
+            quint64 newLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
+            if (newLatency != d->jackLatency) {
+                d->jackLatency = newLatency;
+                qDebug() << "Latency changed, max is now" << range.max << "That means we will now suggest scheduling things" << d->q->scheduleAheadAmount() << "steps into the future";
+                Q_EMIT d->q->scheduleAheadAmountChanged();
+            }
         }
     }
 }
@@ -593,12 +609,12 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                     qWarning() << "Failed to set the SyncTimer Jack processing callback";
                 } else {
                     jack_set_xrun_callback(d->jackClient, client_xrun, static_cast<void*>(d));
+                    jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
                     // Activate the client.
                     if (jack_activate(d->jackClient) == 0) {
                         qDebug() << "Successfully created and set up the SyncTimer's Jack client";
                         if (jack_connect(d->jackClient, "SyncTimerOut:main_out", "ZLRouter:MidiIn") == 0) {
                             qDebug() << "Successfully created and hooked up the sync timer's jack output to the midi router's input port";
-                            jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
                             jack_latency_range_t range;
                             jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
                             jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
@@ -779,7 +795,7 @@ void SyncTimer::setBpm(quint64 bpm)
 
 quint64 SyncTimer::scheduleAheadAmount() const
 {
-    return (d->timerThread->nanosecondsToSubbeatCount(d->timerThread->getBpm(), d->jackLatency * (float)1000000)) * 2;
+    return (d->timerThread->nanosecondsToSubbeatCount(d->timerThread->getBpm(), d->jackLatency * (float)1000000)) + 1;
 }
 
 int SyncTimer::beat() const {
