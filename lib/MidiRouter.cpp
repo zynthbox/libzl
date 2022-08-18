@@ -456,6 +456,31 @@ MidiRouter::MidiRouter(QObject *parent)
                 connect(d->hardwareInputConnector, &QTimer::timeout, this, [this](){ d->connectHardwareInputs(); });
                 jack_set_port_registration_callback(d->jackClient, client_port_registration, static_cast<void*>(d));
                 jack_set_client_registration_callback(d->jackClient, client_registration, static_cast<void*>(d));
+                // Create the passthrough ports
+                d->passthroughPort = jack_port_register(d->jackClient, "Passthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+                if (!d->passthroughPort) {
+                    qWarning() << "ZLRouter: Could not register ZLRouter Jack passthrough port";
+                }
+                d->internalPassthrough = jack_port_register(d->jackClient, "InternalPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+                if (!d->internalPassthrough) {
+                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
+                }
+                d->hardwareInPassthrough = jack_port_register(d->jackClient, "HardwareInPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+                if (!d->hardwareInPassthrough) {
+                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
+                }
+                d->externalOutput = jack_port_register(d->jackClient, "ExternalOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+                if (!d->externalOutput) {
+                    qWarning() << "ZLRouter: Could not register ZLRouter Jack External destination output port";
+                }
+                d->zynthianOutput = jack_port_register(d->jackClient, "ZynthianOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+                if (!d->zynthianOutput) {
+                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Zynthian destination output port";
+                }
+                d->samplerOutput = jack_port_register(d->jackClient, "SamplerOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+                if (!d->samplerOutput) {
+                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Sampler destination output port";
+                }
                 // Activate the client.
                 if (jack_activate(d->jackClient) == 0) {
                     qDebug() << "ZLRouter: Successfully created and set up the ZLRouter's Jack client";
@@ -471,31 +496,6 @@ MidiRouter::MidiRouter(QObject *parent)
                 } else {
                     qWarning() << "ZLRouter: Failed to activate ZLRouter Jack client";
                 }
-            }
-            // Create the passthrough ports
-            d->passthroughPort = jack_port_register(d->jackClient, "Passthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-            if (!d->passthroughPort) {
-                qWarning() << "ZLRouter: Could not register ZLRouter Jack passthrough port";
-            }
-            d->internalPassthrough = jack_port_register(d->jackClient, "InternalPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-            if (!d->internalPassthrough) {
-                qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
-            }
-            d->hardwareInPassthrough = jack_port_register(d->jackClient, "HardwareInPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-            if (!d->hardwareInPassthrough) {
-                qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
-            }
-            d->externalOutput = jack_port_register(d->jackClient, "ExternalOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-            if (!d->externalOutput) {
-                qWarning() << "ZLRouter: Could not register ZLRouter Jack External destination output port";
-            }
-            d->zynthianOutput = jack_port_register(d->jackClient, "ZynthianOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-            if (!d->zynthianOutput) {
-                qWarning() << "ZLRouter: Could not register ZLRouter Jack Zynthian destination output port";
-            }
-            d->samplerOutput = jack_port_register(d->jackClient, "SamplerOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-            if (!d->samplerOutput) {
-                qWarning() << "ZLRouter: Could not register ZLRouter Jack Sampler destination output port";
             }
             // Now hook up the hardware inputs
             d->hardwareInputConnector->start();
