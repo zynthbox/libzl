@@ -158,15 +158,15 @@ public:
         this->bpm = bpm;
         interval = frame_clock::duration(subbeatCountToNanoseconds(bpm, 1));
     }
-    const quint64 getBpm() const {
+    inline const quint64 getBpm() const {
         return bpm;
     }
 
-    quint64 subbeatCountToNanoseconds(const quint64 &bpm, const quint64 &subBeatCount) const
+    static inline quint64 subbeatCountToNanoseconds(const quint64 &bpm, const quint64 &subBeatCount)
     {
         return (subBeatCount * NanosecondsPerMinute) / (bpm * BeatSubdivisions);
     };
-    float nanosecondsToSubbeatCount(const quint64 &bpm, const quint64 &nanoseconds) const
+    static inline float nanosecondsToSubbeatCount(const quint64 &bpm, const quint64 &nanoseconds)
     {
         return nanoseconds / (NanosecondsPerMinute / (bpm * BeatSubdivisions));
     };
@@ -386,7 +386,6 @@ public:
         jack_time_t next_usecs;
         float period_usecs;
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
-        jackSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
 
         if (!timerThread->isPaused()) {
             if (jackPlayhead == 0) {
@@ -571,6 +570,7 @@ SyncTimer::SyncTimer(QObject *parent)
     : QObject(parent)
     , d(new SyncTimerPrivate(this))
 {
+    d->jackSubbeatLengthInMicroseconds = d->timerThread->subbeatCountToNanoseconds(d->timerThread->getBpm(), 1) / 1000;
 }
 
 void SyncTimer::addCallback(void (*functionPtr)(int)) {
@@ -788,6 +788,7 @@ void SyncTimer::setBpm(quint64 bpm)
 {
     if (d->timerThread->getBpm() != bpm) {
         d->timerThread->setBPM(bpm);
+        d->jackSubbeatLengthInMicroseconds = d->timerThread->subbeatCountToNanoseconds(d->timerThread->getBpm(), 1) / 1000;
         Q_EMIT bpmChanged();
         Q_EMIT scheduleAheadAmountChanged();
     }
