@@ -213,12 +213,12 @@ private:
     jack_port_t* tracksPortA[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     jack_port_t* tracksPortB[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
-    float capturePeakA{0.0f},
-          capturePeakB{0.0f},
-          playbackPeakA{0.0f},
-          playbackPeakB{0.0f},
-          tracksPeakA[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-          tracksPeakB[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    int capturePeakA{0},
+          capturePeakB{0},
+          playbackPeakA{0},
+          playbackPeakB{0},
+          tracksPeakA[TRACKS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+          tracksPeakB[TRACKS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     float captureA{-200.0f}, captureB{-200.0f};
     float playbackA{-200.0f}, playbackB{-200.0f};
