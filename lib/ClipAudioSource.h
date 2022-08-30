@@ -117,7 +117,7 @@ public:
   float volumeAbsolute() const;
   Q_SIGNAL void volumeAbsoluteChanged();
   void setAudioLevelChangedCallback(void (*functionPtr)(float));
-  // Using the channel logic from SamplerSynth, -2 is no-effect global sounds, -1 is the effected global channel, and 0-9 are tracks 1 through 10 inclusive
+  // Using the channel logic from SamplerSynth, -2 is no-effect global sounds, -1 is the effected global channel, and 0-9 are channels 1 through 10 inclusive
   void play(bool loop = true, int midiChannel = -2);
   // Midi channel logic as play(), except defaulting to stop all the things everywhere
   void stop(int midiChannel = -3);

@@ -17,7 +17,7 @@
 #include <jack/jack.h>
 #include <juce_events/juce_events.h>
 
-#define TRACKS_COUNT 10
+#define CHANNELS_COUNT 10
 
 class AudioLevelsPrivate;
 /**
@@ -57,18 +57,18 @@ Q_OBJECT
     Q_PROPERTY(float playbackB MEMBER playbackB NOTIFY audioLevelsChanged)
 
     /**
-     * \brief Tracks audio level in decibels as an array of 10 elements
+     * \brief Channels audio level in decibels as an array of 10 elements
      */
-    Q_PROPERTY(QVariantList tracks READ getTracksAudioLevels NOTIFY audioLevelsChanged)
+    Q_PROPERTY(QVariantList channels READ getChannelsAudioLevels NOTIFY audioLevelsChanged)
 
     /**
      * \brief Set whether or not to record the global playback when calling startRecording
      */
     Q_PROPERTY(bool recordGlobalPlayback READ recordGlobalPlayback WRITE setRecordGlobalPlayback NOTIFY recordGlobalPlaybackChanged)
     /**
-     * \brief A list of the track indices of the tracks marked to be included when recording
+     * \brief A list of the channel indices of the channels marked to be included when recording
      */
-    Q_PROPERTY(QVariantList tracksToRecord READ tracksToRecord NOTIFY tracksToRecordChanged)
+    Q_PROPERTY(QVariantList channelsToRecord READ channelsToRecord NOTIFY channelsToRecordChanged)
     /**
      * \brief Set whether or not to record the explicitly toggled ports
      * @see addRecordPort(QString, int)
@@ -117,25 +117,25 @@ public:
     Q_INVOKABLE void setGlobalPlaybackFilenamePrefix(const QString& fileNamePrefix);
 
     /**
-     * \brief Sets whether or not a track should be included when recording
-     * @param track The index of the track you wish to change the recording status of
-     * @param shouldRecord Whether or not the track should be recorded
+     * \brief Sets whether or not a channel should be included when recording
+     * @param channel The index of the channel you wish to change the recording status of
+     * @param shouldRecord Whether or not the channel should be recorded
      */
-    Q_INVOKABLE void setTrackToRecord(int track, bool shouldRecord = true);
+    Q_INVOKABLE void setChannelToRecord(int channel, bool shouldRecord = true);
     /**
-     * \brief Returns a list of track indices for tracks marked to be recorded
-     * @see setTrackToRecord(int, bool)
+     * \brief Returns a list of channel indices for channels marked to be recorded
+     * @see setChannelToRecord(int, bool)
      */
-    Q_INVOKABLE QVariantList tracksToRecord() const;
+    Q_INVOKABLE QVariantList channelsToRecord() const;
     /**
      * \brief Set the first part of the filename used when recording
      * This should be the full first part of the filename, path and all. The recorder will then append
      * a timestamp and the file suffix (.wav). You should also ensure that the path exists before calling
      * startRecording.
-     * @param track The index of the track you wish to change the filename prefix for
-     * @param fileNamePrefix The prefix you wish to use as the basis of the given track's filenames
+     * @param channel The index of the channel you wish to change the filename prefix for
+     * @param fileNamePrefix The prefix you wish to use as the basis of the given channel's filenames
      */
-    Q_INVOKABLE void setTrackFilenamePrefix(int track, const QString& fileNamePrefix);
+    Q_INVOKABLE void setChannelFilenamePrefix(int channel, const QString& fileNamePrefix);
 
     /**
      * \brief Set the first part of the filename used when recording
@@ -143,7 +143,7 @@ public:
      * a timestamp and the file suffix (.wav). You should also ensure that the path exists before calling
      * startRecording.
      * @note If you pass in something that ends in .wav, the prefix will be used verbatim and no details added
-     * @param fileNamePrefix The prefix you wish to use as the basis of the given track's filenames
+     * @param fileNamePrefix The prefix you wish to use as the basis of the given channel's filenames
      */
     Q_INVOKABLE void setRecordPortsFilenamePrefix(const QString& fileNamePrefix);
     /**
@@ -166,11 +166,11 @@ public:
     Q_INVOKABLE bool shouldRecordPorts() const;
 
     /**
-     * \brief Start the recording process on all enabled tracks
+     * \brief Start the recording process on all enabled channels
      *
-     * The logical progression of doing semi-automated multi-tracked recording is:
-     * - Mark all the tracks that need including for recording and those that shouldn't be (setTrackToRecord and setRecordGlobalPlayback)
-     * - Set the filename prefixes for all the tracks that will be included (you can also set the others, it has no negative side effects)
+     * The logical progression of doing semi-automated multi-channeled recording is:
+     * - Mark all the channels that need including for recording and those that shouldn't be (setChannelToRecord and setRecordGlobalPlayback)
+     * - Set the filename prefixes for all the channels that will be included (you can also set the others, it has no negative side effects)
      * - Start the recording
      * - Start playback after the recording, to ensure everything is included
      * - Stop recording when needed
@@ -191,14 +191,14 @@ public:
 Q_SIGNALS:
     void audioLevelsChanged();
     void recordGlobalPlaybackChanged();
-    void tracksToRecordChanged();
+    void channelsToRecordChanged();
     void shouldRecordPortsChanged();
     void isRecordingChanged();
 
 private:
     explicit AudioLevels(QObject *parent = nullptr);
 
-    const QVariantList getTracksAudioLevels();
+    const QVariantList getChannelsAudioLevels();
 
     float convertTodbFS(float raw);
 
@@ -210,20 +210,20 @@ private:
     jack_port_t* playbackPortB{nullptr};
     jack_port_t* recorderPortA{nullptr};
     jack_port_t* recorderPortB{nullptr};
-    jack_port_t* tracksPortA[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-    jack_port_t* tracksPortB[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    jack_port_t* channelsPortA[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    jack_port_t* channelsPortB[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
     int capturePeakA{0},
           capturePeakB{0},
           playbackPeakA{0},
           playbackPeakB{0},
-          tracksPeakA[TRACKS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-          tracksPeakB[TRACKS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+          channelsPeakA[CHANNELS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+          channelsPeakB[CHANNELS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     float captureA{-200.0f}, captureB{-200.0f};
     float playbackA{-200.0f}, playbackB{-200.0f};
-    float tracksA[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-          tracksB[TRACKS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    float channelsA[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+          channelsB[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
     void timerCallback() override;
     AudioLevelsPrivate *d{nullptr};

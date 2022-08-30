@@ -59,13 +59,13 @@ struct ClipCommand {
         return command;
     }
     /**
-     * \brief Create a command for a specific track
+     * \brief Create a command for a specific channel
      */
-    static ClipCommand* trackCommand(ClipAudioSource *clip, int trackID)
+    static ClipCommand* channelCommand(ClipAudioSource *clip, int channelID)
     {
         ClipCommand *command = new ClipCommand();
         command->clip = clip;
-        command->midiChannel = trackID;
+        command->midiChannel = channelID;
         return command;
     }
 };

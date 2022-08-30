@@ -43,8 +43,8 @@ public:
 // information on what external output channel should be used if it's not a straight
 // passthrough to the same channel the other side, and what channels should be
 // targeted on the zynthian outputs.
-struct TrackOutput {
-    TrackOutput(int inputChannel)
+struct ChannelOutput {
+    ChannelOutput(int inputChannel)
         : inputChannel(inputChannel)
     {
         // By default we assume a straight passthrough for zynthian. This isn't
@@ -93,7 +93,7 @@ public:
     jack_port_t *externalOutput{nullptr};
 
     QList<InputDevice*> hardwareInputs;
-    QList<TrackOutput *> outputs;
+    QList<ChannelOutput *> outputs;
 
     void connectPorts(const QString &from, const QString &to) {
         int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
@@ -115,7 +115,7 @@ public:
     }
 
     // Really just a convenience function because it makes it easier to read things below while retaining the errorhandling/debug stuff
-    static inline void writeEventToBuffer(const jack_midi_event_t &event, void *buffer, int currentChannel, TrackOutput *output, int outputChannel = -1) {
+    static inline void writeEventToBuffer(const jack_midi_event_t &event, void *buffer, int currentChannel, ChannelOutput *output, int outputChannel = -1) {
         const int eventChannel = (event.buffer[0] & 0xf);
         if (outputChannel > -1) {
             event.buffer[0] = event.buffer[0] - eventChannel + outputChannel;
@@ -145,7 +145,7 @@ public:
         // Get all our output channels' buffers and clear them, if there was one previously set.
         // A little overly protective, given how lightweight the functions are, but might as well
         // be lighter-weight about it.
-        for (TrackOutput *output : qAsConst(outputs)) {
+        for (ChannelOutput *output : qAsConst(outputs)) {
             if (output->channelBuffer) {
                 jack_midi_clear_buffer(output->channelBuffer);
                 output->channelBuffer = nullptr;
@@ -167,7 +167,7 @@ public:
         // First handle input coming from our own inputs, because we gotta start somewhere
         void *inputBuffer = jack_port_get_buffer(midiInPort, nframes);
         uint32_t events = jack_midi_get_event_count(inputBuffer);
-        TrackOutput *output{nullptr};
+        ChannelOutput *output{nullptr};
         jack_midi_event_t event;
         int eventChannel{-1};
         for (uint32_t eventIndex = 0; eventIndex < events; ++eventIndex) {
@@ -380,7 +380,7 @@ public:
         free(ports);
     }
 
-    void disconnectFromOutputs(TrackOutput *output) {
+    void disconnectFromOutputs(ChannelOutput *output) {
         const QString portName = QString("ZLRouter:%1").arg(output->portName);
         if (output->destination == MidiRouter::ZynthianDestination) {
             disconnectPorts(portName, QLatin1String{"ZynMidiRouter:step_in"});
@@ -391,7 +391,7 @@ public:
         }
     }
 
-    void connectToOutputs(TrackOutput *output) {
+    void connectToOutputs(ChannelOutput *output) {
         const QString portName = QString("ZLRouter:%1").arg(output->portName);
         if (output->destination == MidiRouter::ZynthianDestination) {
             connectPorts(portName, QLatin1String{"ZynMidiRouter:step_in"});
@@ -485,9 +485,9 @@ MidiRouter::MidiRouter(QObject *parent)
                 if (jack_activate(d->jackClient) == 0) {
                     qDebug() << "ZLRouter: Successfully created and set up the ZLRouter's Jack client";
                     const QString zmrPort{"ZynMidiRouter:step_in"};
-                    // We technically only have ten tracks, but there's no reason we can't handle 16... so, let's do it like so
+                    // We technically only have ten channels, but there's no reason we can't handle 16... so, let's do it like so
                     for (int channel = 0; channel < 16; ++channel) {
-                        TrackOutput *output = new TrackOutput(channel);
+                        ChannelOutput *output = new ChannelOutput(channel);
                         output->portName = QString("Channel%2").arg(QString::number(channel));
                         output->port = jack_port_register(d->jackClient, output->portName.toUtf8(), JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
                         d->outputs << output;
@@ -516,7 +516,7 @@ MidiRouter::~MidiRouter()
 void MidiRouter::setChannelDestination(int channel, MidiRouter::RoutingDestination destination, int externalChannel)
 {
     if (channel > -1 && channel < d->outputs.count()) {
-        TrackOutput *output = d->outputs[channel];
+        ChannelOutput *output = d->outputs[channel];
         output->externalChannel = externalChannel;
         if (output->destination != destination) {
             d->disconnectFromOutputs(output);
@@ -542,7 +542,7 @@ int MidiRouter::currentChannel() const
 void MidiRouter::setZynthianChannels(int channel, QList<int> zynthianChannels)
 {
     if (channel > -1 && channel < d->outputs.count()) {
-        TrackOutput *output = d->outputs[channel];
+        ChannelOutput *output = d->outputs[channel];
         bool hasChanged = (output->zynthianChannels.count() != zynthianChannels.count());
         if (!hasChanged) {
             for (int i = 0; i < zynthianChannels.count(); ++i) {
@@ -564,7 +564,7 @@ void MidiRouter::reloadConfiguration()
     // TODO Make the fb stuff work as well... (also, note to self, work out what that stuff actually is?)
     if (!d->constructing) {
         // First, disconnect our outputs, just in case...
-        for (TrackOutput *output : d->outputs) {
+        for (ChannelOutput *output : d->outputs) {
             d->disconnectFromOutputs(output);
         }
     }
@@ -605,7 +605,7 @@ void MidiRouter::reloadConfiguration()
     }
     if (!d->constructing) {
         // Reconnect out outputs after reloading
-        for (TrackOutput *output : d->outputs) {
+        for (ChannelOutput *output : d->outputs) {
             d->connectToOutputs(output);
         }
         d->connectHardwareInputs();

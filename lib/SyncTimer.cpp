@@ -647,7 +647,7 @@ void SyncTimer::removeCallback(void (*functionPtr)(int)) {
 
 void SyncTimer::queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel)
 {
-    ClipCommand *command = ClipCommand::trackCommand(clip, midiChannel);
+    ClipCommand *command = ClipCommand::channelCommand(clip, midiChannel);
     command->midiNote = 60;
     command->changeVolume = true;
     command->volume = 1.0;
@@ -682,7 +682,7 @@ void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
     }
 
     // Then stop it, now, because it should be now
-    ClipCommand *command = ClipCommand::trackCommand(clip, midiChannel);
+    ClipCommand *command = ClipCommand::channelCommand(clip, midiChannel);
     command->midiNote = 60;
     command->stopPlayback = true;
     StepData *stepData = d->stepRing.at(d->delayedStep(0));

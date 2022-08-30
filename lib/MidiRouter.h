@@ -12,7 +12,7 @@ class MidiRouterPrivate;
  * Note that setting the external channel will only affect channels set to ExternalDestination.
  *
  * To ensure that Zynthian targets are correct, use setZynthianChannels() to change from the
- * default (that is, targeting the same channel in Zynthian as the track's input channel)
+ * default (that is, targeting the same channel in Zynthian as the channel's input channel)
  *
  * In addition to the specific destinations above, there are a set of ports that you can listen
  * to to get all notes going to those specific locations:
@@ -52,7 +52,7 @@ public:
     };
     /**
      * \brief Where notes on a specific midi channel should be routed
-     * @note Logically, in zynthbox, we really only have ten tracks (corresponding to a channel each), but we might
+     * @note Logically, in zynthbox, we really only have ten channels (corresponding to a channel each), but we might
      *       as well support all 16, because it makes little functional difference, and has near enough to no
      *       performance impact.
      * @param channel The midi channel (0 through 15)
@@ -66,9 +66,9 @@ public:
     Q_SIGNAL void currentChannelChanged();
 
     /**
-     * \brief Set the channels which will be used to map eevnts for the track for the given channel into zynthian
+     * \brief Set the channels which will be used to map eevnts for the channel for the given channel into zynthian
      * @param channel The midi channel (0 through 15)
-     * @param zynthianChannels The channels that zynthian should play notes on for the track with the given input channel
+     * @param zynthianChannels The channels that zynthian should play notes on for the channel with the given input channel
      */
     void setZynthianChannels(int channel, QList<int> zynthianChannels);
 

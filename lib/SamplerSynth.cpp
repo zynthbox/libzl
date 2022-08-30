@@ -20,7 +20,7 @@
 
 using namespace juce;
 
-struct SamplerTrack {
+struct SamplerChannel {
     jack_port_t *leftPort{nullptr};
     QString portNameLeft;
     jack_port_t *rightPort{nullptr};
@@ -54,11 +54,11 @@ public:
     // An ordered list of ports, in pairs of left and right channels, with two each for:
     // Global audio (midi "channel" -2, for e.g. the metronome and sample previews)
     // Global effects targeted audio (midi "channel" -1)
-    // Track 1 (midi channel 0)
-    // Track 2 (midi channel 1)
+    // Channel 1 (midi channel 0)
+    // Channel 2 (midi channel 1)
     // ...
-    // Track 10 (midi channel 9)
-    QList<SamplerTrack*> tracks;
+    // Channel 10 (midi channel 9)
+    QList<SamplerChannel*> channels;
     int process(jack_nframes_t nframes) {
         jack_nframes_t current_frames;
         jack_time_t current_usecs;
@@ -67,13 +67,13 @@ public:
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
         // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
         if (synthMutex.tryLock(period_usecs / 4000)) {
-            for(SamplerTrack *track : qAsConst(tracks)) {
-                if (track->leftPort && track->rightPort) {
-                    jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track->leftPort, nframes);
+            for(SamplerChannel *channel : qAsConst(channels)) {
+                if (channel->leftPort && channel->rightPort) {
+                    jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(channel->leftPort, nframes);
                     memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
-                    jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(track->rightPort, nframes);
+                    jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(channel->rightPort, nframes);
                     memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
-                    for (SamplerSynthVoice *voice : qAsConst(track->voices)) {
+                    for (SamplerSynthVoice *voice : qAsConst(channel->voices)) {
                         // If we don't have a command set, there's definitely nothing playing (it gets set
                         // before playback starts and cleared after playback ends), consequently there's no
                         // reason to process this voice
@@ -144,29 +144,29 @@ void SamplerSynth::initialize(tracktion_engine::Engine *engine)
     if (d->jackClient) {
         jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
         d->synth->setCurrentPlaybackSampleRate(sampleRate);
-        // Register all our tracks for output
-        qDebug() << "Registering ten (plus two global) tracks, with 8 voices each";
-        for (int trackIndex = 0; trackIndex < 12; ++trackIndex) {
-            d->tracks << new SamplerTrack();
-            // Funny story, the actual tracks have midi channels equivalent to their name, minus one. The others we can cheat with
-            d->tracks[trackIndex]->midiChannel = trackIndex - 2;
-            if (trackIndex == 0) {
-                d->tracks[trackIndex]->portNameLeft = QString("global-uneffected_left");
-                d->tracks[trackIndex]->portNameRight = QString("global-uneffected_right");
-            } else if (trackIndex == 1) {
-                d->tracks[trackIndex]->portNameLeft = QString("global-effected_left");
-                d->tracks[trackIndex]->portNameRight = QString("global-effected_right");
+        // Register all our channels for output
+        qDebug() << "Registering ten (plus two global) channels, with 8 voices each";
+        for (int channelIndex = 0; channelIndex < 12; ++channelIndex) {
+            d->channels << new SamplerChannel();
+            // Funny story, the actual channels have midi channels equivalent to their name, minus one. The others we can cheat with
+            d->channels[channelIndex]->midiChannel = channelIndex - 2;
+            if (channelIndex == 0) {
+                d->channels[channelIndex]->portNameLeft = QString("global-uneffected_left");
+                d->channels[channelIndex]->portNameRight = QString("global-uneffected_right");
+            } else if (channelIndex == 1) {
+                d->channels[channelIndex]->portNameLeft = QString("global-effected_left");
+                d->channels[channelIndex]->portNameRight = QString("global-effected_right");
             } else {
-                d->tracks[trackIndex]->portNameLeft = QString("track_%1_left").arg(QString::number(trackIndex-1));
-                d->tracks[trackIndex]->portNameRight = QString("track_%1_right").arg(QString::number(trackIndex-1));
+                d->channels[channelIndex]->portNameLeft = QString("channel_%1_left").arg(QString::number(channelIndex-1));
+                d->channels[channelIndex]->portNameRight = QString("channel_%1_right").arg(QString::number(channelIndex-1));
             }
             for (int voiceIndex = 0; voiceIndex < 8; ++voiceIndex) {
                 SamplerSynthVoice *voice = new SamplerSynthVoice();
-                d->tracks[trackIndex]->voices << voice;
+                d->channels[channelIndex]->voices << voice;
                 d->synth->addVoice(voice);
             }
-            d->tracks[trackIndex]->leftPort = jack_port_register(d->jackClient, d->tracks[trackIndex]->portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
-            d->tracks[trackIndex]->rightPort = jack_port_register(d->jackClient, d->tracks[trackIndex]->portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+            d->channels[channelIndex]->leftPort = jack_port_register(d->jackClient, d->channels[channelIndex]->portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+            d->channels[channelIndex]->rightPort = jack_port_register(d->jackClient, d->channels[channelIndex]->portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
         }
         // Set the process callback.
         if (jack_set_process_callback(d->jackClient, client_process, d) != 0) {
@@ -174,9 +174,9 @@ void SamplerSynth::initialize(tracktion_engine::Engine *engine)
         } else {
             // Activate the client.
             if (jack_activate(d->jackClient) == 0) {
-                for (SamplerTrack* track : d->tracks) {
-                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(track->portNameLeft).toUtf8(), QLatin1String{"system:playback_1"});
-                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(track->portNameRight).toUtf8(), QLatin1String{"system:playback_2"});
+                for (SamplerChannel* channel : d->channels) {
+                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(channel->portNameLeft).toUtf8(), QLatin1String{"system:playback_1"});
+                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(channel->portNameRight).toUtf8(), QLatin1String{"system:playback_2"});
                 }
                 qDebug() << "Successfully created and set up the SamplerSynth's Jack client";
             } else {
@@ -238,9 +238,9 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand, quint64 currentTi
         SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
         if (clipCommand->stopPlayback || clipCommand->startPlayback) {
             if (clipCommand->stopPlayback) {
-                for (SamplerTrack* track : qAsConst(d->tracks)) {
-                    if (track->midiChannel == clipCommand->midiChannel) {
-                        for (SamplerSynthVoice * voice : track->voices) {
+                for (SamplerChannel* channel : qAsConst(d->channels)) {
+                    if (channel->midiChannel == clipCommand->midiChannel) {
+                        for (SamplerSynthVoice * voice : channel->voices) {
                             const ClipCommand *currentVoiceCommand = voice->currentCommand();
                             if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                                 voice->stopNote(0.0f, true);
@@ -254,9 +254,9 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand, quint64 currentTi
                 }
             }
             if (clipCommand->startPlayback) {
-                for (SamplerTrack *track : qAsConst(d->tracks)) {
-                    if (track->midiChannel == clipCommand->midiChannel) {
-                        for (SamplerSynthVoice *voice : track->voices) {
+                for (SamplerChannel *channel : qAsConst(d->channels)) {
+                    if (channel->midiChannel == clipCommand->midiChannel) {
+                        for (SamplerSynthVoice *voice : channel->voices) {
                             if (!voice->isVoiceActive()) {
                                 voice->setCurrentCommand(clipCommand);
                                 voice->setStartTick(currentTick);
@@ -269,9 +269,9 @@ void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand, quint64 currentTi
                 }
             }
         } else {
-            for (SamplerTrack *track : qAsConst(d->tracks)) {
-                if (track->midiChannel == clipCommand->midiChannel) {
-                    for (SamplerSynthVoice * voice : qAsConst(track->voices)) {
+            for (SamplerChannel *channel : qAsConst(d->channels)) {
+                if (channel->midiChannel == clipCommand->midiChannel) {
+                    for (SamplerSynthVoice * voice : qAsConst(channel->voices)) {
                         const ClipCommand *currentVoiceCommand = voice->currentCommand();
                         if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
                             // Update the voice with the new command

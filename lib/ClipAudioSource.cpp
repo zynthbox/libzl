@@ -410,7 +410,7 @@ void ClipAudioSource::play(bool loop, int midiChannel) {
   auto clip = d->getClip();
   IF_DEBUG_CLIP qDebug() << "libzl : Starting clip " << this << d->filePath << " which is really " << clip.get() << " in a " << (loop ? "looping" : "non-looping") << " manner from " << d->startPositionInSeconds << " and for " << d->lengthInSeconds << " seconds at volume " << (clip  && clip->edit.getMasterVolumePlugin().get() ? clip->edit.getMasterVolumePlugin()->volume : 0);
 
-  ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
+  ClipCommand *command = ClipCommand::channelCommand(this, midiChannel);
   command->midiNote = 60;
   command->changeVolume = true;
   command->volume = 1.0f;
@@ -425,7 +425,7 @@ void ClipAudioSource::play(bool loop, int midiChannel) {
 void ClipAudioSource::stop(int midiChannel) {
   IF_DEBUG_CLIP qDebug() << "libzl : Stopping clip " << this << " on channel" << midiChannel << " path: " << d->filePath;
   if (midiChannel > -3) {
-    ClipCommand *command = ClipCommand::trackCommand(this, midiChannel);
+    ClipCommand *command = ClipCommand::channelCommand(this, midiChannel);
     command->midiNote = 60;
     command->stopPlayback = true;
     d->syncTimer->scheduleClipCommand(command, 0);
@@ -440,7 +440,7 @@ void ClipAudioSource::stop(int midiChannel) {
     command->stopPlayback = true;
     d->syncTimer->scheduleClipCommand(command, 0);
     for (int i = 0; i < 10; ++i) {
-      command = ClipCommand::trackCommand(this, i);
+      command = ClipCommand::channelCommand(this, i);
       command->midiNote = 60;
       command->stopPlayback = true;
       d->syncTimer->scheduleClipCommand(command, 0);
