@@ -161,7 +161,7 @@ public:
       }
   }
 
-  const QStringList recorderPortNames{QLatin1String{"zynthiloops_audio_levels_client:recorder_port_a"}, QLatin1String{"zynthiloops_audio_levels_client:recorder_port_b"}};
+  const QStringList recorderPortNames{QLatin1String{"sketchpad_audio_levels_client:recorder_port_a"}, QLatin1String{"sketchpad_audio_levels_client:recorder_port_b"}};
   void disconnectPort(const QString& portName, int channel) {
     disconnectPorts(portName, recorderPortNames[channel]);
   }
@@ -179,14 +179,14 @@ AudioLevels::AudioLevels(QObject *parent)
   , d(new AudioLevelsPrivate)
 {
     audioLevelsJackClient = jack_client_open(
-      "zynthiloops_audio_levels_client",
+      "sketchpad_audio_levels_client",
       JackNullOption,
       &audioLevelsJackStatus
     );
     d->jackClient = audioLevelsJackClient;
 
     if (audioLevelsJackClient) {
-      qWarning() << "Initialized Audio Levels Jack Client zynthiloops_client";
+      qWarning() << "Initialized Audio Levels Jack Client sketchpad_client";
 
       capturePortA = jack_port_register(
         audioLevelsJackClient,
@@ -279,7 +279,7 @@ AudioLevels::AudioLevels(QObject *parent)
         }
       }
     } else {
-      qWarning() << "Error initializing Audio Levels Jack Client zynthiloops_client";
+      qWarning() << "Error initializing Audio Levels Jack Client sketchpad_client";
     }
 
     startTimerHz(30);
