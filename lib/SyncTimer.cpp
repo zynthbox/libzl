@@ -398,7 +398,6 @@ public:
         if (stepNextPlaybackPosition == 0) {
             stepNextPlaybackPosition = current_usecs;
         }
-        samplerSynth->lock(); // explicitly locking samplerSynth, which must be unlocked again when we're done
         jack_nframes_t firstAvailableFrame{0};
         jack_nframes_t relativePosition{0};
         // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
@@ -529,7 +528,6 @@ public:
             qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and scheduled no notes";
 #endif
         }
-        samplerSynth->unlock(); // explicitly unlocking samplerSynth
         return 0;
     }
     int xrun() {

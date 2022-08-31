@@ -43,9 +43,7 @@ public:
 
 protected:
     // Some stuff to ensure SyncTimer can operate with sufficient speed
-    void lock();
     void handleClipCommand(ClipCommand* clipCommand, quint64 currentTick);
-    void unlock();
 
 private:
     SamplerSynthPrivate *d{nullptr};

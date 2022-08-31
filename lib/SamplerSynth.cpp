@@ -20,14 +20,120 @@
 
 using namespace juce;
 
-struct SamplerChannel {
+struct SamplerCommand {
+    ClipCommand* clipCommand{nullptr};
+    quint64 timestamp;
+};
+
+class SamplerChannel
+{
+public:
+    explicit SamplerChannel(const QString &clientName);
+    ~SamplerChannel() {
+        if (jackClient) {
+            jack_client_close(jackClient);
+        }
+        qDeleteAll(commandQueue);
+    }
+    QString clientName;
+    jack_client_t *jackClient{nullptr};
     jack_port_t *leftPort{nullptr};
-    QString portNameLeft;
+    QString portNameLeft{"left_out"};
     jack_port_t *rightPort{nullptr};
-    QString portNameRight;
+    QString portNameRight{"right_out"};
     int midiChannel{-1};
     QList<SamplerSynthVoice *> voices;
+    int process(jack_nframes_t nframes);
+    float cpuLoad{0.0f};
+
+    SamplerSynthPrivate* d{nullptr};
+    int queueHandled{0};
+    QAtomicInt queueMostRecentlyAdded{0};
+    static const int commandQueueSize{256};
+    QHash<int, SamplerCommand*> commandQueue;
+    inline void handleCommand(ClipCommand *clipCommand, quint64 currentTick);
 };
+
+static int client_process(jack_nframes_t nframes, void* arg) {
+    return static_cast<SamplerChannel*>(arg)->process(nframes);
+}
+
+void jackConnect(jack_client_t* jackClient, const QString &from, const QString &to) {
+    int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
+    if (result == 0 || result == EEXIST) {
+//         qDebug() << "SamplerSynth:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to;
+    } else {
+        qWarning() << "SamplerSynth: Failed to connect" << from << "with" << to << "with error code" << result;
+        // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
+    }
+}
+
+SamplerChannel::SamplerChannel(const QString &clientName)
+    : clientName(clientName)
+{
+    qDebug() << "Setting up SamplerSynth Jack client" << clientName;
+    for (int i = 0; i < commandQueueSize; ++i) {
+        commandQueue[i] = new SamplerCommand;
+    }
+    jack_status_t real_jack_status{};
+    jackClient = jack_client_open(clientName.toUtf8(), JackNullOption, &real_jack_status);
+    if (jackClient) {
+        // Set the process callback.
+        if (jack_set_process_callback(jackClient, client_process, this) != 0) {
+            qWarning() << "Failed to set the SamplerSynth Jack processing callback";
+        } else {
+            for (int voiceIndex = 0; voiceIndex < 8; ++voiceIndex) {
+                SamplerSynthVoice *voice = new SamplerSynthVoice();
+                voices << voice;
+            }
+            leftPort = jack_port_register(jackClient, portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+            rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+            // Activate the client.
+            if (jack_activate(jackClient) == 0) {
+                jackConnect(jackClient, QString("%1:%2").arg(clientName).arg(portNameLeft).toUtf8(), QLatin1String{"system:playback_1"});
+                jackConnect(jackClient, QString("%1:%2").arg(clientName).arg(portNameRight).toUtf8(), QLatin1String{"system:playback_2"});
+                qDebug() << "Successfully created and set up" << clientName;
+            } else {
+                qWarning() << "Failed to activate SamplerSynth Jack client" << clientName;
+            }
+        }
+    }
+}
+
+int SamplerChannel::process(jack_nframes_t nframes) {
+    jack_nframes_t current_frames;
+    jack_time_t current_usecs;
+    jack_time_t next_usecs;
+    float period_usecs;
+    jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
+    // First handle any queued up commands (starting, stopping, changes to voice state, that sort of stuff)
+    while (queueHandled != queueMostRecentlyAdded) {
+        ++queueHandled;
+        if (queueHandled >= commandQueueSize) {
+            queueHandled = 0;
+        }
+        qDebug() << Q_FUNC_INFO << "Handling command at position" << queueHandled << "for channel" << clientName;
+        const SamplerCommand *command = commandQueue[queueHandled];
+        handleCommand(command->clipCommand, command->timestamp);
+    }
+    // Then, if we've actually got our ports set up, let's play whatever voices are active
+    if (leftPort && rightPort) {
+        jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(leftPort, nframes);
+        memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+        jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(rightPort, nframes);
+        memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+        for (SamplerSynthVoice *voice : qAsConst(voices)) {
+            if (voice->isPlaying) {
+                voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
+            }
+        }
+    }
+    // Micro-hackery - -2 is the first item in the list of channels, so might as well just go with that
+    if (midiChannel == -2) {
+        cpuLoad = jack_cpu_load(jackClient);
+    }
+    return 0;
+}
 
 class SamplerSynthImpl;
 class SamplerSynthPrivate {
@@ -36,67 +142,80 @@ public:
         syncTimer = qobject_cast<SyncTimer*>(SyncTimer_instance());
     }
     ~SamplerSynthPrivate() {
-        if (jackClient) {
-            jack_client_close(jackClient);
-        }
+        qDeleteAll(channels);
     }
     SyncTimer* syncTimer{nullptr};
     QMutex synthMutex;
     bool syncLocked{false};
     SamplerSynthImpl *synth{nullptr};
     static const int numVoices{128};
-    float cpuLoad{0.0f};
 
     QHash<ClipAudioSource*, SamplerSynthSound*> clipSounds;
     te::Engine *engine{nullptr};
 
-    jack_client_t *jackClient{nullptr};
-    // An ordered list of ports, in pairs of left and right channels, with two each for:
+    // An ordered list of Jack clients, one each for...
     // Global audio (midi "channel" -2, for e.g. the metronome and sample previews)
     // Global effects targeted audio (midi "channel" -1)
-    // Channel 1 (midi channel 0)
+    // Channel 1 (midi channel 0, and the logical music channel called Channel 1 in a sketchpad)
     // Channel 2 (midi channel 1)
     // ...
     // Channel 10 (midi channel 9)
-    QList<SamplerChannel*> channels;
-    int process(jack_nframes_t nframes) {
-        jack_nframes_t current_frames;
-        jack_time_t current_usecs;
-        jack_time_t next_usecs;
-        float period_usecs;
-        jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
-        // Attempt to lock, but don't wait longer than half the available period, or we'll end up in trouble
-        if (synthMutex.tryLock(period_usecs / 4000)) {
-            for(SamplerChannel *channel : qAsConst(channels)) {
-                if (channel->leftPort && channel->rightPort) {
-                    jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(channel->leftPort, nframes);
-                    memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
-                    jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(channel->rightPort, nframes);
-                    memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
-                    for (SamplerSynthVoice *voice : qAsConst(channel->voices)) {
-                        // If we don't have a command set, there's definitely nothing playing (it gets set
-                        // before playback starts and cleared after playback ends), consequently there's no
-                        // reason to process this voice
-                        if (voice->isPlaying) {
-                            voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
-                        }
-                    }
-                }
-            }
-            cpuLoad = jack_cpu_load(jackClient);
-            synthMutex.unlock();
-        } else {
-            qWarning() << "Failed to lock the samplersynth mutex within a reasonable amount of time, being" << period_usecs / 4000 << "ms";
-        }
-        return 0;
-    }
+    QList<SamplerChannel *> channels;
 };
 
 class SamplerSynthImpl : public juce::Synthesiser {
 public:
-    void handleCommand(ClipCommand *clipCommand, quint64 currentTick);
+    void startVoiceImpl(juce::SynthesiserVoice* voice, juce::SynthesiserSound* sound, int midiChannel, int midiNoteNumber, float velocity)
+    {
+        startVoice(voice, sound, midiChannel, midiNoteNumber, velocity);
+    }
     SamplerSynthPrivate *d{nullptr};
 };
+
+void SamplerChannel::handleCommand(ClipCommand *clipCommand, quint64 currentTick)
+{
+    SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
+    if (clipCommand->stopPlayback || clipCommand->startPlayback) {
+        if (clipCommand->stopPlayback) {
+            if (midiChannel == clipCommand->midiChannel) {
+                for (SamplerSynthVoice * voice : qAsConst(voices)) {
+                    const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                    if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
+                        voice->stopNote(0.0f, true);
+                        // We may have more than one thing going for the same sound on the same note, which... shouldn't
+                        // really happen, but it's ugly and we just need to deal with that when stopping, so, stop /all/
+                        // the voices where both the sound and the command match.
+                    }
+                }
+            }
+        }
+        if (clipCommand->startPlayback) {
+            if (midiChannel == clipCommand->midiChannel) {
+                for (SamplerSynthVoice *voice : qAsConst(voices)) {
+                    if (!voice->isPlaying) {
+                        voice->setCurrentCommand(clipCommand);
+                        voice->setStartTick(currentTick);
+                        d->synth->startVoiceImpl(voice, sound, clipCommand->midiChannel, clipCommand->midiNote, clipCommand->volume);
+                        break;
+                    }
+                }
+            }
+        }
+    } else {
+        if (midiChannel == clipCommand->midiChannel) {
+            for (SamplerSynthVoice * voice : qAsConst(voices)) {
+                const ClipCommand *currentVoiceCommand = voice->currentCommand();
+                if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
+                    // Update the voice with the new command
+                    voice->setCurrentCommand(clipCommand);
+                    // We may have more than one thing going for the same sound on the same note, which... shouldn't
+                    // really happen, but it's ugly and we just need to deal with that when stopping, so, update /all/
+                    // the voices where both the sound and the command match.
+                }
+            }
+        }
+    }
+}
 
 SamplerSynth *SamplerSynth::instance()  {
     static SamplerSynth *instance{nullptr};
@@ -120,69 +239,29 @@ SamplerSynth::~SamplerSynth()
     delete d;
 }
 
-static int client_process(jack_nframes_t nframes, void* arg) {
-    return static_cast<SamplerSynthPrivate*>(arg)->process(nframes);
-}
-
-void jackConnect(jack_client_t* jackClient, const QString &from, const QString &to) {
-    int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
-    if (result == 0 || result == EEXIST) {
-//         qDebug() << "SamplerSynth:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to;
-    } else {
-        qWarning() << "SamplerSynth: Failed to connect" << from << "with" << to << "with error code" << result;
-        // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
-    }
-}
-
 void SamplerSynth::initialize(tracktion_engine::Engine *engine)
 {
     d->engine = engine;
-
-    qDebug() << "Setting up SamplerSynth Jack client";
-    jack_status_t real_jack_status{};
-    d->jackClient = jack_client_open("SamplerSynth", JackNullOption, &real_jack_status);
-    if (d->jackClient) {
-        jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
-        d->synth->setCurrentPlaybackSampleRate(sampleRate);
-        // Register all our channels for output
-        qDebug() << "Registering ten (plus two global) channels, with 8 voices each";
-        for (int channelIndex = 0; channelIndex < 12; ++channelIndex) {
-            d->channels << new SamplerChannel();
-            // Funny story, the actual channels have midi channels equivalent to their name, minus one. The others we can cheat with
-            d->channels[channelIndex]->midiChannel = channelIndex - 2;
-            if (channelIndex == 0) {
-                d->channels[channelIndex]->portNameLeft = QString("global-uneffected_left");
-                d->channels[channelIndex]->portNameRight = QString("global-uneffected_right");
-            } else if (channelIndex == 1) {
-                d->channels[channelIndex]->portNameLeft = QString("global-effected_left");
-                d->channels[channelIndex]->portNameRight = QString("global-effected_right");
-            } else {
-                d->channels[channelIndex]->portNameLeft = QString("channel_%1_left").arg(QString::number(channelIndex-1));
-                d->channels[channelIndex]->portNameRight = QString("channel_%1_right").arg(QString::number(channelIndex-1));
-            }
-            for (int voiceIndex = 0; voiceIndex < 8; ++voiceIndex) {
-                SamplerSynthVoice *voice = new SamplerSynthVoice();
-                d->channels[channelIndex]->voices << voice;
-                d->synth->addVoice(voice);
-            }
-            d->channels[channelIndex]->leftPort = jack_port_register(d->jackClient, d->channels[channelIndex]->portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
-            d->channels[channelIndex]->rightPort = jack_port_register(d->jackClient, d->channels[channelIndex]->portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
-        }
-        // Set the process callback.
-        if (jack_set_process_callback(d->jackClient, client_process, d) != 0) {
-            qWarning() << "Failed to set the SamplerSynth Jack processing callback";
+    qDebug() << "Registering ten (plus two global) channels, with 8 voices each";
+    for (int channelIndex = 0; channelIndex < 12; ++channelIndex) {
+        QString channelName;
+        if (channelIndex == 0) {
+            channelName = QString("SamplerSynth-global-uneffected");
+        } else if (channelIndex == 1) {
+            channelName = QString("SamplerSynth-global-effected");
         } else {
-            // Activate the client.
-            if (jack_activate(d->jackClient) == 0) {
-                for (SamplerChannel* channel : d->channels) {
-                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(channel->portNameLeft).toUtf8(), QLatin1String{"system:playback_1"});
-                    jackConnect(d->jackClient, QString("SamplerSynth:%1").arg(channel->portNameRight).toUtf8(), QLatin1String{"system:playback_2"});
-                }
-                qDebug() << "Successfully created and set up the SamplerSynth's Jack client";
-            } else {
-                qWarning() << "Failed to activate SamplerSynth Jack client";
-            }
+            channelName = QString("SamplerSynth-channel_%1").arg(QString::number(channelIndex -1));
         }
+        SamplerChannel *channel = new SamplerChannel(channelName);
+        channel->d = d;
+        // Funny story, the actual channels have midi channels equivalent to their name, minus one. The others we can cheat with
+        channel->midiChannel = channelIndex - 2;
+        jack_nframes_t sampleRate = jack_get_sample_rate(channel->jackClient);
+        d->synth->setCurrentPlaybackSampleRate(sampleRate);
+        for (SamplerSynthVoice *voice : qAsConst(channel->voices)) {
+            d->synth->addVoice(voice);
+        }
+        d->channels << channel;
     }
 }
 
@@ -222,99 +301,31 @@ void SamplerSynth::unregisterClip(ClipAudioSource *clip)
 
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand)
 {
-    if (d->synthMutex.tryLock(1)) {
-        d->synth->handleCommand(clipCommand, d->syncTimer ? d->syncTimer->jackPlayhead() : 0);
-        d->synthMutex.unlock();
-    } else {
-        // If we failed to lock the mutex, postpone this command until the next run of the event loop
-        qWarning() << "Failed to lock synth mutex, postponing until next tick";
-        QTimer::singleShot(0, this, [this, clipCommand](){ handleClipCommand(clipCommand); });
-    }
-}
-
-void SamplerSynthImpl::handleCommand(ClipCommand *clipCommand, quint64 currentTick)
-{
-    if (d->clipSounds.contains(clipCommand->clip)) {
-        SamplerSynthSound *sound = d->clipSounds[clipCommand->clip];
-        if (clipCommand->stopPlayback || clipCommand->startPlayback) {
-            if (clipCommand->stopPlayback) {
-                for (SamplerChannel* channel : qAsConst(d->channels)) {
-                    if (channel->midiChannel == clipCommand->midiChannel) {
-                        for (SamplerSynthVoice * voice : channel->voices) {
-                            const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                            if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
-                                voice->stopNote(0.0f, true);
-                                // We may have more than one thing going for the same sound on the same note, which... shouldn't
-                                // really happen, but it's ugly and we just need to deal with that when stopping, so, stop /all/
-                                // the voices where both the sound and the command match.
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-            if (clipCommand->startPlayback) {
-                for (SamplerChannel *channel : qAsConst(d->channels)) {
-                    if (channel->midiChannel == clipCommand->midiChannel) {
-                        for (SamplerSynthVoice *voice : channel->voices) {
-                            if (!voice->isVoiceActive()) {
-                                voice->setCurrentCommand(clipCommand);
-                                voice->setStartTick(currentTick);
-                                startVoice(voice, sound, clipCommand->midiChannel, clipCommand->midiNote, clipCommand->volume);
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        } else {
-            for (SamplerChannel *channel : qAsConst(d->channels)) {
-                if (channel->midiChannel == clipCommand->midiChannel) {
-                    for (SamplerSynthVoice * voice : qAsConst(channel->voices)) {
-                        const ClipCommand *currentVoiceCommand = voice->currentCommand();
-                        if (voice->getCurrentlyPlayingSound().get() == sound && currentVoiceCommand->equivalentTo(clipCommand)) {
-                            // Update the voice with the new command
-                            voice->setCurrentCommand(clipCommand);
-                            // We may have more than one thing going for the same sound on the same note, which... shouldn't
-                            // really happen, but it's ugly and we just need to deal with that when stopping, so, update /all/
-                            // the voices where both the sound and the command match.
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-    }
+    qWarning() << Q_FUNC_INFO << "This function is not sufficiently safe - schedule notes using SyncTimer::scheduleClipCommand instead!";
+    handleClipCommand(clipCommand, d->syncTimer ? d->syncTimer->jackPlayhead() : 0);
 }
 
 float SamplerSynth::cpuLoad() const
 {
-    return d->cpuLoad;
-}
-
-void SamplerSynth::lock()
-{
-    if (d->synthMutex.tryLock(1)) {
-        d->syncLocked = true;
+    if (d->channels.count() == 0) {
+        return 0;
     }
+    return d->channels[0]->cpuLoad;
 }
 
 void SamplerSynth::handleClipCommand(ClipCommand *clipCommand, quint64 currentTick)
 {
-    if (d->syncLocked) {
-        d->synth->handleCommand(clipCommand, currentTick);
-    } else {
-        // Super not cool, we're not locked, so we're going to have to postpone some things...
-        qWarning() << "Did not achieve lock prior to calling, postponing until next tick";
-        QTimer::singleShot(0, this, [this, clipCommand](){ handleClipCommand(clipCommand); });
-    }
-}
-
-void SamplerSynth::unlock()
-{
-    if (d->syncLocked) {
-        d->syncLocked = false;
-        d->synthMutex.unlock();
+    if (d->clipSounds.contains(clipCommand->clip) && clipCommand->midiChannel + 2 < d->channels.count()) {
+        SamplerChannel *channel = d->channels[clipCommand->midiChannel + 2];
+        int queueMostRecentlyAdded = channel->queueMostRecentlyAdded;
+        queueMostRecentlyAdded++;
+        if (queueMostRecentlyAdded >= channel->commandQueueSize) {
+            queueMostRecentlyAdded = 0;
+        }
+//         qDebug() << Q_FUNC_INFO << "Adding new command to position" << queueMostRecentlyAdded << "on channel" << channel->clientName;
+        SamplerCommand *samplerCommand = channel->commandQueue[queueMostRecentlyAdded];
+        samplerCommand->clipCommand = clipCommand;
+        samplerCommand->timestamp = currentTick;
+        channel->queueMostRecentlyAdded = queueMostRecentlyAdded;
     }
 }
