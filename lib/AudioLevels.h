@@ -95,8 +95,6 @@ public:
     AudioLevels(AudioLevels const&) = delete;
     void operator=(AudioLevels const&) = delete;
 
-    int _audioLevelsJackProcessCb(jack_nframes_t nframes);
-
     /**
      * \brief Add two decibel values
      * @param db1 Audio level in decibels
@@ -201,24 +199,6 @@ private:
     const QVariantList getChannelsAudioLevels();
 
     float convertTodbFS(float raw);
-
-    jack_client_t* audioLevelsJackClient{nullptr};
-    jack_status_t audioLevelsJackStatus{};
-    jack_port_t* capturePortA{nullptr};
-    jack_port_t* capturePortB{nullptr};
-    jack_port_t* playbackPortA{nullptr};
-    jack_port_t* playbackPortB{nullptr};
-    jack_port_t* recorderPortA{nullptr};
-    jack_port_t* recorderPortB{nullptr};
-    jack_port_t* channelsPortA[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-    jack_port_t* channelsPortB[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-
-    int capturePeakA{0},
-          capturePeakB{0},
-          playbackPeakA{0},
-          playbackPeakB{0},
-          channelsPeakA[CHANNELS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-          channelsPeakB[CHANNELS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     float captureA{-200.0f}, captureB{-200.0f};
     float playbackA{-200.0f}, playbackB{-200.0f};
