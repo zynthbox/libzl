@@ -93,19 +93,19 @@ public:
    * (which is the most recent tick for stuff put into a jack buffer)
    * @returns The internal jack playback position in timer ticks
    */
-  quint64 jackPlayhead() const;
+  const quint64 &jackPlayhead() const;
   /**
    * \brief Used for playback purposes, for synchronising the sampler synth loop playback
    * In short - you probably don't need this, unless you need to sync specifically with jack's internal playback position
    * (which is the usecs position of the jack playhead)
    * @returns The internal jack playback position in usecs
    */
-  quint64 jackPlayheadUsecs() const;
+  const quint64 &jackPlayheadUsecs() const;
   /**
    * \brief The current length of a subbeat in microseconds (as used by jack)
    * @return The current length of a subbeat in microseconds
    */
-  quint64 jackSubbeatLengthInMicroseconds() const;
+  const quint64 &jackSubbeatLengthInMicroseconds() const;
 
   /**
    * \brief Schedule an audio clip to have one or more commands run on it on the next tick of the timer

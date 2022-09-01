@@ -176,7 +176,7 @@ public:
 
     Q_SLOT void pause() { setPaused(true); }
     Q_SLOT void resume() { setPaused(false); }
-    bool isPaused() const {
+    inline const bool &isPaused() const {
         return paused;
     }
     void setPaused(bool shouldPause) {
@@ -282,7 +282,7 @@ public:
 
     // The next step to be read in the step ring
     quint64 stepReadHead{0};
-    jack_time_t stepNextPlaybackPosition{0};
+    quint64 stepNextPlaybackPosition{0};
     static const quint64 stepRingCount{32768};
     QList<StepData*> stepRing;
     /**
@@ -353,8 +353,8 @@ public:
     jack_time_t jackMostRecentNextUsecs{0};
     jack_time_t jackUsecDeficit{0};
     jack_time_t jackStartTime{0};
-    jack_time_t jackNextPlaybackPosition{0};
-    jack_time_t jackSubbeatLengthInMicroseconds{0};
+    quint64 jackNextPlaybackPosition{0};
+    quint64 jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
     QAtomicInt jack_has_xrun{0};
     int process(jack_nframes_t nframes) {
@@ -805,7 +805,7 @@ quint64 SyncTimer::cumulativeBeat() const {
     return d->cumulativeBeat;
 }
 
-quint64 SyncTimer::jackPlayhead() const
+const quint64 &SyncTimer::jackPlayhead() const
 {
     if (d->timerThread->isPaused()) {
         return d->stepReadHead;
@@ -813,7 +813,7 @@ quint64 SyncTimer::jackPlayhead() const
     return d->jackPlayhead;
 }
 
-quint64 SyncTimer::jackPlayheadUsecs() const
+const quint64 &SyncTimer::jackPlayheadUsecs() const
 {
     if (d->timerThread->isPaused()) {
         return d->stepNextPlaybackPosition;
@@ -821,7 +821,7 @@ quint64 SyncTimer::jackPlayheadUsecs() const
     return d->jackNextPlaybackPosition;
 }
 
-quint64 SyncTimer::jackSubbeatLengthInMicroseconds() const
+const quint64 &SyncTimer::jackSubbeatLengthInMicroseconds() const
 {
     return d->jackSubbeatLengthInMicroseconds;
 }
