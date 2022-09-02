@@ -159,26 +159,39 @@ public:
     QList<DiskWriter*> channelWriters;
     QVariantList channelsToRecord;
     QVariantList levels;
-};
+    jack_client_t* jackClient{nullptr};
 
-void connectPorts(jack_client_t* jackClient, const QString &from, const QString &to) {
-    int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
-    if (result == 0 || result == EEXIST) {
-        if (DebugAudioLevels) { qDebug() << "AudioLevels:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to; }
-    } else {
-        qWarning() << "AudioLevels: Failed to connect" << from << "with" << to << "with error code" << result;
-        // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
+    void connectPorts(const QString &from, const QString &to) {
+        int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
+        if (result == 0 || result == EEXIST) {
+            if (DebugAudioLevels) { qDebug() << "AudioLevels:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to; }
+        } else {
+            qWarning() << "AudioLevels: Failed to connect" << from << "with" << to << "with error code" << result;
+            // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
+        }
     }
-}
-void disconnectPorts(jack_client_t* jackClient, const QString &from, const QString &to) {
-    // Don't attempt to connect already connected ports
-    int result = jack_disconnect(jackClient, from.toUtf8(), to.toUtf8());
-    if (result == 0) {
-        if (DebugAudioLevels) { qDebug() << "AudioLevels: Successfully disconnected" << from << "from" << to; }
-    } else {
-        qWarning() << "AudioLevels: Failed to disconnect" << from << "from" << to << "with error code" << result;
+    void disconnectPorts(const QString &from, const QString &to) {
+        // Don't attempt to connect already connected ports
+        int result = jack_disconnect(jackClient, from.toUtf8(), to.toUtf8());
+        if (result == 0) {
+            if (DebugAudioLevels) { qDebug() << "AudioLevels: Successfully disconnected" << from << "from" << to; }
+        } else {
+            qWarning() << "AudioLevels: Failed to disconnect" << from << "from" << to << "with error code" << result;
+        }
     }
-}
+
+    const QStringList recorderPortNames{QLatin1String{"AudioLevels-SystemRecorder:left_in"}, QLatin1String{"AudioLevels-SystemRecorder:right_in"}};
+    void disconnectPort(const QString& portName, int channel) {
+        jackClient = audioLevelsChannels[2]->jackClient;
+        disconnectPorts(portName, recorderPortNames[channel]);
+        jackClient = audioLevelsChannels[0]->jackClient;
+    }
+    void connectPort(const QString& portName, int channel) {
+        jackClient = audioLevelsChannels[2]->jackClient;
+        connectPorts(portName, recorderPortNames[channel]);
+        jackClient = audioLevelsChannels[0]->jackClient;
+    }
+};
 
 static int audioLevelsChannelProcess(jack_nframes_t nframes, void* arg) {
   return static_cast<AudioLevelsChannel*>(arg)->process(nframes);
@@ -274,8 +287,9 @@ AudioLevels::AudioLevels(QObject *parent)
     for (const QString &clientName : audioLevelClientNames) {
         AudioLevelsChannel *channel = new AudioLevelsChannel(clientName);
         if (channelIndex == 0) {
-            connectPorts(channel->jackClient, "system:capture_1", "AudioLevels-SystemCapture:left_in");
-            connectPorts(channel->jackClient, "system:capture_2", "AudioLevels-SystemCapture:right_in");
+            d->jackClient = channel->jackClient;
+            d->connectPorts("system:capture_1", "AudioLevels-SystemCapture:left_in");
+            d->connectPorts("system:capture_2", "AudioLevels-SystemCapture:right_in");
         } else if (channelIndex == 1) {
             d->globalPlaybackWriter = channel->diskRecorder;
         } else if (channelIndex == 2) {
@@ -383,7 +397,6 @@ void AudioLevels::setRecordPortsFilenamePrefix(const QString &fileNamePrefix)
     d->portsRecorder->setFilenamePrefix(fileNamePrefix);
 }
 
-static const QStringList recorderPortNames{QLatin1String{"AudioLevels-SystemRecorder:left_in"}, QLatin1String{"AudioLevels-SystemRecorder:right_in"}};
 void AudioLevels::addRecordPort(const QString &portName, int channel)
 {
     bool addPort{true};
@@ -398,7 +411,7 @@ void AudioLevels::addRecordPort(const QString &portName, int channel)
         port.portName = portName;
         port.channel = channel;
         d->recordPorts << port;
-        connectPorts(d->audioLevelsChannels[2]->jackClient, port.portName, recorderPortNames[port.channel]);
+        d->connectPort(portName, channel);
     }
 }
 
@@ -408,7 +421,7 @@ void AudioLevels::removeRecordPort(const QString &portName, int channel)
     while (iterator.hasNext()) {
         const RecordPort &port = iterator.value();
         if (port.portName == portName && port.channel == channel) {
-            disconnectPorts(d->audioLevelsChannels[2]->jackClient, port.portName, recorderPortNames[port.channel]);
+            d->disconnectPort(port.portName, port.channel);
             iterator.remove();
             break;
         }
@@ -418,7 +431,7 @@ void AudioLevels::removeRecordPort(const QString &portName, int channel)
 void AudioLevels::clearRecordPorts()
 {
     for (const RecordPort &port : qAsConst(d->recordPorts)) {
-        disconnectPorts(d->audioLevelsChannels[2]->jackClient, port.portName, recorderPortNames[port.channel]);
+        d->disconnectPort(port.portName, port.channel);
     }
     d->recordPorts.clear();
 }
@@ -439,8 +452,7 @@ bool AudioLevels::shouldRecordPorts() const
 void AudioLevels::startRecording()
 {
     const QString timestamp{QDateTime::currentDateTime().toString(Qt::ISODate)};
-    // Just need the sample rate of some client, they're all the same settings anyway
-    const double sampleRate = jack_get_sample_rate(d->audioLevelsChannels[0]->jackClient);
+    const double sampleRate = jack_get_sample_rate(d->jackClient);
     // Doing this in two goes, because when we ask recording to start, it will very extremely start,
     // and we kind of want to at least get pretty close to them starting at the same time, so let's
     // do this bit of the ol' filesystem work first
