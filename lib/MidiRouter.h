@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QCoreApplication>
+#include <QThread>
 
 class MidiRouterPrivate;
 /**
@@ -13,18 +14,8 @@ class MidiRouterPrivate;
  *
  * To ensure that Zynthian targets are correct, use setZynthianChannels() to change from the
  * default (that is, targeting the same channel in Zynthian as the channel's input channel)
- *
- * In addition to the specific destinations above, there are a set of ports that you can listen
- * to to get all notes going to those specific locations:
- *
- * ZLRouter:Passthrough sends out all notes except those on input channels set to no destination
- * ZLRouter:InternalPassthrough sends out all notes which did not come from and is not going to externally connected midi hardware (NoDestination notes are included)
- * ZLRouter:HardwareInPassthrough sends out all notes that came in from externally connected midi hardware
- * ZLRouter:ExternalOut will send out notes also sent to the enabled external ports
- * ZLRouter:ZynthianOut will send out notes also sent to Zynthian destinations
- * ZLRouter:SamplerOut will send out notes also sent to the sampler
  */
-class MidiRouter : public QObject
+class MidiRouter : public QThread
 {
     Q_OBJECT
     /**
@@ -43,6 +34,9 @@ public:
     };
     explicit MidiRouter(QObject *parent = nullptr);
     virtual ~MidiRouter();
+
+    void run() override;
+    Q_SLOT void markAsDone();
 
     enum RoutingDestination {
         NoDestination = 0, // Don't route any events on this channel (including to the passthrough port)
@@ -79,6 +73,19 @@ public:
 
     Q_SIGNAL void addedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
     Q_SIGNAL void removedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
+
+    enum ListenerPort {
+        UnknownPort = -1,
+        PassthroughPort = 0,
+        InternalPassthroughPort = 1,
+        HardwareInPassthroughPort = 2,
+        ExternalOutPort = 3,
+    };
+    Q_ENUM( ListenerPort )
+    /**
+     * \brief Fired whenever a note has changed
+     */
+    Q_SIGNAL void noteChanged( ListenerPort port, int midiNote, int midiChannel, int velocity, bool setOn, double timeStamp, const unsigned char &byte1, const unsigned char &byte2, const unsigned char &byte3);
 private:
     MidiRouterPrivate *d{nullptr};
 };

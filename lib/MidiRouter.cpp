@@ -1,4 +1,6 @@
 #include "MidiRouter.h"
+#include "SyncTimer.h"
+#include "libzl.h"
 
 #include <QDebug>
 #include <QProcessEnvironment>
@@ -9,6 +11,10 @@
 
 // Set this to true to emit a bunch more debug output when the router is operating
 #define DebugZLRouter false
+// Set this to true to send out more debug information for the listener part of the class
+#define DebugMidiListener false
+
+#define MAX_LISTENER_MESSAGES 1000
 
 class InputDevice {
 public:
@@ -61,20 +67,64 @@ struct ChannelOutput {
     void *channelBuffer{nullptr};
 };
 
+struct NoteMessage {
+    MidiRouter::ListenerPort port;
+    bool setOn{false};
+    int midiNote{0};
+    int midiChannel{0};
+    int velocity{0};
+    double timeStamp{0};
+    unsigned char byte1{0};
+    unsigned char byte2{0};
+    unsigned char byte3{0};
+};
+
+struct MidiListenerPort {
+    ~MidiListenerPort() {
+        qDeleteAll(messages);
+        messages.clear();
+    }
+    MidiRouter::ListenerPort identifier{MidiRouter::UnknownPort};
+    int lastRelevantMessage{-1};
+    int waitTime{5};
+    QList<NoteMessage*> messages;
+};
+
 class MidiRouterPrivate {
 public:
     MidiRouterPrivate(MidiRouter *q)
         : q(q)
-    {};
+    {
+        passthroughListener->identifier = MidiRouter::PassthroughPort;
+        passthroughListener->waitTime = 0;
+        for (int i = 0; i < MAX_LISTENER_MESSAGES; ++i) { passthroughListener->messages << new NoteMessage(); }
+        internalPassthroughListener->identifier = MidiRouter::InternalPassthroughPort;
+        internalPassthroughListener->waitTime = 5;
+        for (int i = 0; i < MAX_LISTENER_MESSAGES; ++i) { internalPassthroughListener->messages << new NoteMessage(); }
+        hardwareInListener->identifier = MidiRouter::HardwareInPassthroughPort;
+        hardwareInListener->waitTime = 5;
+        for (int i = 0; i < MAX_LISTENER_MESSAGES; ++i) { hardwareInListener->messages << new NoteMessage(); }
+        externalOutListener->identifier = MidiRouter::ExternalOutPort;
+        externalOutListener->waitTime = 5;
+        for (int i = 0; i < MAX_LISTENER_MESSAGES; ++i) { externalOutListener->messages << new NoteMessage(); }
+        listenerPorts = {passthroughListener, internalPassthroughListener, hardwareInListener, externalOutListener};
+        syncTimer = qobject_cast<SyncTimer*>(SyncTimer_instance());
+    };
     ~MidiRouterPrivate() {
         if (jackClient) {
             jack_client_close(jackClient);
         }
         qDeleteAll(hardwareInputs);
         qDeleteAll(outputs);
+        delete passthroughListener;
+        delete internalPassthroughListener;
+        delete hardwareInListener;
+        delete externalOutListener;
     };
 
     MidiRouter *q;
+    SyncTimer *syncTimer{nullptr};
+    bool done{false};
     bool constructing{true};
     bool filterMidiOut{false};
     QStringList disabledMidiInPorts;
@@ -85,15 +135,62 @@ public:
     jack_client_t* jackClient{nullptr};
     jack_port_t *midiInPort{nullptr};
 
-    jack_port_t *passthroughPort{nullptr};
-    jack_port_t *internalPassthrough{nullptr};
-    jack_port_t *hardwareInPassthrough{nullptr};
-    jack_port_t *zynthianOutput{nullptr};
-    jack_port_t *samplerOutput{nullptr};
-    jack_port_t *externalOutput{nullptr};
-
     QList<InputDevice*> hardwareInputs;
     QList<ChannelOutput *> outputs;
+
+    MidiListenerPort *passthroughListener{new MidiListenerPort};
+    MidiListenerPort *internalPassthroughListener{new MidiListenerPort};
+    MidiListenerPort *hardwareInListener{new MidiListenerPort};
+    MidiListenerPort *externalOutListener{new MidiListenerPort};
+    QList<MidiListenerPort*> listenerPorts;
+    void addMessage(MidiRouter::ListenerPort port, double timeStamp, int midiNote, int midiChannel, int velocity, bool setOn, const jack_midi_event_t &event)
+    {
+        MidiListenerPort *listenerPort{nullptr};
+        switch (port) {
+            case MidiRouter::PassthroughPort:
+                listenerPort = passthroughListener;
+                break;
+            case MidiRouter::InternalPassthroughPort:
+                listenerPort = internalPassthroughListener;
+                break;
+            case MidiRouter::HardwareInPassthroughPort:
+                listenerPort = hardwareInListener;
+                break;
+            case MidiRouter::ExternalOutPort:
+                listenerPort = externalOutListener;
+                break;
+            case MidiRouter::UnknownPort:
+            default:
+                qWarning() << Q_FUNC_INFO << "Unhandled port passed to midi listener, this is going to crash momentarily";
+                break;
+        }
+        if (listenerPort->lastRelevantMessage >= MAX_LISTENER_MESSAGES) {
+            qWarning() << "Too many messages in a single run before we could report back - we only expected" << MAX_LISTENER_MESSAGES;
+        } else {
+            if (listenerPort->waitTime == 0) {
+                listenerPort->lastRelevantMessage = 0;
+            } else {
+                listenerPort->lastRelevantMessage++;
+            }
+            NoteMessage* message = listenerPort->messages.at(listenerPort->lastRelevantMessage);
+            message->port = port;
+            message->midiNote = midiNote;
+            message->midiChannel = midiChannel;
+            message->velocity = velocity;
+            message->setOn = setOn;
+            message->timeStamp = timeStamp;
+            message->byte1 = event.buffer[0];
+            if (event.size > 1) {
+                message->byte2 = event.buffer[1];
+            }
+            if (event.size > 2) {
+                message->byte3 = event.buffer[2];
+            }
+            if (listenerPort->waitTime == 0) {
+                Q_EMIT q->noteChanged(message->port, message->midiNote, message->midiChannel, message->velocity, message->setOn, message->timeStamp, message->byte1, message->byte2, message->byte3);
+            }
+        }
+    }
 
     void connectPorts(const QString &from, const QString &to) {
         int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
@@ -142,6 +239,15 @@ public:
             jack_has_xrun = 0;
             return 0;
         }
+        jack_nframes_t current_frames;
+        jack_time_t current_usecs;
+        jack_time_t next_usecs;
+        float period_usecs;
+        jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
+        const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
+        const quint64 &subbeatLengthInMicroseconds = syncTimer->jackSubbeatLengthInMicroseconds();
+        // Actual playhead (or as close as we're going to reasonably get, let's not get too crazy here)
+        const quint64 currentJackPlayhead = syncTimer->jackPlayhead() - (period_usecs / subbeatLengthInMicroseconds);
         // Get all our output channels' buffers and clear them, if there was one previously set.
         // A little overly protective, given how lightweight the functions are, but might as well
         // be lighter-weight about it.
@@ -151,19 +257,6 @@ public:
                 output->channelBuffer = nullptr;
             }
         }
-        // Get and clear our passthrough buffers
-        void *passthroughBuffer = jack_port_get_buffer(passthroughPort, nframes);
-        jack_midi_clear_buffer(passthroughBuffer);
-        void *internalPassthroughBuffer = jack_port_get_buffer(internalPassthrough, nframes);
-        jack_midi_clear_buffer(internalPassthroughBuffer);
-        void *hardwareInPassthroughBuffer = jack_port_get_buffer(hardwareInPassthrough, nframes);
-        jack_midi_clear_buffer(hardwareInPassthroughBuffer);
-        void *zynthianOutputBuffer = jack_port_get_buffer(zynthianOutput, nframes);
-        jack_midi_clear_buffer(zynthianOutputBuffer);
-        void *samplerOutputBuffer = jack_port_get_buffer(samplerOutput, nframes);
-        jack_midi_clear_buffer(samplerOutputBuffer);
-        void *externalOutputBuffer = jack_port_get_buffer(externalOutput, nframes);
-        jack_midi_clear_buffer(externalOutputBuffer);
         // First handle input coming from our own inputs, because we gotta start somewhere
         void *inputBuffer = jack_port_get_buffer(midiInPort, nframes);
         uint32_t events = jack_midi_get_event_count(inputBuffer);
@@ -180,36 +273,38 @@ public:
             }
             eventChannel = (event.buffer[0] & 0xf);
             if (eventChannel > -1 && eventChannel < outputs.count()) {
+                const unsigned char &byte1 = event.buffer[0];
+                const bool setOn = (byte1 >= 0x90);
+                const int &midiNote = event.buffer[1];
+                const int &velocity = event.buffer[2];
                 output = outputs[eventChannel];
                 if (!output->channelBuffer) {
                     output->channelBuffer = jack_port_get_buffer(output->port, nframes);
                 }
                 switch (output->destination) {
                     case MidiRouter::ZynthianDestination:
-                        writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
-                        writeEventToBuffer(event, internalPassthroughBuffer, currentChannel, output);
-                        writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, output);
+                        addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, currentChannel, velocity, setOn, event);
+                        addMessage(MidiRouter::InternalPassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, currentChannel, velocity, setOn, event);
                         for (const int &zynthianChannel : output->zynthianChannels) {
                             writeEventToBuffer(event, output->channelBuffer, eventChannel, output, zynthianChannel);
                         }
                         break;
                     case MidiRouter::SamplerDestination:
-                        writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
-                        writeEventToBuffer(event, internalPassthroughBuffer, currentChannel, output);
+                        addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, currentChannel, velocity, setOn, event);
+                        addMessage(MidiRouter::InternalPassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, currentChannel, velocity, setOn, event);
                         writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
-                        writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
                         break;
                     case MidiRouter::ExternalDestination:
                     {
-                        writeEventToBuffer(event, passthroughBuffer, currentChannel, output);
+                        addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, currentChannel, velocity, setOn, event);
                         // Not writing to internal passthrough, as this is heading to an external device
                         int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
-                        writeEventToBuffer(event, externalOutputBuffer, eventChannel, output, externalChannel);
+                        addMessage(MidiRouter::ExternalOutPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, externalChannel, velocity, setOn, event);
                         writeEventToBuffer(event, output->channelBuffer, eventChannel, output, externalChannel);
                     }
                     case MidiRouter::NoDestination:
                     default:
-                        writeEventToBuffer(event, internalPassthroughBuffer, currentChannel, output);
+                        addMessage(MidiRouter::InternalPassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, currentChannel, velocity, setOn, event);
                         // Do nothing here
                         break;
                 }
@@ -241,8 +336,8 @@ public:
                             // output, then all the following commands associated with that note should
                             // go to the same output (so any further ons, and any matching offs)
                             const unsigned char &byte1 = event.buffer[0];
+                            const bool setOn = (byte1 >= 0x90);
                             if (0x7F < byte1 && byte1 < 0xA0) {
-                                const bool setOn = (byte1 >= 0x90);
                                 const int &midiNote = event.buffer[1];
                                 int &noteActivation = device->noteActivations[midiNote];
                                 if (setOn) {
@@ -261,6 +356,8 @@ public:
                                     event.buffer[0] = event.buffer[0] - eventChannel + adjustedCurrentChannel;
                                 }
                             }
+                            const int &midiNote = event.buffer[1];
+                            const int &velocity = event.buffer[2];
                             // Now ensure we have our output buffer
                             if (!output->channelBuffer) {
                                 output->channelBuffer = jack_port_get_buffer(output->port, nframes);
@@ -268,22 +365,20 @@ public:
 
                             switch (output->destination) {
                                 case MidiRouter::ZynthianDestination:
-                                    writeEventToBuffer(event, passthroughBuffer, adjustedCurrentChannel, output);
-                                    writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, output);
+                                    addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
                                     for (const int &zynthianChannel : output->zynthianChannels) {
                                         writeEventToBuffer(event, output->channelBuffer, eventChannel, output, zynthianChannel);
                                     }
                                     break;
                                 case MidiRouter::SamplerDestination:
-                                    writeEventToBuffer(event, passthroughBuffer, adjustedCurrentChannel, output);
-                                    writeEventToBuffer(event, samplerOutputBuffer, eventChannel, output);
+                                    addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
                                     writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
                                     break;
                                 case MidiRouter::ExternalDestination:
                                 {
-                                    writeEventToBuffer(event, passthroughBuffer, adjustedCurrentChannel, output);
+                                    addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
                                     int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
-                                    writeEventToBuffer(event, externalOutputBuffer, eventChannel, output, externalChannel);
+                                    addMessage(MidiRouter::ExternalOutPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, externalChannel, velocity, setOn, event);
                                     writeEventToBuffer(event, output->channelBuffer, eventChannel, output, externalChannel);
                                 }
                                 case MidiRouter::NoDestination:
@@ -291,7 +386,7 @@ public:
                                     // Do nothing here
                                     break;
                             }
-                            writeEventToBuffer(event, hardwareInPassthroughBuffer, eventChannel, output);
+                            addMessage(MidiRouter::HardwareInPassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, eventChannel, velocity, setOn, event);
                         } else {
                             qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
                         }
@@ -417,7 +512,7 @@ static void client_registration(const char */*name*/, int /*registering*/, void 
 }
 
 MidiRouter::MidiRouter(QObject *parent)
-    : QObject(parent)
+    : QThread(parent)
     , d(new MidiRouterPrivate(this))
 {
     // First, load up our configuration (TODO: also remember to reload it when the config changes)
@@ -456,31 +551,6 @@ MidiRouter::MidiRouter(QObject *parent)
                 connect(d->hardwareInputConnector, &QTimer::timeout, this, [this](){ d->connectHardwareInputs(); });
                 jack_set_port_registration_callback(d->jackClient, client_port_registration, static_cast<void*>(d));
                 jack_set_client_registration_callback(d->jackClient, client_registration, static_cast<void*>(d));
-                // Create the passthrough ports
-                d->passthroughPort = jack_port_register(d->jackClient, "Passthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-                if (!d->passthroughPort) {
-                    qWarning() << "ZLRouter: Could not register ZLRouter Jack passthrough port";
-                }
-                d->internalPassthrough = jack_port_register(d->jackClient, "InternalPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-                if (!d->internalPassthrough) {
-                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
-                }
-                d->hardwareInPassthrough = jack_port_register(d->jackClient, "HardwareInPassthrough", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-                if (!d->hardwareInPassthrough) {
-                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Hardware in passthrough output port";
-                }
-                d->externalOutput = jack_port_register(d->jackClient, "ExternalOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-                if (!d->externalOutput) {
-                    qWarning() << "ZLRouter: Could not register ZLRouter Jack External destination output port";
-                }
-                d->zynthianOutput = jack_port_register(d->jackClient, "ZynthianOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-                if (!d->zynthianOutput) {
-                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Zynthian destination output port";
-                }
-                d->samplerOutput = jack_port_register(d->jackClient, "SamplerOut", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-                if (!d->samplerOutput) {
-                    qWarning() << "ZLRouter: Could not register ZLRouter Jack Sampler destination output port";
-                }
                 // Activate the client.
                 if (jack_activate(d->jackClient) == 0) {
                     qDebug() << "ZLRouter: Successfully created and set up the ZLRouter's Jack client";
@@ -506,11 +576,38 @@ MidiRouter::MidiRouter(QObject *parent)
         qWarning() << "ZLRouter: Could not create the ZLRouter Jack client.";
     }
     d->constructing = false;
+    start();
 }
 
 MidiRouter::~MidiRouter()
 {
     delete d;
+}
+
+void MidiRouter::run() {
+    while (true) {
+        if (d->done) {
+            break;
+        }
+        for (MidiListenerPort *listenerPort : qAsConst(d->listenerPorts)) {
+            if (listenerPort->waitTime > 0 && listenerPort->lastRelevantMessage > -1) {
+                int i{0};
+                for (NoteMessage *message : qAsConst(listenerPort->messages)) {
+                    if (i > listenerPort->lastRelevantMessage || i >= MAX_LISTENER_MESSAGES) {
+                        break;
+                    }
+                    Q_EMIT noteChanged(message->port, message->midiNote, message->midiChannel, message->velocity, message->setOn, message->timeStamp, message->byte1, message->byte2, message->byte3);
+                    ++i;
+                }
+                listenerPort->lastRelevantMessage = -1;
+            }
+        }
+        msleep(5);
+    }
+}
+
+void MidiRouter::markAsDone() {
+    d->done = true;
 }
 
 void MidiRouter::setChannelDestination(int channel, MidiRouter::RoutingDestination destination, int externalChannel)
