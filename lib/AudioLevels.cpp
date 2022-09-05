@@ -242,7 +242,7 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
     peakA = 0;
     portBuffer = leftBuffer;
     portBufferEnd = portBuffer + nframes;
-    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += 16) {
+    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += 32) {
         if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
         const int sampleValue = (floatToIntMultiplier * (*channelSample));
         if (sampleValue > peakA) {
@@ -254,7 +254,7 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
     peakB = 0;
     portBuffer = rightBuffer;
     portBufferEnd = portBuffer + nframes;
-    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += 16) {
+    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += 32) {
         if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
         const int sampleValue = (floatToIntMultiplier * (*channelSample));
         if (sampleValue > peakB) {
