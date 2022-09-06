@@ -234,6 +234,7 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
     }
     const jack_default_audio_sample_t *portBuffer{nullptr};
     const jack_default_audio_sample_t *portBufferEnd{nullptr};
+    const int quarterSpot = nframes / 4;
 
     // 2^17 = 131072
     static const float floatToIntMultiplier{131072};
@@ -242,7 +243,7 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
     peakA = 0;
     portBuffer = leftBuffer;
     portBufferEnd = portBuffer + nframes;
-    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += 32) {
+    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
         if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
         const int sampleValue = (floatToIntMultiplier * (*channelSample));
         if (sampleValue > peakA) {
@@ -254,7 +255,7 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
     peakB = 0;
     portBuffer = rightBuffer;
     portBufferEnd = portBuffer + nframes;
-    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += 32) {
+    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
         if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
         const int sampleValue = (floatToIntMultiplier * (*channelSample));
         if (sampleValue > peakB) {
