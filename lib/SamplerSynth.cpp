@@ -43,6 +43,8 @@ public:
     QString portNameRight{"right_out"};
     int midiChannel{-1};
     QList<SamplerSynthVoice *> voices;
+    // true to ensure that the first go gets cleared
+    bool previousProcessHadActiveVoices{true};
     int process(jack_nframes_t nframes);
     float cpuLoad{0.0f};
 
@@ -117,14 +119,26 @@ int SamplerChannel::process(jack_nframes_t nframes) {
         handleCommand(command->clipCommand, command->timestamp);
     }
     // Then, if we've actually got our ports set up, let's play whatever voices are active
+    jack_default_audio_sample_t *leftBuffer{nullptr}, *rightBuffer{nullptr};
     if (leftPort && rightPort) {
-        jack_default_audio_sample_t* leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(leftPort, nframes);
-        memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
-        jack_default_audio_sample_t* rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(rightPort, nframes);
-        memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+        if (previousProcessHadActiveVoices) {
+            leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(leftPort, nframes);
+            rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(rightPort, nframes);
+            memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+            memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+        }
+        previousProcessHadActiveVoices = false;
         for (SamplerSynthVoice *voice : qAsConst(voices)) {
             if (voice->isPlaying) {
+                // Only really need to check one, if either is null they're both going to be, or something is /really/ wrong
+                if (leftBuffer == nullptr) {
+                    leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(leftPort, nframes);
+                    rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(rightPort, nframes);
+                    memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+                    memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+                }
                 voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
+                previousProcessHadActiveVoices = true;
             }
         }
     }
