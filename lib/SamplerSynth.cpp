@@ -114,7 +114,7 @@ int SamplerChannel::process(jack_nframes_t nframes) {
         if (queueHandled >= commandQueueSize) {
             queueHandled = 0;
         }
-        qDebug() << Q_FUNC_INFO << "Handling command at position" << queueHandled << "for channel" << clientName;
+//         qDebug() << Q_FUNC_INFO << "Handling command at position" << queueHandled << "for channel" << clientName;
         const SamplerCommand *command = commandQueue[queueHandled];
         handleCommand(command->clipCommand, command->timestamp);
     }
