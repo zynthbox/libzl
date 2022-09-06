@@ -356,19 +356,7 @@ public:
     quint64 jackNextPlaybackPosition{0};
     quint64 jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
-    QAtomicInt jack_has_xrun{0};
     int process(jack_nframes_t nframes) {
-        if (jack_has_xrun > 0) {
-            /*******************************************************************
-             * EARLY RETURN
-             * We return early here, to avoid touching anything else. The logic
-             * here is that xrun handling is critical and needs to be immediate.
-             *******************************************************************/
-            qWarning() << Q_FUNC_INFO << "XRun detected, skipping one progress to catch up next time. Reported xruns:" << jack_has_xrun;
-            jack_has_xrun = 0;
-            return 0;
-        }
-
         auto buffer = jack_port_get_buffer(jackPort, nframes);
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -531,7 +519,6 @@ public:
         return 0;
     }
     int xrun() {
-        jack_has_xrun++;
 #ifdef DEBUG_SYNCTIMER_JACK
         qDebug() << "SyncTimer detected XRun";
 #endif
