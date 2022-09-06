@@ -358,7 +358,6 @@ public:
     quint64 jackLatency{0};
     int process(jack_nframes_t nframes) {
         auto buffer = jack_port_get_buffer(jackPort, nframes);
-        jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
         quint64 stepCount = 0;
         QList<int> commandValues;
