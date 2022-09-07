@@ -371,14 +371,14 @@ public:
                                         addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
                                     }
                                     for (const int &zynthianChannel : output->zynthianChannels) {
-                                        writeEventToBuffer(event, output->channelBuffer, eventChannel, output, zynthianChannel);
+                                        writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output, zynthianChannel);
                                     }
                                     break;
                                 case MidiRouter::SamplerDestination:
                                     if (isNoteMessage) {
                                         addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
                                     }
-                                    writeEventToBuffer(event, output->channelBuffer, eventChannel, output);
+                                    writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output);
                                     break;
                                 case MidiRouter::ExternalDestination:
                                 {
@@ -387,7 +387,7 @@ public:
                                         addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
                                         addMessage(MidiRouter::ExternalOutPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, externalChannel, velocity, setOn, event);
                                     }
-                                    writeEventToBuffer(event, output->channelBuffer, eventChannel, output, externalChannel);
+                                    writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output, externalChannel);
                                 }
                                 case MidiRouter::NoDestination:
                                 default:
