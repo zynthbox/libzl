@@ -133,7 +133,7 @@ public:
 
     int currentChannel{0};
     jack_client_t* jackClient{nullptr};
-    jack_port_t *midiInPort{nullptr};
+    jack_port_t *syncTimerMidiInPort{nullptr};
 
     QList<InputDevice*> hardwareInputs;
     QList<ChannelOutput *> outputs;
@@ -248,7 +248,7 @@ public:
             }
         }
         // First handle input coming from our own inputs, because we gotta start somewhere
-        void *inputBuffer = jack_port_get_buffer(midiInPort, nframes);
+        void *inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
         ChannelOutput *output{nullptr};
         jack_midi_event_t event;
         int eventChannel{-1};
@@ -534,15 +534,15 @@ MidiRouter::MidiRouter(QObject *parent)
         &real_jack_status
     );
     if (d->jackClient) {
-        // Register the MIDI output port.
-        d->midiInPort = jack_port_register(
+        // Register the MIDI output port for SyncTimer - only SyncTimer should connect to this port
+        d->syncTimerMidiInPort = jack_port_register(
             d->jackClient,
-            "MidiIn",
+            "SyncTimerIn",
             JACK_DEFAULT_MIDI_TYPE,
             JackPortIsInput,
             0
         );
-        if (d->midiInPort) {
+        if (d->syncTimerMidiInPort) {
             // Set the process callback.
             if (
                 jack_set_process_callback(

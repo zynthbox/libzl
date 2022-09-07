@@ -581,7 +581,7 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
         // Open the client.
         jack_status_t real_jack_status{};
         d->jackClient = jack_client_open(
-            "SyncTimerOut",
+            "SyncTimer",
             JackNullOption,
             &real_jack_status
         );
@@ -589,7 +589,7 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
             // Register the MIDI output port.
             d->jackPort = jack_port_register(
                 d->jackClient,
-                "main_out",
+                "midi_out",
                 JACK_DEFAULT_MIDI_TYPE,
                 JackPortIsOutput,
                 0
@@ -610,7 +610,7 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                     // Activate the client.
                     if (jack_activate(d->jackClient) == 0) {
                         qDebug() << "Successfully created and set up the SyncTimer's Jack client";
-                        if (jack_connect(d->jackClient, "SyncTimerOut:main_out", "ZLRouter:MidiIn") == 0) {
+                        if (jack_connect(d->jackClient, "SyncTimer:midi_out", "ZLRouter:SyncTimerIn") == 0) {
                             qDebug() << "Successfully created and hooked up the sync timer's jack output to the midi router's input port";
                             jack_latency_range_t range;
                             jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
@@ -621,7 +621,7 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                             qDebug() << "However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
                             Q_EMIT scheduleAheadAmountChanged();
                         } else {
-                            qWarning() << "Failed to connect the SyncTimer's Jack output to ZLRouter:MidiIn";
+                            qWarning() << "Failed to connect the SyncTimer's Jack midi output to ZLRouter:SyncTimerIn";
                         }
                     } else {
                         qWarning() << "Failed to activate SyncTimer Jack client";
