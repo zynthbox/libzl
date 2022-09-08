@@ -228,12 +228,19 @@ public:
         }
     }
 
+    jack_time_t expected_next_usecs{0};
     int process(jack_nframes_t nframes) {
         jack_nframes_t current_frames;
         jack_time_t current_usecs;
         jack_time_t next_usecs;
         float period_usecs;
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
+        bool clearBuffer{true};
+        if (expected_next_usecs != current_usecs) {
+            qWarning() << "ZLRouter was called after expected - don't clear, or we'll drop things" << current_usecs << "is different from" << expected_next_usecs;
+            clearBuffer = false;
+        }
+        expected_next_usecs = next_usecs;
         const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
         const quint64 &subbeatLengthInMicroseconds = syncTimer->jackSubbeatLengthInMicroseconds();
         // Actual playhead (or as close as we're going to reasonably get, let's not get too crazy here)
@@ -243,8 +250,10 @@ public:
         // be lighter-weight about it.
         for (ChannelOutput *output : qAsConst(outputs)) {
             if (output->channelBuffer) {
-                jack_midi_clear_buffer(output->channelBuffer);
-                output->channelBuffer = nullptr;
+                if (clearBuffer) {
+                    jack_midi_clear_buffer(output->channelBuffer);
+                    output->channelBuffer = nullptr;
+                }
             }
         }
         // First handle input coming from our own inputs, because we gotta start somewhere
@@ -312,6 +321,7 @@ public:
             }
             ++eventIndex;
         }
+        // Usually this would be bad (one should not clear an input buffer, per the docs), but we use the clear state of the buffer to communicate back to SyncTimer
         jack_midi_clear_buffer(inputBuffer);
         // Now handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
         if (currentChannel > -1 && currentChannel < outputs.count()) {
@@ -320,89 +330,90 @@ public:
                 if (device->enabled) {
                     inputBuffer = jack_port_get_buffer(device->port, nframes);
                     output = outputs[currentChannel];
-                    uint32_t events = jack_midi_get_event_count(inputBuffer);
-                    for (uint32_t eventIndex = 0; eventIndex < events; ++eventIndex) {
+                    uint32_t eventIndex{0};
+                    while (eventIndex < jack_midi_get_event_count(inputBuffer)) {
                         if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
-                            qWarning() << "ZLRouter: jack_midi_event_get failed, received note lost! We were supposed to have" << events << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
-                            continue;
-                        }
-                        if ((event.buffer[0] & 0xf0) == 0xf0) {
-                            continue;
-                        }
-                        eventChannel = (event.buffer[0] & 0xf);
-                        if (eventChannel > -1 && eventChannel < outputs.count()) {
-                            // Make sure we're using the correct output
-                            // This is done to ensure that if we have any note-on events happen on some
-                            // output, then all the following commands associated with that note should
-                            // go to the same output (so any further ons, and any matching offs)
-                            const unsigned char &byte1 = event.buffer[0];
-                            const bool setOn = (byte1 >= 0x90);
-                            bool isNoteMessage{false};
-                            if (0x7F < byte1 && byte1 < 0xA0) {
-                                const int &midiNote = event.buffer[1];
-                                isNoteMessage = true;
-                                int &noteActivation = device->noteActivations[midiNote];
-                                if (setOn) {
-                                    ++noteActivation;
-                                    if (noteActivation == 1) {
-                                        device->activeNoteChannel[midiNote] = currentChannel;
-                                    }
-                                } else if (noteActivation > 0) {
-                                    --noteActivation;
-                                }
-                                adjustedCurrentChannel = device->activeNoteChannel[midiNote];
-                                output = outputs[adjustedCurrentChannel];
-                                if (currentChannel == adjustedCurrentChannel) {
-                                    event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
-                                } else {
-                                    event.buffer[0] = event.buffer[0] - eventChannel + adjustedCurrentChannel;
-                                }
-                            }
-                            const int &midiNote = event.buffer[1];
-                            const int &velocity = event.buffer[2];
-                            // Now ensure we have our output buffer
-                            if (!output->channelBuffer) {
-                                output->channelBuffer = jack_port_get_buffer(output->port, nframes);
-                            }
-
-                            switch (output->destination) {
-                                case MidiRouter::ZynthianDestination:
-                                    if (isNoteMessage) {
-                                        addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
-                                    }
-                                    for (const int &zynthianChannel : output->zynthianChannels) {
-                                        writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output, zynthianChannel);
-                                    }
-                                    break;
-                                case MidiRouter::SamplerDestination:
-                                    if (isNoteMessage) {
-                                        addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
-                                    }
-                                    writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output);
-                                    break;
-                                case MidiRouter::ExternalDestination:
-                                {
-                                    int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
-                                    if (isNoteMessage) {
-                                        addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
-                                        addMessage(MidiRouter::ExternalOutPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, externalChannel, velocity, setOn, event);
-                                    }
-                                    writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output, externalChannel);
-                                }
-                                case MidiRouter::NoDestination:
-                                default:
-                                    // Do nothing here
-                                    break;
-                            }
-                            if (isNoteMessage) {
-                                addMessage(MidiRouter::HardwareInPassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, eventChannel, velocity, setOn, event);
-                            }
+                            qWarning() << "ZLRouter: jack_midi_event_get failed, received note lost! Attempted to fetch at index" << eventIndex << "and the error code is" << err;
                         } else {
-                            qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
+                            if ((event.buffer[0] & 0xf0) == 0xf0) {
+                                // Don't do anything if the message is undesired
+                            } else {
+                                eventChannel = (event.buffer[0] & 0xf);
+                                if (eventChannel > -1 && eventChannel < outputs.count()) {
+                                    // Make sure we're using the correct output
+                                    // This is done to ensure that if we have any note-on events happen on some
+                                    // output, then all the following commands associated with that note should
+                                    // go to the same output (so any further ons, and any matching offs)
+                                    const unsigned char &byte1 = event.buffer[0];
+                                    const bool setOn = (byte1 >= 0x90);
+                                    bool isNoteMessage{false};
+                                    if (0x7F < byte1 && byte1 < 0xA0) {
+                                        const int &midiNote = event.buffer[1];
+                                        isNoteMessage = true;
+                                        int &noteActivation = device->noteActivations[midiNote];
+                                        if (setOn) {
+                                            ++noteActivation;
+                                            if (noteActivation == 1) {
+                                                device->activeNoteChannel[midiNote] = currentChannel;
+                                            }
+                                        } else if (noteActivation > 0) {
+                                            --noteActivation;
+                                        }
+                                        adjustedCurrentChannel = device->activeNoteChannel[midiNote];
+                                        output = outputs[adjustedCurrentChannel];
+                                        if (currentChannel == adjustedCurrentChannel) {
+                                            event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
+                                        } else {
+                                            event.buffer[0] = event.buffer[0] - eventChannel + adjustedCurrentChannel;
+                                        }
+                                    }
+                                    const int &midiNote = event.buffer[1];
+                                    const int &velocity = event.buffer[2];
+                                    // Now ensure we have our output buffer
+                                    if (!output->channelBuffer) {
+                                        output->channelBuffer = jack_port_get_buffer(output->port, nframes);
+                                    }
+
+                                    switch (output->destination) {
+                                        case MidiRouter::ZynthianDestination:
+                                            if (isNoteMessage) {
+                                                addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
+                                            }
+                                            for (const int &zynthianChannel : output->zynthianChannels) {
+                                                writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output, zynthianChannel);
+                                            }
+                                            break;
+                                        case MidiRouter::SamplerDestination:
+                                            if (isNoteMessage) {
+                                                addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
+                                            }
+                                            writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output);
+                                            break;
+                                        case MidiRouter::ExternalDestination:
+                                        {
+                                            int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
+                                            if (isNoteMessage) {
+                                                addMessage(MidiRouter::PassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, adjustedCurrentChannel, velocity, setOn, event);
+                                                addMessage(MidiRouter::ExternalOutPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, externalChannel, velocity, setOn, event);
+                                            }
+                                            writeEventToBuffer(event, output->channelBuffer, adjustedCurrentChannel, output, externalChannel);
+                                        }
+                                        case MidiRouter::NoDestination:
+                                        default:
+                                            // Do nothing here
+                                            break;
+                                    }
+                                    if (isNoteMessage) {
+                                        addMessage(MidiRouter::HardwareInPassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, eventChannel, velocity, setOn, event);
+                                    }
+                                } else {
+                                    qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
+                                }
+                            }
                         }
+                        ++eventIndex;
                     }
                 }
-                jack_midi_clear_buffer(inputBuffer);
             }
         }
         return 0;
