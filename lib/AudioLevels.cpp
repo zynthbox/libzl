@@ -21,6 +21,8 @@
 #include <QVariantList>
 #include <QWaitCondition>
 
+#include <jack/ringbuffer.h>
+
 #include "JUCEHeaders.h"
 
 #define DebugAudioLevels false
@@ -136,6 +138,8 @@ public:
     DiskWriter* diskRecorder{new DiskWriter};
     int process(jack_nframes_t nframes);
     int peakA{0}, peakB{0};
+    quint32 bufferReadSize{0};
+    jack_default_audio_sample_t bufferA[2048]{0,}, bufferB[2048]{0,};
 private:
     const float** recordingPassthroughBuffer{new const float* [2]};
     jack_default_audio_sample_t *leftBuffer{nullptr}, *rightBuffer{nullptr};
@@ -232,36 +236,10 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
         recordingPassthroughBuffer[1] = rightBuffer;
         diskRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
     }
-    const jack_default_audio_sample_t *portBuffer{nullptr};
-    const jack_default_audio_sample_t *portBufferEnd{nullptr};
-    const int quarterSpot = nframes / 4;
 
-    // 2^17 = 131072
-    static const float floatToIntMultiplier{131072};
-
-    // Peak checkery for the left channel
-    peakA = 0;
-    portBuffer = leftBuffer;
-    portBufferEnd = portBuffer + nframes;
-    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
-        if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
-        const int sampleValue = (floatToIntMultiplier * (*channelSample));
-        if (sampleValue > peakA) {
-            peakA = sampleValue;
-        }
-    }
-
-    // Peak checkery for the right channel
-    peakB = 0;
-    portBuffer = rightBuffer;
-    portBufferEnd = portBuffer + nframes;
-    for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
-        if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
-        const int sampleValue = (floatToIntMultiplier * (*channelSample));
-        if (sampleValue > peakB) {
-            peakB = sampleValue;
-        }
-    }
+    memcpy(&bufferA, leftBuffer, nframes * sizeof(jack_default_audio_sample_t));
+    memcpy(&bufferB, rightBuffer, nframes * sizeof(jack_default_audio_sample_t));
+    bufferReadSize = nframes;
     return 0;
 }
 
@@ -328,7 +306,35 @@ void AudioLevels::timerCallback() {
     static const float intToFloatMultiplier{0.00000152587};
 
     int channelIndex{0};
+    const jack_default_audio_sample_t *portBuffer{nullptr};
+    const jack_default_audio_sample_t *portBufferEnd{nullptr};
+    const int quarterSpot = 1;//nframes / 4;
+    // 2^17 = 131072
+    static const float floatToIntMultiplier{131072};
     for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
+        // Peak checkery for the left channel
+        channel->peakA = 0;
+        portBuffer = channel->bufferA;
+        portBufferEnd = portBuffer + channel->bufferReadSize;
+        for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
+            if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
+            const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
+            if (sampleValue > channel->peakA) {
+                channel->peakA = sampleValue;
+            }
+        }
+
+        // Peak checkery for the right channel
+        channel->peakB = 0;
+        portBuffer = channel->bufferB;
+        portBufferEnd = portBuffer + channel->bufferReadSize;
+        for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
+            if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
+            const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
+            if (sampleValue > channel->peakB) {
+                channel->peakB = sampleValue;
+            }
+        }
         const float peakDbA{convertTodbFS(channel->peakA * intToFloatMultiplier)},
                     peakDbB{convertTodbFS(channel->peakB * intToFloatMultiplier)};
         if (channelIndex == 0) {
@@ -337,6 +343,8 @@ void AudioLevels::timerCallback() {
         } else if (channelIndex == 1) {
             playbackA = peakDbA <= -200 ? -200 : peakDbA;
             playbackB = peakDbB <= -200 ? -200 : peakDbB;
+            playbackAHold = (playbackA >= playbackAHold) ? playbackA: (playbackAHold + 200.0f) * 0.9f;
+            playbackBHold = (playbackB >= playbackBHold) ? playbackB: (playbackBHold + 200.0f) * 0.9f;
         } else if (channelIndex == 2) {
             // No peakery for the recorder - maybe there should be?
         } else {
