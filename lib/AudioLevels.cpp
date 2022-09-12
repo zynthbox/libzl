@@ -139,7 +139,7 @@ public:
     int process(jack_nframes_t nframes);
     int peakA{0}, peakB{0};
     quint32 bufferReadSize{0};
-    jack_default_audio_sample_t bufferA[2048]{0,}, bufferB[2048]{0,};
+    jack_default_audio_sample_t *bufferA{nullptr}, *bufferB{nullptr};
 private:
     const float** recordingPassthroughBuffer{new const float* [2]};
     jack_default_audio_sample_t *leftBuffer{nullptr}, *rightBuffer{nullptr};
@@ -237,8 +237,8 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
         diskRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
     }
 
-    memcpy(&bufferA, leftBuffer, nframes * sizeof(jack_default_audio_sample_t));
-    memcpy(&bufferB, rightBuffer, nframes * sizeof(jack_default_audio_sample_t));
+    bufferA = leftBuffer;
+    bufferB = rightBuffer;
     bufferReadSize = nframes;
     return 0;
 }
@@ -312,28 +312,31 @@ void AudioLevels::timerCallback() {
     // 2^17 = 131072
     static const float floatToIntMultiplier{131072};
     for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
-        // Peak checkery for the left channel
-        channel->peakA = 0;
-        portBuffer = channel->bufferA;
-        portBufferEnd = portBuffer + channel->bufferReadSize;
-        for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
-            if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
-            const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
-            if (sampleValue > channel->peakA) {
-                channel->peakA = sampleValue;
+        if (channel->bufferReadSize > 0) {
+            // Peak checkery for the left channel
+            channel->peakA = 0;
+            portBuffer = channel->bufferA;
+            portBufferEnd = portBuffer + channel->bufferReadSize;
+            for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
+                if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
+                const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
+                if (sampleValue > channel->peakA) {
+                    channel->peakA = sampleValue;
+                }
             }
-        }
 
-        // Peak checkery for the right channel
-        channel->peakB = 0;
-        portBuffer = channel->bufferB;
-        portBufferEnd = portBuffer + channel->bufferReadSize;
-        for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
-            if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
-            const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
-            if (sampleValue > channel->peakB) {
-                channel->peakB = sampleValue;
+            // Peak checkery for the right channel
+            channel->peakB = 0;
+            portBuffer = channel->bufferB;
+            portBufferEnd = portBuffer + channel->bufferReadSize;
+            for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
+                if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
+                const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
+                if (sampleValue > channel->peakB) {
+                    channel->peakB = sampleValue;
+                }
             }
+            channel->bufferReadSize = 0;
         }
         const float peakDbA{convertTodbFS(channel->peakA * intToFloatMultiplier)},
                     peakDbB{convertTodbFS(channel->peakB * intToFloatMultiplier)};
