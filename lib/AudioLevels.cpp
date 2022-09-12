@@ -353,7 +353,8 @@ void AudioLevels::timerCallback() {
             playbackAHold = convertTodbFS(channel->peakAHoldSignal);
             playbackBHold = convertTodbFS(channel->peakBHoldSignal);
         } else if (channelIndex == 2) {
-            // No peakery for the recorder - maybe there should be?
+            recordingA = peakDbA <= -200 ? -200 : peakDbA;
+            recordingB = peakDbB <= -200 ? -200 : peakDbB;
         } else {
             const int sketchpadChannelIndex{channelIndex - 3};
             channelsA[sketchpadChannelIndex] = peakDbA <= -200 ? -200 : peakDbA;

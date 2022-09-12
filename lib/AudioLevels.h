@@ -65,6 +65,15 @@ Q_OBJECT
     Q_PROPERTY(float playbackBHold MEMBER playbackBHold NOTIFY audioLevelsChanged)
 
     /**
+     * \brief Left recording channel audio level in decibels
+     */
+    Q_PROPERTY(float recordingA MEMBER recordingA NOTIFY audioLevelsChanged)
+    /**
+     * \brief Right recording channel audio level in decibels
+     */
+    Q_PROPERTY(float recordingB MEMBER recordingB NOTIFY audioLevelsChanged)
+
+    /**
      * \brief Channels audio level in decibels as an array of 10 elements
      */
     Q_PROPERTY(QVariantList channels READ getChannelsAudioLevels NOTIFY audioLevelsChanged)
@@ -210,6 +219,7 @@ private:
 
     float captureA{-200.0f}, captureB{-200.0f};
     float playbackA{-200.0f}, playbackB{-200.0f}, playbackAHold{-200.0f}, playbackBHold{-200.0f};
+    float recordingA{-200.0f}, recordingB{-200.0f};
     float channelsA[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
           channelsB[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
