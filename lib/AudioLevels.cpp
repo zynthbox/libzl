@@ -313,9 +313,10 @@ void AudioLevels::timerCallback() {
     // 2^17 = 131072
     static const float floatToIntMultiplier{131072};
     for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
+        channel->peakA = qMax(0, channel->peakA - 10000);
+        channel->peakB = qMax(0, channel->peakB - 10000);
         if (channel->bufferReadSize > 0) {
             // Peak checkery for the left channel
-            channel->peakA = 0;
             portBuffer = channel->bufferA;
             portBufferEnd = portBuffer + channel->bufferReadSize;
             for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
@@ -327,7 +328,6 @@ void AudioLevels::timerCallback() {
             }
 
             // Peak checkery for the right channel
-            channel->peakB = 0;
             portBuffer = channel->bufferB;
             portBufferEnd = portBuffer + channel->bufferReadSize;
             for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
