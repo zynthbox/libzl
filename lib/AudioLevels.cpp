@@ -138,6 +138,7 @@ public:
     DiskWriter* diskRecorder{new DiskWriter};
     int process(jack_nframes_t nframes);
     int peakA{0}, peakB{0};
+    float peakAHoldSignal{0}, peakBHoldSignal{0};
     quint32 bufferReadSize{0};
     jack_default_audio_sample_t *bufferA{nullptr}, *bufferB{nullptr};
 private:
@@ -338,16 +339,19 @@ void AudioLevels::timerCallback() {
             }
             channel->bufferReadSize = 0;
         }
-        const float peakDbA{convertTodbFS(channel->peakA * intToFloatMultiplier)},
-                    peakDbB{convertTodbFS(channel->peakB * intToFloatMultiplier)};
+        const float peakA{channel->peakA * intToFloatMultiplier}, peakB{channel->peakB * intToFloatMultiplier};
+        const float peakDbA{convertTodbFS(peakA)},
+                    peakDbB{convertTodbFS(peakB)};
         if (channelIndex == 0) {
             captureA = peakDbA <= -200 ? -200 : peakDbA;
             captureB = peakDbB <= -200 ? -200 : peakDbB;
         } else if (channelIndex == 1) {
             playbackA = peakDbA <= -200 ? -200 : peakDbA;
             playbackB = peakDbB <= -200 ? -200 : peakDbB;
-            playbackAHold = (playbackA >= playbackAHold) ? playbackA: (playbackAHold + 200.0f) * 0.9f;
-            playbackBHold = (playbackB >= playbackBHold) ? playbackB: (playbackBHold + 200.0f) * 0.9f;
+            channel->peakAHoldSignal = (peakA >= channel->peakAHoldSignal) ? peakA : channel->peakAHoldSignal * 0.9f;
+            channel->peakBHoldSignal = (peakB >= channel->peakBHoldSignal) ? peakB : channel->peakBHoldSignal * 0.9f;
+            playbackAHold = convertTodbFS(channel->peakAHoldSignal);
+            playbackBHold = convertTodbFS(channel->peakBHoldSignal);
         } else if (channelIndex == 2) {
             // No peakery for the recorder - maybe there should be?
         } else {
