@@ -35,6 +35,9 @@ public:
         }
         qDeleteAll(commandQueue);
     }
+
+    bool enabled{true};
+
     QString clientName;
     jack_client_t *jackClient{nullptr};
     jack_port_t *leftPort{nullptr};
@@ -101,11 +104,6 @@ SamplerChannel::SamplerChannel(const QString &clientName)
 }
 
 int SamplerChannel::process(jack_nframes_t nframes) {
-    jack_nframes_t current_frames;
-    jack_time_t current_usecs;
-    jack_time_t next_usecs;
-    float period_usecs;
-    jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
     // First handle any queued up commands (starting, stopping, changes to voice state, that sort of stuff)
     while (queueHandled != queueMostRecentlyAdded) {
         ++queueHandled;
@@ -116,22 +114,29 @@ int SamplerChannel::process(jack_nframes_t nframes) {
         const SamplerCommand *command = commandQueue[queueHandled];
         handleCommand(command->clipCommand, command->timestamp);
     }
-    // Then, if we've actually got our ports set up, let's play whatever voices are active
-    jack_default_audio_sample_t *leftBuffer{nullptr}, *rightBuffer{nullptr};
-    if (leftPort && rightPort) {
-        leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(leftPort, nframes);
-        rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(rightPort, nframes);
-        memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
-        memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
-        for (SamplerSynthVoice *voice : qAsConst(voices)) {
-            if (voice->isPlaying) {
-                voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
+    if (enabled) {
+        jack_nframes_t current_frames;
+        jack_time_t current_usecs;
+        jack_time_t next_usecs;
+        float period_usecs;
+        jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
+        // Then, if we've actually got our ports set up, let's play whatever voices are active
+        jack_default_audio_sample_t *leftBuffer{nullptr}, *rightBuffer{nullptr};
+        if (leftPort && rightPort) {
+            leftBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(leftPort, nframes);
+            rightBuffer = (jack_default_audio_sample_t*)jack_port_get_buffer(rightPort, nframes);
+            memset(leftBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+            memset(rightBuffer, 0, nframes * sizeof (jack_default_audio_sample_t));
+            for (SamplerSynthVoice *voice : qAsConst(voices)) {
+                if (voice->isPlaying) {
+                    voice->process(leftBuffer, rightBuffer, nframes, current_frames, current_usecs, next_usecs, period_usecs);
+                }
             }
         }
-    }
-    // Micro-hackery - -2 is the first item in the list of channels, so might as well just go with that
-    if (midiChannel == -2) {
-        cpuLoad = jack_cpu_load(jackClient);
+        // Micro-hackery - -2 is the first item in the list of channels, so might as well just go with that
+        if (midiChannel == -2) {
+            cpuLoad = jack_cpu_load(jackClient);
+        }
     }
     return 0;
 }
@@ -328,5 +333,15 @@ void SamplerSynth::handleClipCommand(ClipCommand *clipCommand, quint64 currentTi
         samplerCommand->clipCommand = clipCommand;
         samplerCommand->timestamp = currentTick;
         channel->queueMostRecentlyAdded = queueMostRecentlyAdded;
+    }
+}
+
+void SamplerSynth::setChannelEnabled(const int &channel, const bool &enabled) const
+{
+    if (channel > -3 && channel < 10) {
+        if (d->channels[channel + 2]->enabled != enabled) {
+            qDebug() << "Setting SamplerSynth channel" << channel << "to" << enabled;
+            d->channels[channel + 2]->enabled = enabled;
+        }
     }
 }
