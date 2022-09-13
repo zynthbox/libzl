@@ -503,6 +503,8 @@ public:
                         } else {
                             qWarning() << Q_FUNC_INFO << "Failed to retrieve clip from clip registration timer command";
                         }
+                    } else if (command->operation == TimerCommand::SamplerChannelEnabledStateOperation) {
+                        samplerSynth->setChannelEnabled(command->parameter, command->parameter2);
                     }
                 }
                 stepData->played = true;
