@@ -43,7 +43,7 @@ public:
         stop();
     }
 
-    void startRecording(const QString& fileName, double sampleRate = 44100, int bitRate = 16) {
+    void startRecording(const QString& fileName, double sampleRate = 44100, int bitRate = 16, int channelCount=CHANNEL_COUNT) {
         m_file = juce::File(fileName.toStdString());
         m_sampleRate = sampleRate;
         if (m_sampleRate > 0) {
@@ -53,7 +53,7 @@ public:
             if (auto fileStream = std::unique_ptr<FileOutputStream>(m_file.createOutputStream())) {
                 // Now create a WAV writer, which will be writing to our output stream
                 WavAudioFormat wavFormat;
-                if (auto writer = wavFormat.createWriterFor(fileStream.get(), sampleRate, CHANNEL_COUNT, bitRate, {}, 0)) {
+                if (auto writer = wavFormat.createWriterFor(fileStream.get(), sampleRate, qMin(channelCount, CHANNEL_COUNT), bitRate, {}, 0)) {
                     fileStream.release(); // (passes responsibility for deleting the stream to the writer object that is now using it)
                     // Now we'll create one of these helper objects which will act as a FIFO buffer, and will
                     // write the data to disk on our background thread.
@@ -499,10 +499,10 @@ void AudioLevels::startRecording()
     if (d->portsRecorder->shouldRecord()) {
         if (d->portsRecorder->filenamePrefix().endsWith(".wav")) {
             // If prefix already ends with `.wav` do not add timestamp and suffix to filename
-            d->portsRecorder->startRecording(d->portsRecorder->filenamePrefix(), sampleRate);
+            d->portsRecorder->startRecording(d->portsRecorder->filenamePrefix(), sampleRate, 16, d->recordPorts.count());
         } else {
             const QString filename = QString("%1-%2.wav").arg(d->portsRecorder->filenamePrefix()).arg(timestamp);
-            d->portsRecorder->startRecording(filename, sampleRate);
+            d->portsRecorder->startRecording(filename, sampleRate, 16, d->recordPorts.count());
         }
     }
     for (DiskWriter *channelWriter : d->channelWriters) {
