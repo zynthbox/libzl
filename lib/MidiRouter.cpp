@@ -299,8 +299,8 @@ public:
                                             if (noteActivation == 1) {
                                                 device->activeNoteChannel[midiNote] = currentChannel;
                                             }
-                                        } else if (noteActivation > 0) {
-                                            --noteActivation;
+                                        } else {
+                                            noteActivation = 0;
                                         }
                                         adjustedCurrentChannel = device->activeNoteChannel[midiNote];
                                         output = outputs[adjustedCurrentChannel];
