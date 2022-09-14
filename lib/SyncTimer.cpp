@@ -398,7 +398,7 @@ public:
         if (currentEventCount > 0) {
             jack_midi_event_t event;
             if (int err = jack_midi_event_get(&event, buffer, currentEventCount - 1)) {
-                qWarning() << "SyncTimer: jack_midi_event_get failed, presumably it was just cleared, so ignore";
+                qWarning() << "SyncTimer: jack_midi_event_get failed, presumably it was just cleared, so ignore. Reported error was:" << err << strerror(err);
             } else {
                 firstAvailableFrame = event.time + 1;
             }
