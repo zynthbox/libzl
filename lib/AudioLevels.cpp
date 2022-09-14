@@ -53,7 +53,7 @@ public:
             if (auto fileStream = std::unique_ptr<FileOutputStream>(m_file.createOutputStream())) {
                 // Now create a WAV writer, which will be writing to our output stream
                 WavAudioFormat wavFormat;
-                if (auto writer = wavFormat.createWriterFor(fileStream.get(), sampleRate, qMin(channelCount, CHANNEL_COUNT), bitRate, {}, 0)) {
+                if (auto writer = wavFormat.createWriterFor(fileStream.get(), sampleRate, quint32(qMin(channelCount, CHANNEL_COUNT)), bitRate, {}, 0)) {
                     fileStream.release(); // (passes responsibility for deleting the stream to the writer object that is now using it)
                     // Now we'll create one of these helper objects which will act as a FIFO buffer, and will
                     // write the data to disk on our background thread.
