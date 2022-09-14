@@ -91,16 +91,16 @@ public:
         m_threadedWriter.reset();
     }
 
-    bool isRecording() const {
+    const bool &isRecording() const {
         return m_isRecording;
     }
-    QString filenamePrefix() const {
+    const QString &filenamePrefix() const {
         return m_fileNamePrefix;
     }
     void setFilenamePrefix(const QString& fileNamePrefix) {
         m_fileNamePrefix = fileNamePrefix;
     }
-    bool shouldRecord() const {
+    const bool &shouldRecord() const {
         return m_shouldRecord;
     }
     void setShouldRecord(bool shouldRecord) {
