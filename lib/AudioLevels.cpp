@@ -212,8 +212,8 @@ AudioLevelsChannel::AudioLevelsChannel(const QString &clientName)
         if (jack_set_process_callback(jackClient, audioLevelsChannelProcess, this) != 0) {
             qWarning() << "Failed to set the AudioLevelsChannel Jack processing callback";
         } else {
-            leftPort = jack_port_register(jackClient, portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0);
-            rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0);
+            leftPort = jack_port_register(jackClient, portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
+            rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
             // Activate the client.
             if (jack_activate(jackClient) == 0) {
                 qDebug() << "Successfully created and set up" << clientName;
