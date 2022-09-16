@@ -90,6 +90,7 @@ struct MidiListenerPort {
     QList<NoteMessage*> messages;
 };
 
+jack_time_t expected_next_usecs{0};
 class MidiRouterPrivate {
 public:
     MidiRouterPrivate(MidiRouter *q)
@@ -228,7 +229,6 @@ public:
         }
     }
 
-    jack_time_t expected_next_usecs{0};
     QAtomicInt jack_xrun_count{0};
     int process(jack_nframes_t nframes) {
         jack_nframes_t current_frames;
