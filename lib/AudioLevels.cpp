@@ -120,7 +120,9 @@ private:
     std::atomic<AudioFormatWriter::ThreadedWriter*> m_activeWriter { nullptr };
 };
 
-class AudioLevelsChannel {
+static const QString portNameLeft{"left_in"};
+static const QString portNameRight{"right_in"};
+class alignas(128) AudioLevelsChannel {
 public:
     explicit AudioLevelsChannel(const QString &clientName);
     ~AudioLevelsChannel() {
@@ -129,21 +131,20 @@ public:
         }
         delete diskRecorder;
     }
-    QString clientName;
-    jack_client_t *jackClient{nullptr};
-    jack_port_t *leftPort{nullptr};
-    QString portNameLeft{"left_in"};
-    jack_port_t *rightPort{nullptr};
-    QString portNameRight{"right_in"};
-    DiskWriter* diskRecorder{new DiskWriter};
     int process(jack_nframes_t nframes);
-    int peakA{0}, peakB{0};
-    float peakAHoldSignal{0}, peakBHoldSignal{0};
+    jack_port_t *leftPort{nullptr};
+    jack_default_audio_sample_t *leftBuffer{nullptr};
+    jack_port_t *rightPort{nullptr};
+    jack_default_audio_sample_t *rightBuffer{nullptr};
     quint32 bufferReadSize{0};
-    jack_default_audio_sample_t *bufferA{nullptr}, *bufferB{nullptr};
+    DiskWriter* diskRecorder{new DiskWriter};
+    jack_client_t *jackClient{nullptr};
+    float peakAHoldSignal{0};
+    float peakBHoldSignal{0};
+    int peakA{0};
+    int peakB{0};
 private:
     const float** recordingPassthroughBuffer{new const float* [2]};
-    jack_default_audio_sample_t *leftBuffer{nullptr}, *rightBuffer{nullptr};
 };
 
 class AudioLevelsPrivate {
@@ -203,7 +204,6 @@ static int audioLevelsChannelProcess(jack_nframes_t nframes, void* arg) {
 }
 
 AudioLevelsChannel::AudioLevelsChannel(const QString &clientName)
-  : clientName(clientName)
 {
     jack_status_t real_jack_status{};
     jackClient = jack_client_open(clientName.toUtf8(), JackNullOption, &real_jack_status);
@@ -232,15 +232,12 @@ int AudioLevelsChannel::process(jack_nframes_t nframes)
 {
     leftBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(leftPort, nframes);
     rightBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(rightPort, nframes);
+    bufferReadSize = nframes;
     if (diskRecorder->isRecording()) {
         recordingPassthroughBuffer[0] = leftBuffer;
         recordingPassthroughBuffer[1] = rightBuffer;
         diskRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
     }
-
-    bufferA = leftBuffer;
-    bufferB = rightBuffer;
-    bufferReadSize = nframes;
     return 0;
 }
 
@@ -317,7 +314,7 @@ void AudioLevels::timerCallback() {
         channel->peakB = qMax(0, channel->peakB - 10000);
         if (channel->bufferReadSize > 0) {
             // Peak checkery for the left channel
-            portBuffer = channel->bufferA;
+            portBuffer = channel->leftBuffer;
             portBufferEnd = portBuffer + channel->bufferReadSize;
             for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
                 if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
@@ -328,7 +325,7 @@ void AudioLevels::timerCallback() {
             }
 
             // Peak checkery for the right channel
-            portBuffer = channel->bufferB;
+            portBuffer = channel->rightBuffer;
             portBufferEnd = portBuffer + channel->bufferReadSize;
             for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
                 if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
