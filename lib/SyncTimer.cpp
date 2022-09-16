@@ -48,9 +48,9 @@ struct StepData {
     }
     // Call this before accessing the data to ensure that it is fresh
     void ensureFresh() {
-        if (isPlaying) {
-            qWarning() << "Attempted to ensure a thing is fresh that is currently playing";
-        }
+//         if (isPlaying) {
+//             qWarning() << "Attempted to ensure a thing is fresh that is currently playing";
+//         }
         if (played) {
             played = false;
             // It's our job to delete the timer commands, so do that first
@@ -72,7 +72,7 @@ struct StepData {
     // SyncTimer sets this true to mark that it has played the step
     bool played{false};
     // Basic spin lock
-    bool isPlaying{false};
+//     bool isPlaying{false};
 };
 
 using frame_clock = std::conditional_t<
@@ -234,23 +234,25 @@ private:
 
     quint64 bpm{120};
     std::chrono::nanoseconds interval;
-    bool aborted{false};
 
-    bool paused{true};
     QMutex mutex;
     QWaitCondition waitCondition;
 
     // This is equivalent to .1 ms
     const frame_clock::duration spinTime{frame_clock::duration(100000)};
     const std::chrono::nanoseconds nanosecondsPerMinute{NanosecondsPerMinute};
+
+    bool aborted{false};
+    bool paused{true};
 };
 
+SyncTimerThread *timerThread{nullptr};
 class SyncTimerPrivate {
 public:
     SyncTimerPrivate(SyncTimer *q)
         : q(q)
-        ,timerThread(new SyncTimerThread(q))
     {
+        timerThread = new SyncTimerThread(q);
         for (quint64 i = 0; i < stepRingCount; ++i) {
             stepRing << new StepData;
         }
@@ -272,7 +274,6 @@ public:
     }
     SyncTimer *q{nullptr};
     SamplerSynth *samplerSynth{nullptr};
-    SyncTimerThread *timerThread;
     int playingClipsCount = 0;
     int beat = 0;
     quint64 cumulativeBeat = 0;
@@ -280,11 +281,11 @@ public:
     QList<ClipCommand*> sentOutClips;
     QList<juce::MidiBuffer> buffersForImmediateDispatch;
 
+    QList<StepData*> stepRing;
     // The next step to be read in the step ring
     quint64 stepReadHead{0};
     quint64 stepNextPlaybackPosition{0};
     static const quint64 stepRingCount{32768};
-    QList<StepData*> stepRing;
     /**
      * \brief Get the ring buffer position based on the given delay from the current playback position (cumulativeBeat if playing, or stepReadHead if not playing)
      * @param delay The delay of the position to use
@@ -299,9 +300,9 @@ public:
             // If running, base the delay on the current cumulativeBeat (adjusted to at least stepReadHead, just in case)
             step = (stepReadHeadOnStart + qMax(cumulativeBeat + delay, jackPlayhead + 1)) % stepRingCount;
         }
-        if (stepRing.at(step)->isPlaying) {
-            step = (step + 1) % stepRingCount;
-        }
+//         if (stepRing.at(step)->isPlaying) {
+//             step = (step + 1) % stepRingCount;
+//         }
         return step;
     }
 
@@ -435,11 +436,14 @@ public:
         while (stepNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
             StepData *stepData = stepRing.at(stepReadHead);
             // Next roll for next time (also do it now, as we're reading out of it)
-            stepReadHead = (stepReadHead + 1) % stepRingCount;
+            ++stepReadHead;
+            if (stepReadHead == stepRingCount) {
+                stepReadHead = 0;
+            }
             // In case we're cycling through stuff we've already played, let's just... not do anything with that
             // Basically that just means nobody else has attempted to do stuff with the step since we last played it
             if (!stepData->played) {
-                stepData->isPlaying = true;
+//                 stepData->isPlaying = true;
                 // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
                 if (stepNextPlaybackPosition <= current_usecs) {
                     relativePosition = firstAvailableFrame;
@@ -508,7 +512,7 @@ public:
                     }
                 }
                 stepData->played = true;
-                stepData->isPlaying = false;
+//                 stepData->isPlaying = false;
             }
             if (!timerThread->isPaused()) {
                 // Next roll for next time
@@ -569,7 +573,7 @@ SyncTimer::SyncTimer(QObject *parent)
     : QObject(parent)
     , d(new SyncTimerPrivate(this))
 {
-    d->jackSubbeatLengthInMicroseconds = d->timerThread->subbeatCountToNanoseconds(d->timerThread->getBpm(), 1) / 1000;
+    d->jackSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
 }
 
 void SyncTimer::addCallback(void (*functionPtr)(int)) {
@@ -655,7 +659,7 @@ void SyncTimer::queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel
     command->stopPlayback = true;
     command->startPlayback = true;
 
-    const quint64 nextZeroBeat = d->timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->cumulativeBeat % (BeatSubdivisions * 4));
+    const quint64 nextZeroBeat = timerThread->isPaused() ? 0 : (BeatSubdivisions * 4) - (d->cumulativeBeat % (BeatSubdivisions * 4));
 //     qDebug() << "Queueing up" << clip << "to start, with jack and timer zero beats at" << nextZeroBeat << "at beats" << d->cumulativeBeat << "meaning we want positions" << (d->cumulativeBeat + nextZeroBeat < d->jackPlayhead ? nextZeroBeat + BeatSubdivisions * 4 : nextZeroBeat);
     scheduleClipCommand(command, d->cumulativeBeat + nextZeroBeat < d->jackPlayhead ? nextZeroBeat + BeatSubdivisions * 4 : nextZeroBeat);
 }
@@ -704,15 +708,15 @@ void SyncTimer::start(int bpm) {
     d->lastRound = frame_clock::now();
 #endif
     d->stepReadHeadOnStart = d->stepReadHead;
-    d->timerThread->resume();
+    timerThread->resume();
 }
 
 void SyncTimer::stop() {
     cerr << "#### Stopping timer" << endl;
 
     QMutexLocker locker(&d->mutex);
-    if(!d->timerThread->isPaused()) {
-        d->timerThread->pause();
+    if(!timerThread->isPaused()) {
+        timerThread->pause();
     }
 
     d->beat = 0;
@@ -766,12 +770,12 @@ int SyncTimer::getInterval(int bpm) {
 
 float SyncTimer::subbeatCountToSeconds(quint64 bpm, quint64 beats) const
 {
-    return d->timerThread->subbeatCountToNanoseconds(qBound(quint64(BPM_MINIMUM), bpm, quint64(BPM_MAXIMUM)), beats) / (float)1000000000;
+    return timerThread->subbeatCountToNanoseconds(qBound(quint64(BPM_MINIMUM), bpm, quint64(BPM_MAXIMUM)), beats) / (float)1000000000;
 }
 
 quint64 SyncTimer::secondsToSubbeatCount(quint64 bpm, float seconds) const
 {
-    return d->timerThread->nanosecondsToSubbeatCount(qBound(quint64(BPM_MINIMUM), bpm, quint64(BPM_MAXIMUM)), floor(seconds * (float)1000000000));
+    return timerThread->nanosecondsToSubbeatCount(qBound(quint64(BPM_MINIMUM), bpm, quint64(BPM_MAXIMUM)), floor(seconds * (float)1000000000));
 }
 
 int SyncTimer::getMultiplier() {
@@ -780,14 +784,14 @@ int SyncTimer::getMultiplier() {
 
 quint64 SyncTimer::getBpm() const
 {
-    return d->timerThread->getBpm();
+    return timerThread->getBpm();
 }
 
 void SyncTimer::setBpm(quint64 bpm)
 {
-    if (d->timerThread->getBpm() != bpm) {
-        d->timerThread->setBPM(bpm);
-        d->jackSubbeatLengthInMicroseconds = d->timerThread->subbeatCountToNanoseconds(d->timerThread->getBpm(), 1) / 1000;
+    if (timerThread->getBpm() != bpm) {
+        timerThread->setBPM(bpm);
+        d->jackSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
         Q_EMIT bpmChanged();
         Q_EMIT scheduleAheadAmountChanged();
     }
@@ -795,7 +799,7 @@ void SyncTimer::setBpm(quint64 bpm)
 
 quint64 SyncTimer::scheduleAheadAmount() const
 {
-    return (d->timerThread->nanosecondsToSubbeatCount(d->timerThread->getBpm(), d->jackLatency * (float)1000000)) + 1;
+    return (timerThread->nanosecondsToSubbeatCount(timerThread->getBpm(), d->jackLatency * (float)1000000)) + 1;
 }
 
 int SyncTimer::beat() const {
@@ -808,7 +812,7 @@ quint64 SyncTimer::cumulativeBeat() const {
 
 const quint64 &SyncTimer::jackPlayhead() const
 {
-    if (d->timerThread->isPaused()) {
+    if (timerThread->isPaused()) {
         return d->stepReadHead;
     }
     return d->jackPlayhead;
@@ -816,7 +820,7 @@ const quint64 &SyncTimer::jackPlayhead() const
 
 const quint64 &SyncTimer::jackPlayheadUsecs() const
 {
-    if (d->timerThread->isPaused()) {
+    if (timerThread->isPaused()) {
         return d->stepNextPlaybackPosition;
     }
     return d->jackNextPlaybackPosition;
@@ -935,7 +939,7 @@ void SyncTimer::sendMidiBufferImmediately(const juce::MidiBuffer& buffer)
 }
 
 bool SyncTimer::timerRunning() {
-    return !d->timerThread->isPaused();
+    return !timerThread->isPaused();
 }
 
 #include "SyncTimer.moc"
