@@ -420,8 +420,6 @@ public:
             }
             ++eventIndex;
         }
-        // Usually this would be bad (one should not clear an input buffer, per the docs), but we use the clear state of the buffer to communicate back to SyncTimer
-        jack_midi_clear_buffer(inputBuffer);
         return 0;
     }
     int xrun() {
