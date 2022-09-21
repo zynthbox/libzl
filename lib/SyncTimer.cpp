@@ -392,18 +392,23 @@ public:
         // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
         const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
 
+        int errorCode{0};
         // Firstly, send out any buffers we've been told to send out immediately
         bool buffersDispatched{false};
         for (const juce::MidiBuffer &juceBuffer : buffersForImmediateDispatch) {
             relativePosition = firstAvailableFrame;
             ++firstAvailableFrame;
             for (const juce::MidiMessageMetadata &juceMessage : juceBuffer) {
-                if (jack_midi_event_write(buffer, relativePosition,
+                errorCode = jack_midi_event_write(buffer, relativePosition,
                     const_cast<jack_midi_data_t*>(juceMessage.data), // this might seems odd, but it's really only because juce's internal store is const here, and the data types are otherwise the same
                     size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
-                ) == ENOBUFS) {
+                );
+                if (errorCode == -ENOBUFS) {
                     qWarning() << "Ran out of space while writing events!";
                 } else {
+                    if (errorCode != 0) {
+                        qWarning() << Q_FUNC_INFO << "Error writing midi event:" << -errorCode << strerror(-errorCode);
+                    }
                     ++eventCount;
 #ifdef DEBUG_SYNCTIMER_JACK
                     commandValues << juceMessage.data[0];
@@ -420,7 +425,6 @@ public:
         if (buffersDispatched) {
             buffersForImmediateDispatch.clear();
         }
-
         while (stepNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
             StepData *stepData = stepRing.at(stepReadHead);
             // Next roll for next time (also do it now, as we're reading out of it)
@@ -447,12 +451,17 @@ public:
                         break;
                     }
                     for (const juce::MidiMessageMetadata &juceMessage : juceBuffer) {
-                        if (jack_midi_event_write(buffer, relativePosition,
+                        errorCode = jack_midi_event_write(buffer, relativePosition,
                             const_cast<jack_midi_data_t*>(juceMessage.data), // this might seems odd, but it's really only because juce's internal store is const here, and the data types are otherwise the same
                             size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
-                        ) == ENOBUFS) {
+                        );
+                        if (errorCode == ENOBUFS) {
                             qWarning() << "Ran out of space while writing events!";
+                            // TODO Maybe schedule the rest of the buffer for immediate dispatch on next go-around?
                         } else {
+                            if (errorCode != 0) {
+                                qWarning() << Q_FUNC_INFO << "Error writing midi event:" << -errorCode << strerror(-errorCode);
+                            }
                             ++eventCount;
 #ifdef DEBUG_SYNCTIMER_JACK
                             commandValues << juceMessage.data[0]; noteValues << juceMessage.data[1]; velocities << juceMessage.data[2];
