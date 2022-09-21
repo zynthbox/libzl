@@ -59,6 +59,7 @@ struct ChannelOutput {
         zynthianChannels << inputChannel;
     }
     int inputChannel{-1};
+    jack_nframes_t mostRecentTime{0};
     QString portName;
     jack_port_t *port;
     int externalChannel{-1};
@@ -219,10 +220,25 @@ public:
         if (outputChannel > -1) {
             event.buffer[0] = event.buffer[0] - eventChannel + outputChannel;
         }
-        if (jack_midi_event_write(buffer, event.time, event.buffer, event.size) == ENOBUFS) {
-            qWarning() << "ZLRouter: Ran out of space while writing events!";
+        int errorCode = jack_midi_event_write(buffer, event.time, event.buffer, event.size);
+        if (errorCode != 0) {
+            if (errorCode == -EINVAL) {
+                // If the error invalid happens, we should likely assume the event was out of order for whatever reason, and just schedule it at the same time as the most recently scheduled event
+                qWarning() << "ZLRouter: Attempted to write out-of-order event for time" << event.time << "so writing to most recent instead:" << output->mostRecentTime;
+                errorCode = jack_midi_event_write(buffer, output->mostRecentTime, event.buffer, event.size);
+            }
+            if (errorCode != 0) {
+                if (errorCode == -ENOBUFS) {
+                    qWarning() << "ZLRouter: Ran out of space while writing events!";
+                } else {
+                    qWarning() << "ZLRouter: Error writing midi event:" << -errorCode << strerror(-errorCode) << "for event at time" << event.time << "of size" << event.size;
+                }
+            }
         } else {
             if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to buffer on channel" << currentChannel << "for port" << output->portName; }
+        }
+        if (output->mostRecentTime < event.time) {
+            output->mostRecentTime = event.time;
         }
         if (outputChannel > -1) {
             event.buffer[0] = event.buffer[0] + eventChannel - outputChannel;
@@ -236,13 +252,6 @@ public:
         jack_time_t next_usecs;
         float period_usecs;
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
-        bool clearBuffer{true};
-        if (expected_next_usecs != current_usecs || jack_xrun_count > 0) {
-//             qWarning() << "ZLRouter was called after expected - don't clear, or we'll drop things" << current_usecs << "is different from" << expected_next_usecs << "and we got" << jack_xrun_count << "xruns";
-            jack_xrun_count = 0;
-            clearBuffer = false;
-        }
-        expected_next_usecs = next_usecs;
         const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
         const quint64 &subbeatLengthInMicroseconds = syncTimer->jackSubbeatLengthInMicroseconds();
         // Actual playhead (or as close as we're going to reasonably get, let's not get too crazy here)
@@ -251,12 +260,9 @@ public:
         // A little overly protective, given how lightweight the functions are, but might as well
         // be lighter-weight about it.
         for (ChannelOutput *output : qAsConst(outputs)) {
-            if (output->channelBuffer) {
-                if (clearBuffer) {
-                    jack_midi_clear_buffer(output->channelBuffer);
-                    output->channelBuffer = nullptr;
-                }
-            }
+            output->mostRecentTime = 0;
+            output->channelBuffer = jack_port_get_buffer(output->port, nframes);
+            jack_midi_clear_buffer(output->channelBuffer);
         }
         // Handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
         void *inputBuffer{nullptr};
@@ -312,10 +318,6 @@ public:
                                     }
                                     const int &midiNote = event.buffer[1];
                                     const int &velocity = event.buffer[2];
-                                    // Now ensure we have our output buffer
-                                    if (!output->channelBuffer) {
-                                        output->channelBuffer = jack_port_get_buffer(output->port, nframes);
-                                    }
 
                                     switch (output->destination) {
                                         case MidiRouter::ZynthianDestination:
@@ -376,9 +378,6 @@ public:
                         const int &midiNote = event.buffer[1];
                         const int &velocity = event.buffer[2];
                         output = outputs[eventChannel];
-                        if (!output->channelBuffer) {
-                            output->channelBuffer = jack_port_get_buffer(output->port, nframes);
-                        }
                         switch (output->destination) {
                             case MidiRouter::ZynthianDestination:
                                 if (isNoteMessage) {
@@ -574,18 +573,20 @@ MidiRouter::MidiRouter(QObject *parent)
                 d->hardwareInputConnector->setSingleShot(true);
                 d->hardwareInputConnector->setInterval(300);
                 connect(d->hardwareInputConnector, &QTimer::timeout, this, [this](){ d->connectHardwareInputs(); });
+                const QString zmrPort{"ZynMidiRouter:step_in"};
+                // We technically only have ten channels, but there's no reason we can't handle 16... so, let's do it like so
+                for (int channel = 0; channel < 16; ++channel) {
+                    ChannelOutput *output = new ChannelOutput(channel);
+                    output->portName = QString("Channel%2").arg(QString::number(channel));
+                    output->port = jack_port_register(d->jackClient, output->portName.toUtf8(), JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+                    d->outputs << output;
+                }
                 jack_set_port_registration_callback(d->jackClient, client_port_registration, static_cast<void*>(d));
                 jack_set_client_registration_callback(d->jackClient, client_registration, static_cast<void*>(d));
                 // Activate the client.
                 if (jack_activate(d->jackClient) == 0) {
                     qDebug() << "ZLRouter: Successfully created and set up the ZLRouter's Jack client";
-                    const QString zmrPort{"ZynMidiRouter:step_in"};
-                    // We technically only have ten channels, but there's no reason we can't handle 16... so, let's do it like so
-                    for (int channel = 0; channel < 16; ++channel) {
-                        ChannelOutput *output = new ChannelOutput(channel);
-                        output->portName = QString("Channel%2").arg(QString::number(channel));
-                        output->port = jack_port_register(d->jackClient, output->portName.toUtf8(), JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-                        d->outputs << output;
+                    for (ChannelOutput *output : d->outputs) {
                         d->connectPorts(QString("ZLRouter:%1").arg(output->portName), zmrPort);
                     }
                 } else {
