@@ -235,7 +235,7 @@ public:
                 }
             }
         } else {
-            if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to buffer on channel" << currentChannel << "for port" << output->portName; }
+            if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to buffer on channel" << currentChannel << "for port" << output->portName << "with data" << event.buffer[0] << event.buffer[1]; }
         }
         if (output->mostRecentTime < event.time) {
             output->mostRecentTime = event.time;
