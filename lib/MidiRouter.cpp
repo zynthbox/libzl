@@ -264,7 +264,9 @@ public:
             output->channelBuffer = jack_port_get_buffer(output->port, nframes);
             jack_midi_clear_buffer(output->channelBuffer);
         }
-        void *inputBuffer{nullptr};
+        void *inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
+        void *syncTimerCopy[8192];
+        memcpy(syncTimerCopy, inputBuffer, nframes * sizeof(jack_midi_event_t));
         ChannelOutput *output{nullptr};
         jack_midi_event_t event;
         // Handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
@@ -362,9 +364,9 @@ public:
             }
         }
         // Then handle input coming from our SyncTimer
-        inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
+        inputBuffer = syncTimerCopy;
         eventIndex = 0;
-        uint32_t eventCount = jack_midi_get_event_count(inputBuffer);
+        const uint32_t eventCount = jack_midi_get_event_count(syncTimerCopy);
         while (eventIndex < eventCount) {
             if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
                 qWarning() << "ZLRouter: jack_midi_event_get, received note lost! We were supposed to have" << eventCount << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
@@ -421,8 +423,6 @@ public:
             }
             ++eventIndex;
         }
-        // Usually this would be bad (one should not clear an input buffer, per the docs), but we use the clear state of the buffer to communicate back to SyncTimer
-        jack_midi_clear_buffer(inputBuffer);
         return 0;
     }
     int xrun() {
