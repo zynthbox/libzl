@@ -265,6 +265,7 @@ public:
             jack_midi_clear_buffer(output->channelBuffer);
         }
         void *inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
+        syncTimer->process(nframes, inputBuffer);
         void *syncTimerCopy[8192];
         memcpy(syncTimerCopy, inputBuffer, nframes * sizeof(jack_midi_event_t));
         ChannelOutput *output{nullptr};

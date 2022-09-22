@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QList>
 #include <QVariant>
+#include <jack/types.h>
 
 using namespace std;
 
@@ -195,6 +196,9 @@ public:
 
   Q_SIGNAL void addedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
   Q_SIGNAL void removedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
+protected:
+  friend class MidiRouterPrivate;
+  void process(jack_nframes_t nframes, void *buffer);
 private:
   SyncTimerPrivate *d{nullptr};
 };

@@ -357,8 +357,8 @@ public:
     quint64 jackNextPlaybackPosition{0};
     quint64 jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
-    int process(jack_nframes_t nframes) {
-        auto buffer = jack_port_get_buffer(jackPort, nframes);
+    int process(jack_nframes_t nframes, void *buffer) {
+//         auto buffer = jack_port_get_buffer(jackPort, nframes);
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
         quint64 stepCount = 0;
@@ -541,8 +541,9 @@ public:
     }
 };
 
-static int client_process(jack_nframes_t nframes, void* arg) {
-    return static_cast<SyncTimerPrivate*>(arg)->process(nframes);
+static int client_process(jack_nframes_t /*nframes*/, void* /*arg*/) {
+//     return static_cast<SyncTimerPrivate*>(arg)->process(nframes);
+    return 0;
 }
 static int client_xrun(void* arg) {
     return static_cast<SyncTimerPrivate*>(arg)->xrun();
@@ -938,5 +939,11 @@ void SyncTimer::sendMidiBufferImmediately(const juce::MidiBuffer& buffer)
 bool SyncTimer::timerRunning() {
     return !timerThread->isPaused();
 }
+
+void SyncTimer::process(jack_nframes_t nframes, void *buffer)
+{
+    d->process(nframes, buffer);
+}
+
 
 #include "SyncTimer.moc"
