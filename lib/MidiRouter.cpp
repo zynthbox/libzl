@@ -364,9 +364,10 @@ public:
         // Then handle input coming from our SyncTimer
         inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
         eventIndex = 0;
-        while (eventIndex < jack_midi_get_event_count(inputBuffer)) {
+        uint32_t eventCount = jack_midi_get_event_count(inputBuffer);
+        while (eventIndex < eventCount) {
             if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
-                qWarning() << "ZLRouter: jack_midi_event_get, received note lost! We were supposed to have" << jack_midi_get_event_count(inputBuffer) << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
+                qWarning() << "ZLRouter: jack_midi_event_get, received note lost! We were supposed to have" << eventCount << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
             } else {
                 if ((event.buffer[0] & 0xf0) == 0xf0) {
                     // Don't do anything if the message is undesired
