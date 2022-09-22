@@ -264,10 +264,10 @@ public:
             output->channelBuffer = jack_port_get_buffer(output->port, nframes);
             jack_midi_clear_buffer(output->channelBuffer);
         }
-        // Handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
         void *inputBuffer{nullptr};
         ChannelOutput *output{nullptr};
         jack_midi_event_t event;
+        // Handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
         int eventChannel{-1};
         uint32_t eventIndex = 0;
         if (currentChannel > -1 && currentChannel < outputs.count()) {
@@ -363,6 +363,7 @@ public:
         }
         // Then handle input coming from our SyncTimer
         inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
+        eventIndex = 0;
         while (eventIndex < jack_midi_get_event_count(inputBuffer)) {
             if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
                 qWarning() << "ZLRouter: jack_midi_event_get, received note lost! We were supposed to have" << jack_midi_get_event_count(inputBuffer) << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
