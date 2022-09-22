@@ -265,6 +265,7 @@ public:
             jack_midi_clear_buffer(output->channelBuffer);
         }
         void *inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
+        // Explicitly process synctimer now, and copy it to a local buffer just for some belts and braces (in case jack decides to swap out the port buffer on us)
         syncTimer->process(nframes, inputBuffer);
         void *syncTimerCopy[8192];
         memcpy(syncTimerCopy, inputBuffer, nframes * sizeof(jack_midi_event_t));

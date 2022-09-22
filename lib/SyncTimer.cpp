@@ -357,8 +357,10 @@ public:
     quint64 jackNextPlaybackPosition{0};
     quint64 jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
+    // This looks like a Jack process call, but it is in fact called explicitly by MidiRouter for insurance purposes (doing it like
+    // this means we've got tighter control, and we really don't need to pass it through jack anyway)
     int process(jack_nframes_t nframes, void *buffer) {
-//         auto buffer = jack_port_get_buffer(jackPort, nframes);
+        // Clear the buffer that MidiRouter gives us, because we want to be sure we've got a blank slate to work with
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
         quint64 stepCount = 0;
@@ -542,7 +544,7 @@ public:
 };
 
 static int client_process(jack_nframes_t /*nframes*/, void* /*arg*/) {
-//     return static_cast<SyncTimerPrivate*>(arg)->process(nframes);
+    // Just roll empty, we're not really processing anything for SyncTimer here, MidiRouter does that explicitly
     return 0;
 }
 static int client_xrun(void* arg) {
