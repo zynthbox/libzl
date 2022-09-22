@@ -359,7 +359,6 @@ public:
     quint64 jackLatency{0};
     int process(jack_nframes_t nframes) {
         auto buffer = jack_port_get_buffer(jackPort, nframes);
-        jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
         quint64 stepCount = 0;
         QList<int> commandValues;
@@ -391,8 +390,21 @@ public:
         jack_nframes_t relativePosition{0};
         // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
         const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
-
         int errorCode{0};
+
+        // Find the first /real/ available frame, in case MidiRouter's not done reading things out yet
+        // This logic does make it possible for events to end up being asked to get scheduled into the next period,
+        // however we already compress the events into the time period they're supposed to exist in, so that ought
+        // to be safe.
+        uint32_t currentEventCount = jack_midi_get_event_count(buffer);
+        if (currentEventCount > 0) {
+            jack_midi_event_t event;
+            if (int err = jack_midi_event_get(&event, buffer, currentEventCount - 1)) {
+                qWarning() << "SyncTimer: jack_midi_event_get failed, presumably it was just cleared, so ignore. Reported error was:" << err << strerror(err);
+            } else {
+                firstAvailableFrame = event.time + 1;
+            }
+        }
         // Firstly, send out any buffers we've been told to send out immediately
         bool buffersDispatched{false};
         for (const juce::MidiBuffer &juceBuffer : buffersForImmediateDispatch) {
