@@ -615,20 +615,15 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                     jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
                     // Activate the client.
                     if (jack_activate(d->jackClient) == 0) {
+                        jack_latency_range_t range;
+                        jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
+                        jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
+                        jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
+                        d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
+                        qDebug() << "Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
+                        qDebug() << "However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
+                        Q_EMIT scheduleAheadAmountChanged();
                         qDebug() << "Successfully created and set up the SyncTimer's Jack client";
-                        if (jack_connect(d->jackClient, "SyncTimer:midi_out", "ZLRouter:SyncTimerIn") == 0) {
-                            qDebug() << "Successfully created and hooked up the sync timer's jack output to the midi router's input port";
-                            jack_latency_range_t range;
-                            jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
-                            jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
-                            jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
-                            d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
-                            qDebug() << "Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
-                            qDebug() << "However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
-                            Q_EMIT scheduleAheadAmountChanged();
-                        } else {
-                            qWarning() << "Failed to connect the SyncTimer's Jack midi output to ZLRouter:SyncTimerIn";
-                        }
                     } else {
                         qWarning() << "Failed to activate SyncTimer Jack client";
                     }
