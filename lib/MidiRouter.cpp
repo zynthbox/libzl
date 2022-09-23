@@ -91,6 +91,62 @@ struct MidiListenerPort {
     QList<NoteMessage*> messages;
 };
 
+// This class will watch what events ZynMidiRouter says it has handled, and just count them.
+// The logic is then that we can compare that with what we think we wrote out during the most
+// recent run in MidiRouter, and if they don't match, we can reissue the previous run's events
+class MidiRouterWatchdog {
+public:
+    MidiRouterWatchdog();
+    ~MidiRouterWatchdog() {
+        if (client) {
+            jack_client_close(client);
+        }
+    }
+    jack_client_t *client{nullptr};
+    jack_port_t *port{nullptr};
+
+    uint32_t mostRecentEventCount{0};
+    int process(jack_nframes_t nframes) {
+        void *buffer = jack_port_get_buffer(port, nframes);
+        mostRecentEventCount = jack_midi_get_event_count(buffer);
+        return 0;
+    }
+};
+
+int watchdog_process(jack_nframes_t nframes, void *arg) {
+    return static_cast<MidiRouterWatchdog*>(arg)->process(nframes);
+}
+
+MidiRouterWatchdog::MidiRouterWatchdog()
+{
+    jack_status_t real_jack_status{};
+    client = jack_client_open("ZLRouterWatchdog", JackNullOption, &real_jack_status);
+    if (client) {
+        port = jack_port_register(client, "ZynMidiRouterIn", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
+        if (port) {
+            // Set the process callback.
+            if (jack_set_process_callback(client, watchdog_process, static_cast<void*>(this)) == 0) {
+                if (jack_activate(client) == 0) {
+                    int result = jack_connect(client, "ZynMidiRouter:midi_out", "ZLRouterWatchdog:ZynMidiRouterIn");
+                    if (result == 0 || result == EEXIST) {
+                        qDebug() << "ZLRouter Watchdog: Set up the watchdog for ZynMidiRouter, which lets us keep a track of what events are going through";
+                    } else {
+                        qWarning() << "ZLRouter Watchdog: Failed to connect to ZynMidiRouter's midi output port";
+                    }
+                } else {
+                    qWarning() << "ZLRouter Watchdog: Failed to activate the Jack client";
+                }
+            } else {
+                qWarning() << "ZLRouter Watchdog: Failed to set Jack processing callback";
+            }
+        } else {
+            qWarning() << "ZLRouter Watchdog: Failed to register watchdog port";
+        }
+    } else {
+        qWarning() << "ZLRouter Watchdog: Failed to create Jack client";
+    }
+}
+
 jack_time_t expected_next_usecs{0};
 class MidiRouterPrivate {
 public:
@@ -122,9 +178,11 @@ public:
         delete internalPassthroughListener;
         delete hardwareInListener;
         delete externalOutListener;
+        delete watchdog;
     };
 
     MidiRouter *q;
+    MidiRouterWatchdog *watchdog{new MidiRouterWatchdog};
     SyncTimer *syncTimer{nullptr};
     bool done{false};
     bool constructing{true};
@@ -229,7 +287,7 @@ public:
             errorCode = jack_midi_event_write(buffer, output->mostRecentTime, event.buffer, event.size);
         }
         if (errorCode == 0) {
-            if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to buffer on channel" << currentChannel << "for port" << output->portName << "with data" << event.buffer[0] << event.buffer[1]; }
+            if (DebugZLRouter) { qDebug() << "ZLRouter: Wrote event to buffer at time" << QString::number(event.time).rightJustified(4, ' ') << "on channel" << currentChannel << "for port" << output->portName << "with data" << event.buffer[0] << event.buffer[1]; }
         } else {
             if (errorCode == -ENOBUFS) {
                 qWarning() << "ZLRouter: Ran out of space while writing events!";
@@ -245,6 +303,7 @@ public:
         }
     }
 
+    uint32_t mostRecentEventsForZynthian{0};
     QAtomicInt jack_xrun_count{0};
     int process(jack_nframes_t nframes) {
         jack_nframes_t current_frames;
@@ -256,20 +315,34 @@ public:
         const quint64 &subbeatLengthInMicroseconds = syncTimer->jackSubbeatLengthInMicroseconds();
         // Actual playhead (or as close as we're going to reasonably get, let's not get too crazy here)
         const quint64 currentJackPlayhead = syncTimer->jackPlayhead() - (period_usecs / subbeatLengthInMicroseconds);
+
+        // TODO Maybe what we should do is reissue all of the previous run's events at immediate time
+        // instead, so they all happen /now/ instead of offset by, effectively, nframes samples
+        bool shouldClearBuffer{true};
+        if (watchdog->mostRecentEventCount < mostRecentEventsForZynthian) {
+            qWarning() << "ZLRouter: Apparently the last run lost events in Zynthian - let's assume that it broke super badly and not clear our output buffers so things can catch back up";
+            shouldClearBuffer = false;
+        }
         // Get all our output channels' buffers and clear them, if there was one previously set.
         // A little overly protective, given how lightweight the functions are, but might as well
         // be lighter-weight about it.
         for (ChannelOutput *output : qAsConst(outputs)) {
             output->mostRecentTime = 0;
             output->channelBuffer = jack_port_get_buffer(output->port, nframes);
-            jack_midi_clear_buffer(output->channelBuffer);
+            if (shouldClearBuffer) {
+                jack_midi_clear_buffer(output->channelBuffer);
+            }
         }
         zynthianOutputPort->mostRecentTime = 0;
         zynthianOutputPort->channelBuffer = jack_port_get_buffer(zynthianOutputPort->port, nframes);
-        jack_midi_clear_buffer(zynthianOutputPort->channelBuffer);
+        if (shouldClearBuffer) {
+            jack_midi_clear_buffer(zynthianOutputPort->channelBuffer);
+        }
         externalOutputPort->mostRecentTime = 0;
         externalOutputPort->channelBuffer = jack_port_get_buffer(externalOutputPort->port, nframes);
-        jack_midi_clear_buffer(externalOutputPort->channelBuffer);
+        if (shouldClearBuffer) {
+            jack_midi_clear_buffer(externalOutputPort->channelBuffer);
+        }
         void *inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
         // Explicitly process synctimer now, and copy it to a local buffer just for some belts and braces (in case jack decides to swap out the port buffer on us)
         syncTimer->process(nframes, inputBuffer);
@@ -284,6 +357,7 @@ public:
         inputBuffer = syncTimerCopy;
         eventIndex = 0;
         const uint32_t eventCount = jack_midi_get_event_count(syncTimerCopy);
+        uint32_t nonEmittedEvents{0};
         while (eventIndex < eventCount) {
             if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
                 qWarning() << "ZLRouter: jack_midi_event_get, received note lost! We were supposed to have" << eventCount << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
@@ -331,6 +405,7 @@ public:
                                 if (isNoteMessage) {
                                     addMessage(MidiRouter::InternalPassthroughPort, currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds), midiNote, eventChannel, velocity, setOn, event);
                                 }
+                                ++nonEmittedEvents;
                                 break;
                         }
                     } else {
@@ -339,6 +414,19 @@ public:
                 }
             }
             ++eventIndex;
+        }
+        if (DebugZLRouter && eventCount > 0) {
+            uint32_t totalEvents{nonEmittedEvents};
+            for (ChannelOutput *output : outputs) {
+                totalEvents += jack_midi_get_event_count(output->channelBuffer);
+            }
+            const uint32_t zynthianEventCount{jack_midi_get_event_count(zynthianOutputPort->channelBuffer)};
+            totalEvents += zynthianEventCount;
+            totalEvents += jack_midi_get_event_count(externalOutputPort->channelBuffer);
+            qDebug() << "ZLRouter: Synctimer event count:" << eventCount << " - Events written:" << totalEvents << "Events targeting zynthian:" << zynthianEventCount;
+            if (eventCount != totalEvents) {
+                qWarning() << "ZLRouter: We wrote an incorrect number of events somehow!" << eventCount << "is not the same as" << totalEvents;
+            }
         }
 
         // Handle all the hardware input - magic for the ones we want to direct to external ports, and straight passthrough for ones aimed at zynthian
@@ -433,6 +521,7 @@ public:
                 }
             }
         }
+        mostRecentEventsForZynthian = jack_midi_get_event_count(zynthianOutputPort->channelBuffer);
         return 0;
     }
     int xrun() {
