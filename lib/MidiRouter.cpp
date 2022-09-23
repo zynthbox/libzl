@@ -587,7 +587,9 @@ MidiRouter::MidiRouter(QObject *parent)
                 d->hardwareInputConnector->setSingleShot(true);
                 d->hardwareInputConnector->setInterval(300);
                 connect(d->hardwareInputConnector, &QTimer::timeout, this, [this](){ d->connectHardwareInputs(); });
-                const QString zmrPort{"ZynMidiRouter:main_in"};
+                // To ensure we always have the expected channels, ZynMidiRouter wants us to use step_in
+                // (or it'll rewrite to whatever it thinks the current channel is)
+                const QString zmrPort{"ZynMidiRouter:step_in"};
                 // We technically only have ten channels, but there's no reason we can't handle 16... so, let's do it like so
                 for (int channel = 0; channel < 16; ++channel) {
                     ChannelOutput *output = new ChannelOutput(channel);
