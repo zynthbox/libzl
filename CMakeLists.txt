@@ -44,6 +44,7 @@ target_sources(libzl
         lib/Helper.cpp
         lib/QPainterContext.cpp
         lib/WaveFormItem.cpp
+        lib/JackPassthrough.cpp
         lib/AudioLevels.cpp)
 
 set(libzl_headers
