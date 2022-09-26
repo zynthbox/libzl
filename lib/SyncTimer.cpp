@@ -427,6 +427,7 @@ public:
         if (buffersDispatched) {
             buffersForImmediateDispatch.clear();
         }
+        juce::MidiBuffer missingBitsBuffer;
         while (stepNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
             StepData *stepData = stepRing.at(stepReadHead);
             // Next roll for next time (also do it now, as we're reading out of it)
@@ -458,8 +459,9 @@ public:
                             size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
                         );
                         if (errorCode == ENOBUFS) {
-                            qWarning() << "Ran out of space while writing events!";
-                            // TODO Maybe schedule the rest of the buffer for immediate dispatch on next go-around?
+                            qWarning() << "Ran out of space while writing events - scheduling the event there's not enough space for to be fired first next round";
+                            // Schedule the rest of the buffer for immediate dispatch on next go-around
+                            missingBitsBuffer.addEvent(juceMessage.getMessage(), 0);
                         } else {
                             if (errorCode != 0) {
                                 qWarning() << Q_FUNC_INFO << "Error writing midi event:" << -errorCode << strerror(-errorCode);
@@ -522,6 +524,12 @@ public:
 #endif
             }
             stepNextPlaybackPosition += jackSubbeatLengthInMicroseconds;
+        }
+        // If we've had anything added to the buffer for missing bits, make sure we append that for next time 'round.
+        // As a note, this is most likely to be an extremely rare situation (that's kind of a lot of events), but just
+        // in case, it's good to cover this base.
+        if (!missingBitsBuffer.isEmpty()) {
+            buffersForImmediateDispatch.append(missingBitsBuffer);
         }
         if (eventCount > 0) {
             if (uint32_t lost = jack_midi_get_lost_event_count(buffer)) {
