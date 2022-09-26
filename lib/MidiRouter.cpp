@@ -283,7 +283,7 @@ public:
         int errorCode = jack_midi_event_write(buffer, event.time, event.buffer, event.size);
         if (errorCode == -EINVAL) {
             // If the error invalid happens, we should likely assume the event was out of order for whatever reason, and just schedule it at the same time as the most recently scheduled event
-            qWarning() << "ZLRouter: Attempted to write out-of-order event for time" << event.time << "so writing to most recent instead:" << output->mostRecentTime;
+            if (DebugZLRouter) { qWarning() << "ZLRouter: Attempted to write out-of-order event for time" << event.time << "so writing to most recent instead:" << output->mostRecentTime; }
             errorCode = jack_midi_event_write(buffer, output->mostRecentTime, event.buffer, event.size);
         }
         if (errorCode == 0) {
