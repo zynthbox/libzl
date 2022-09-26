@@ -319,28 +319,30 @@ public:
         // TODO Maybe what we should do is reissue all of the previous run's events at immediate time
         // instead, so they all happen /now/ instead of offset by, effectively, nframes samples
         bool shouldClearBuffer{true};
+        uint32_t unclearedMessages{0};
         if (watchdog->mostRecentEventCount < mostRecentEventsForZynthian) {
-            qWarning() << "ZLRouter: Apparently the last run lost events in Zynthian - let's assume that it broke super badly and not clear our output buffers so things can catch back up";
+            if (DebugZLRouter) { qWarning() << "ZLRouter: Apparently the last run lost events in Zynthian (received" << watchdog->mostRecentEventCount << "events, we sent out" << mostRecentEventsForZynthian << "events) - let's assume that it broke super badly and not clear our output buffers so things can catch back up"; }
             shouldClearBuffer = false;
+            unclearedMessages = watchdog->mostRecentEventCount;
         }
         // Get all our output channels' buffers and clear them, if there was one previously set.
         // A little overly protective, given how lightweight the functions are, but might as well
         // be lighter-weight about it.
         for (ChannelOutput *output : qAsConst(outputs)) {
-            output->mostRecentTime = 0;
             output->channelBuffer = jack_port_get_buffer(output->port, nframes);
             if (shouldClearBuffer) {
+                output->mostRecentTime = 0;
                 jack_midi_clear_buffer(output->channelBuffer);
             }
         }
-        zynthianOutputPort->mostRecentTime = 0;
         zynthianOutputPort->channelBuffer = jack_port_get_buffer(zynthianOutputPort->port, nframes);
         if (shouldClearBuffer) {
+            zynthianOutputPort->mostRecentTime = 0;
             jack_midi_clear_buffer(zynthianOutputPort->channelBuffer);
         }
-        externalOutputPort->mostRecentTime = 0;
         externalOutputPort->channelBuffer = jack_port_get_buffer(externalOutputPort->port, nframes);
         if (shouldClearBuffer) {
+            externalOutputPort->mostRecentTime = 0;
             jack_midi_clear_buffer(externalOutputPort->channelBuffer);
         }
         void *inputBuffer = jack_port_get_buffer(syncTimerMidiInPort, nframes);
@@ -357,7 +359,7 @@ public:
         inputBuffer = syncTimerCopy;
         eventIndex = 0;
         const uint32_t eventCount = jack_midi_get_event_count(syncTimerCopy);
-        uint32_t nonEmittedEvents{0};
+        uint32_t nonEmittedEvents{unclearedMessages};
         while (eventIndex < eventCount) {
             if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
                 qWarning() << "ZLRouter: jack_midi_event_get, received note lost! We were supposed to have" << eventCount << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
