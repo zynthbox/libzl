@@ -1,4 +1,5 @@
 #include "MidiRouter.h"
+#include "JackPassthrough.h"
 #include "SyncTimer.h"
 #include "libzl.h"
 
@@ -184,6 +185,7 @@ public:
     MidiRouter *q;
     MidiRouterWatchdog *watchdog{new MidiRouterWatchdog};
     SyncTimer *syncTimer{nullptr};
+    JackPassthrough *globalEffectsPassthrough{nullptr};
     bool done{false};
     bool constructing{true};
     bool filterMidiOut{false};
@@ -721,6 +723,9 @@ MidiRouter::MidiRouter(QObject *parent)
     } else {
         qWarning() << "ZLRouter: Could not create the ZLRouter Jack client.";
     }
+
+    d->globalEffectsPassthrough = new JackPassthrough("GlobalFXPassthrough", this);
+
     d->constructing = false;
     start();
 }
