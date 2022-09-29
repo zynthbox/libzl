@@ -20,6 +20,8 @@
 
 using namespace juce;
 
+#define SAMPLER_CHANNEL_VOICE_COUNT 8
+
 struct SamplerCommand {
     ClipCommand* clipCommand{nullptr};
     quint64 timestamp;
@@ -45,7 +47,7 @@ public:
     jack_port_t *rightPort{nullptr};
     QString portNameRight{"right_out"};
     int midiChannel{-1};
-    QList<SamplerSynthVoice *> voices;
+    SamplerSynthVoice* voices[SAMPLER_CHANNEL_VOICE_COUNT];
     int process(jack_nframes_t nframes);
     float cpuLoad{0.0f};
 
@@ -85,9 +87,9 @@ SamplerChannel::SamplerChannel(const QString &clientName)
         if (jack_set_process_callback(jackClient, client_process, this) != 0) {
             qWarning() << "Failed to set the SamplerSynth Jack processing callback";
         } else {
-            for (int voiceIndex = 0; voiceIndex < 8; ++voiceIndex) {
+            for (int voiceIndex = 0; voiceIndex < SAMPLER_CHANNEL_VOICE_COUNT; ++voiceIndex) {
                 SamplerSynthVoice *voice = new SamplerSynthVoice();
-                voices << voice;
+                voices[voiceIndex] = voice;
             }
             leftPort = jack_port_register(jackClient, portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
             rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
