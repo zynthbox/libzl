@@ -204,7 +204,7 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
 
             const float clipVolume = d->clip->volumeAbsolute();
             const int stopPosition = playingSound->stopPosition(d->clipCommand->slice);
-            const int sampleDuration = playingSound->length();
+            const int sampleDuration = playingSound->length() - 1;
             for(jack_nframes_t frame = 0; frame < nframes; ++frame) {
                 auto pos = (int) d->sourceSamplePosition;
                 auto alpha = (float) (d->sourceSamplePosition - pos);
