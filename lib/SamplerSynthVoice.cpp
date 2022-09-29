@@ -205,21 +205,19 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
             const float clipVolume = d->clip->volumeAbsolute();
             const int stopPosition = playingSound->stopPosition(d->clipCommand->slice);
             const int sampleDuration = playingSound->length() - 1;
+            float mSignal, sSignal;
+            const float pan = (float) d->clip->pan();
+            const double sourceSampleRate = playingSound->sourceSampleRate();
+            const bool isLooping = d->clipCommand->looping;
             for(jack_nframes_t frame = 0; frame < nframes; ++frame) {
-                auto pos = (int) d->sourceSamplePosition;
-                auto alpha = (float) (d->sourceSamplePosition - pos);
-                auto invAlpha = 1.0f - alpha;
-                auto pan = (float) d->clip->pan();
+                const int pos = (int) d->sourceSamplePosition;
+                const float alpha = (float) (d->sourceSamplePosition - pos);
+                const float invAlpha = 1.0f - alpha;
+                const float envelopeValue = d->adsr.getNextSample();
 
                 // just using a very simple linear interpolation here..
-                float l = sampleDuration > pos ? (inL[pos] * invAlpha + inL[pos + 1] * alpha) : 0;
-                float r = (inR != nullptr && sampleDuration > pos) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha) : l;
-                float mSignal, sSignal;
-
-                auto envelopeValue = d->adsr.getNextSample();
-
-                l *= d->lgain * envelopeValue * clipVolume;
-                r *= d->rgain * envelopeValue * clipVolume;
+                float l = sampleDuration > pos ? (inL[pos] * invAlpha + inL[pos + 1] * alpha * d->lgain * envelopeValue * clipVolume): 0;
+                float r = (inR != nullptr && sampleDuration > pos) ? (inR[pos] * invAlpha + inR[pos + 1] * alpha * d->rgain * envelopeValue * clipVolume) : l;
 
                 // Implement M/S Panning
                 mSignal = 0.5 * (l + r);
@@ -227,13 +225,19 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
                 l = 0.5 * (1.0 + pan) * mSignal + sSignal;
                 r = 0.5 * (1.0 - pan) * mSignal - sSignal;
 
-                leftBuffer[frame] += l;
-                rightBuffer[frame] += r;
-                peakGain = qMax(peakGain, (l + r) * 0.5f);
+                const float newGain{(l + r) * 0.5f};
+                if (newGain > peakGain) {
+                    peakGain = newGain;
+                }
+
+                ++leftBuffer;
+                *leftBuffer += l;
+                ++rightBuffer;
+                *rightBuffer += r;
 
                 d->sourceSamplePosition += d->pitchRatio;
 
-                if (d->clipCommand->looping) {
+                if (isLooping) {
                     // beat align samples by reading clip duration in beats from clip, saving synctimer's jack playback positions in voice on startNote, and adjust in if (looping) section of process, and make sure the loop is restarted on that beat if deviation is sufficiently large (like... one timer tick is too much maybe?)
                     if (trunc(d->clip->getLengthInBeats()) == d->clip->getLengthInBeats()) {
                         // If the clip is actually a clean multiple of a number of beats, let's make sure it loops matching that beat position
@@ -249,19 +253,19 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
 //                             qDebug() << "Resetting - next tick" << d->nextLoopTick << "next usecs" << d->nextLoopUsecs << "difference to playhead" << differenceToPlayhead;
 
                             // Reset the sample playback position back to the start point
-                            d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
+                            d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * sourceSampleRate);
                         }
                     } else if (d->sourceSamplePosition >= stopPosition) {
                         // If we're not beat-matched, just loop "normally"
                         // TODO Switch start position for the loop position here
-                        d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
+                        d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * sourceSampleRate);
                     }
                 } else {
                     if (d->sourceSamplePosition >= stopPosition)
                     {
                         stopNote (0.0f, false);
                         break;
-                    } else if (d->sourceSamplePosition >= (stopPosition - (d->adsr.getParameters().release * playingSound->sourceSampleRate()))) {
+                    } else if (d->sourceSamplePosition >= (stopPosition - (d->adsr.getParameters().release * sourceSampleRate))) {
                         // ...really need a way of telling that this has been done already (it's not dangerous, just not pretty, there's maths in there)
                         stopNote (0.0f, true);
                     }
