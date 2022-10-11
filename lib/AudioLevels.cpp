@@ -131,6 +131,7 @@ public:
         }
         delete diskRecorder;
     }
+    void setup();
     int process(jack_nframes_t nframes);
     jack_port_t *leftPort{nullptr};
     jack_default_audio_sample_t *leftBuffer{nullptr};
@@ -143,6 +144,7 @@ public:
     float peakBHoldSignal{0};
     int peakA{0};
     int peakB{0};
+    QString clientName;
 private:
     const float** recordingPassthroughBuffer{new const float* [2]};
 };
@@ -204,6 +206,12 @@ static int audioLevelsChannelProcess(jack_nframes_t nframes, void* arg) {
 }
 
 AudioLevelsChannel::AudioLevelsChannel(const QString &clientName)
+    : clientName(clientName)
+{
+    setup();
+}
+
+void AudioLevelsChannel::setup()
 {
     jack_status_t real_jack_status{};
     jackClient = jack_client_open(clientName.toUtf8(), JackNullOption, &real_jack_status);
@@ -216,7 +224,7 @@ AudioLevelsChannel::AudioLevelsChannel(const QString &clientName)
             rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
             // Activate the client.
             if (jack_activate(jackClient) == 0) {
-                qDebug() << "Successfully created and set up" << clientName;
+                qDebug() << "Successfully created and set up" << clientName << "with status" << real_jack_status;
             } else {
                 qWarning() << "Failed to activate AudioLevelsChannel Jack client" << clientName;
             }
@@ -230,13 +238,26 @@ inline float addFloat(const float& db1, const float &db2) {
 
 int AudioLevelsChannel::process(jack_nframes_t nframes)
 {
-    leftBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(leftPort, nframes);
-    rightBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(rightPort, nframes);
-    bufferReadSize = nframes;
-    if (diskRecorder->isRecording()) {
-        recordingPassthroughBuffer[0] = leftBuffer;
-        recordingPassthroughBuffer[1] = rightBuffer;
-        diskRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
+    if (jackClient && leftPort && rightPort) {
+        leftBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(leftPort, nframes);
+        rightBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(rightPort, nframes);
+        if (!leftBuffer || !rightBuffer) {
+            qWarning() << Q_FUNC_INFO << jack_get_client_name(jackClient) << "has incorrect ports and things are unhappy - how to fix, though...";
+            leftPort = rightPort = nullptr;
+            bufferReadSize = 0;
+            // FIXME This call causes a crash, but it also crashes when called elsewhere in the situation above, and
+            // so doing it here causes an earlier crash, which causes everything to restart, so it's less
+            // impacting... It will need fixing, but putting the crash here is less-impact for now...
+//             jack_client_close(jackClient);
+            jackClient = nullptr;
+        } else {
+            bufferReadSize = nframes;
+        }
+        if (diskRecorder->isRecording()) {
+            recordingPassthroughBuffer[0] = leftBuffer;
+            recordingPassthroughBuffer[1] = rightBuffer;
+            diskRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
+        }
     }
     return 0;
 }
@@ -310,53 +331,56 @@ void AudioLevels::timerCallback() {
     // 2^17 = 131072
     static const float floatToIntMultiplier{131072};
     for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
-        channel->peakA = qMax(0, channel->peakA - 10000);
-        channel->peakB = qMax(0, channel->peakB - 10000);
-        if (channel->bufferReadSize > 0) {
-            // Peak checkery for the left channel
-            portBuffer = channel->leftBuffer;
-            portBufferEnd = portBuffer + channel->bufferReadSize;
-            for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
-                if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
-                const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
-                if (sampleValue > channel->peakA) {
-                    channel->peakA = sampleValue;
+        // If the setup is broken (as detected during process), re-setup the channel
+        if (channel->leftPort && channel->rightPort) {
+            channel->peakA = qMax(0, channel->peakA - 10000);
+            channel->peakB = qMax(0, channel->peakB - 10000);
+            if (channel->bufferReadSize > 0) {
+                // Peak checkery for the left channel
+                portBuffer = channel->leftBuffer;
+                portBufferEnd = portBuffer + channel->bufferReadSize;
+                for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
+                    if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
+                    const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
+                    if (sampleValue > channel->peakA) {
+                        channel->peakA = sampleValue;
+                    }
                 }
-            }
 
-            // Peak checkery for the right channel
-            portBuffer = channel->rightBuffer;
-            portBufferEnd = portBuffer + channel->bufferReadSize;
-            for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
-                if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
-                const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
-                if (sampleValue > channel->peakB) {
-                    channel->peakB = sampleValue;
+                // Peak checkery for the right channel
+                portBuffer = channel->rightBuffer;
+                portBufferEnd = portBuffer + channel->bufferReadSize;
+                for (const float* channelSample = portBuffer; channelSample < portBufferEnd; channelSample += quarterSpot) {
+                    if (channelSample == nullptr || channelSample >= portBufferEnd) { break; }
+                    const int sampleValue = abs(floatToIntMultiplier * (*channelSample));
+                    if (sampleValue > channel->peakB) {
+                        channel->peakB = sampleValue;
+                    }
                 }
+                channel->bufferReadSize = 0;
             }
-            channel->bufferReadSize = 0;
-        }
-        const float peakA{channel->peakA * intToFloatMultiplier}, peakB{channel->peakB * intToFloatMultiplier};
-        const float peakDbA{convertTodbFS(peakA)},
-                    peakDbB{convertTodbFS(peakB)};
-        if (channelIndex == 0) {
-            captureA = peakDbA <= -200 ? -200 : peakDbA;
-            captureB = peakDbB <= -200 ? -200 : peakDbB;
-        } else if (channelIndex == 1) {
-            playbackA = peakDbA <= -200 ? -200 : peakDbA;
-            playbackB = peakDbB <= -200 ? -200 : peakDbB;
-            channel->peakAHoldSignal = (peakA >= channel->peakAHoldSignal) ? peakA : channel->peakAHoldSignal * 0.9f;
-            channel->peakBHoldSignal = (peakB >= channel->peakBHoldSignal) ? peakB : channel->peakBHoldSignal * 0.9f;
-            playbackAHold = convertTodbFS(channel->peakAHoldSignal);
-            playbackBHold = convertTodbFS(channel->peakBHoldSignal);
-        } else if (channelIndex == 2) {
-            recordingA = peakDbA <= -200 ? -200 : peakDbA;
-            recordingB = peakDbB <= -200 ? -200 : peakDbB;
-        } else {
-            const int sketchpadChannelIndex{channelIndex - 3};
-            channelsA[sketchpadChannelIndex] = peakDbA <= -200 ? -200 : peakDbA;
-            channelsB[sketchpadChannelIndex] = peakDbB <= -200 ? -200 : peakDbB;
-            d->levels[sketchpadChannelIndex].setValue<float>(addFloat(channelsA[sketchpadChannelIndex], channelsB[sketchpadChannelIndex]));
+            const float peakA{channel->peakA * intToFloatMultiplier}, peakB{channel->peakB * intToFloatMultiplier};
+            const float peakDbA{convertTodbFS(peakA)},
+                        peakDbB{convertTodbFS(peakB)};
+            if (channelIndex == 0) {
+                captureA = peakDbA <= -200 ? -200 : peakDbA;
+                captureB = peakDbB <= -200 ? -200 : peakDbB;
+            } else if (channelIndex == 1) {
+                playbackA = peakDbA <= -200 ? -200 : peakDbA;
+                playbackB = peakDbB <= -200 ? -200 : peakDbB;
+                channel->peakAHoldSignal = (peakA >= channel->peakAHoldSignal) ? peakA : channel->peakAHoldSignal * 0.9f;
+                channel->peakBHoldSignal = (peakB >= channel->peakBHoldSignal) ? peakB : channel->peakBHoldSignal * 0.9f;
+                playbackAHold = convertTodbFS(channel->peakAHoldSignal);
+                playbackBHold = convertTodbFS(channel->peakBHoldSignal);
+            } else if (channelIndex == 2) {
+                recordingA = peakDbA <= -200 ? -200 : peakDbA;
+                recordingB = peakDbB <= -200 ? -200 : peakDbB;
+            } else {
+                const int sketchpadChannelIndex{channelIndex - 3};
+                channelsA[sketchpadChannelIndex] = peakDbA <= -200 ? -200 : peakDbA;
+                channelsB[sketchpadChannelIndex] = peakDbB <= -200 ? -200 : peakDbB;
+                d->levels[sketchpadChannelIndex].setValue<float>(addFloat(channelsA[sketchpadChannelIndex], channelsB[sketchpadChannelIndex]));
+            }
         }
         ++channelIndex;
     }
@@ -364,6 +388,21 @@ void AudioLevels::timerCallback() {
 }
 
 const QVariantList AudioLevels::getChannelsAudioLevels() {
+    int channelIndex{0};
+    for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
+        if (channel->leftPort == nullptr || channel->rightPort == nullptr) {
+            QTimer::singleShot(0, this, [this, channel, channelIndex](){
+                qDebug() << "Replacing jack client for" << channel->clientName;
+                channel->setup();
+                if (channelIndex == 0) {
+                    d->jackClient = channel->jackClient;
+                    d->connectPorts("system:capture_1", "AudioLevels-SystemCapture:left_in");
+                    d->connectPorts("system:capture_2", "AudioLevels-SystemCapture:right_in");
+                }
+            });
+        }
+        ++channelIndex;
+    }
     return d->levels;
 }
 
