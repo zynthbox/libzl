@@ -38,10 +38,8 @@
 using namespace std;
 using namespace juce;
 
-struct StepData {
-    StepData() {
-        midiBuffers << juce::MidiBuffer();
-    }
+struct alignas(64) StepData {
+    StepData() { }
     ~StepData() {
         qDeleteAll(timerCommands);
         qDeleteAll(clipCommands);
@@ -60,14 +58,17 @@ struct StepData {
             // The clip commands, once sent out, become owned by SampelerSynth, so leave them alone
             timerCommands.clear();
             clipCommands.clear();
-            midiBuffers.clear();
-            // Create one midi buffer to insert the base message into
-            midiBuffers << juce::MidiBuffer();
+            midiBuffer.clear();
         }
     }
-    QList<TimerCommand*> timerCommands;
+    void insertMidiBuffer(const juce::MidiBuffer &buffer) {
+        midiBuffer.addEvents(buffer, 0, -1, midiBuffer.getLastEventTime());
+    }
+    juce::MidiBuffer midiBuffer;
     QList<ClipCommand*> clipCommands;
-    QList<juce::MidiBuffer> midiBuffers;
+    QList<TimerCommand*> timerCommands;
+
+    quint64 index{0};
 
     // SyncTimer sets this true to mark that it has played the step
     bool played{false};
@@ -246,6 +247,7 @@ private:
     bool paused{true};
 };
 
+#define StepRingCount 32768
 SyncTimerThread *timerThread{nullptr};
 class SyncTimerPrivate {
 public:
@@ -253,9 +255,11 @@ public:
         : q(q)
     {
         timerThread = new SyncTimerThread(q);
-        for (quint64 i = 0; i < stepRingCount; ++i) {
-            stepRing << new StepData;
+        for (quint64 i = 0; i < StepRingCount; ++i) {
+            stepRingIterator[i].index = i;
+            stepRing << &stepRingIterator[i];
         }
+        stepReadHead = stepRingIterator;
         samplerSynth = SamplerSynth::instance();
         // Dangerzone - direct connection from another thread. Yes, dangerous, but also we need the precision, so we need to dill whit it
         QObject::connect(timerThread, &SyncTimerThread::timeout, q, [this](){ hiResTimerCallback(); }, Qt::DirectConnection);
@@ -279,13 +283,12 @@ public:
     quint64 cumulativeBeat = 0;
     QList<void (*)(int)> callbacks;
     QList<ClipCommand*> sentOutClips;
-    QList<juce::MidiBuffer> buffersForImmediateDispatch;
 
     QList<StepData*> stepRing;
+    StepData stepRingIterator[StepRingCount];
     // The next step to be read in the step ring
-    quint64 stepReadHead{0};
+    StepData* stepReadHead{nullptr};
     quint64 stepNextPlaybackPosition{0};
-    static const quint64 stepRingCount{32768};
     /**
      * \brief Get the ring buffer position based on the given delay from the current playback position (cumulativeBeat if playing, or stepReadHead if not playing)
      * @param delay The delay of the position to use
@@ -293,12 +296,12 @@ public:
      */
     inline int delayedStep(quint64 delay) {
         quint64 step{0};
-        if (timerThread->isPaused()) {
+        if (isPaused) {
             // If paused, base the delay on the current stepReadHead
-            step = (stepReadHead + delay + 1) % stepRingCount;
+            step = ((*stepReadHead).index + delay + 1) % StepRingCount;
         } else {
             // If running, base the delay on the current cumulativeBeat (adjusted to at least stepReadHead, just in case)
-            step = (stepReadHeadOnStart + qMax(cumulativeBeat + delay, jackPlayhead + 1)) % stepRingCount;
+            step = (stepReadHeadOnStart + qMax(cumulativeBeat + delay, jackPlayhead + 1)) % StepRingCount;
         }
 //         if (stepRing.at(step)->isPlaying) {
 //             step = (step + 1) % stepRingCount;
@@ -357,9 +360,10 @@ public:
     quint64 jackNextPlaybackPosition{0};
     quint64 jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
+    bool isPaused{true};
     // This looks like a Jack process call, but it is in fact called explicitly by MidiRouter for insurance purposes (doing it like
     // this means we've got tighter control, and we really don't need to pass it through jack anyway)
-    int process(jack_nframes_t nframes, void *buffer) {
+    int process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayheadReturn, quint64 *jackSubbeatLengthInMicrosecondsReturn) {
         // Clear the buffer that MidiRouter gives us, because we want to be sure we've got a blank slate to work with
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -378,7 +382,11 @@ public:
         float period_usecs;
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
 
-        if (!timerThread->isPaused()) {
+        // Setting here because we need the this-process value, not the next-process
+        *jackPlayheadReturn = jackPlayhead;
+        *jackSubbeatLengthInMicrosecondsReturn = jackSubbeatLengthInMicroseconds;
+
+        if (!isPaused) {
             if (jackPlayhead == 0) {
                 // first run for this playback session, let's do a touch of setup
                 jackNextPlaybackPosition = current_usecs;
@@ -395,49 +403,19 @@ public:
         const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
         int errorCode{0};
 
-        // Firstly, send out any buffers we've been told to send out immediately
-        bool buffersDispatched{false};
-        for (const juce::MidiBuffer &juceBuffer : buffersForImmediateDispatch) {
-            relativePosition = firstAvailableFrame;
-            ++firstAvailableFrame;
-            for (const juce::MidiMessageMetadata &juceMessage : juceBuffer) {
-                errorCode = jack_midi_event_write(buffer, relativePosition,
-                    const_cast<jack_midi_data_t*>(juceMessage.data), // this might seems odd, but it's really only because juce's internal store is const here, and the data types are otherwise the same
-                    size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
-                );
-                if (errorCode == -ENOBUFS) {
-                    qWarning() << "Ran out of space while writing events!";
-                } else {
-                    if (errorCode != 0) {
-                        qWarning() << Q_FUNC_INFO << "Error writing midi event:" << -errorCode << strerror(-errorCode);
-                    }
-                    ++eventCount;
-#ifdef DEBUG_SYNCTIMER_JACK
-                    commandValues << juceMessage.data[0];
-                    noteValues << juceMessage.data[1];
-                    velocities << juceMessage.data[2];
-#endif
-                }
-            }
-            if (firstAvailableFrame >= nframes) {
-                break;
-            }
-            buffersDispatched = true;
-        }
-        if (buffersDispatched) {
-            buffersForImmediateDispatch.clear();
-        }
-        juce::MidiBuffer missingBitsBuffer;
+        juce::MidiBuffer *missingBitsBuffer{nullptr};
+        int clipCount{0};
         while (stepNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
-            StepData *stepData = stepRing.at(stepReadHead);
+            StepData &stepData = *stepReadHead;
             // Next roll for next time (also do it now, as we're reading out of it)
-            ++stepReadHead;
-            if (stepReadHead == stepRingCount) {
-                stepReadHead = 0;
+            if (stepData.index + 1 == StepRingCount) {
+                stepReadHead = stepRingIterator;
+            } else {
+                ++stepReadHead;
             }
             // In case we're cycling through stuff we've already played, let's just... not do anything with that
             // Basically that just means nobody else has attempted to do stuff with the step since we last played it
-            if (!stepData->played) {
+            if (!stepData.played) {
 //                 stepData->isPlaying = true;
                 // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
                 if (stepNextPlaybackPosition <= current_usecs) {
@@ -448,45 +426,48 @@ public:
                     firstAvailableFrame = relativePosition;
                 }
                 // First, let's get the midi messages sent out
-                for (const juce::MidiBuffer &juceBuffer : qAsConst(stepData->midiBuffers)) {
+                for (const juce::MidiMessageMetadata &juceMessage : qAsConst(stepData.midiBuffer)) {
                     if (firstAvailableFrame >= nframes) {
                         qWarning() << "First available frame is in the future - that's a problem";
                         break;
                     }
-                    for (const juce::MidiMessageMetadata &juceMessage : juceBuffer) {
-                        errorCode = jack_midi_event_write(buffer, relativePosition,
-                            const_cast<jack_midi_data_t*>(juceMessage.data), // this might seems odd, but it's really only because juce's internal store is const here, and the data types are otherwise the same
-                            size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
-                        );
-                        if (errorCode == ENOBUFS) {
-                            qWarning() << "Ran out of space while writing events - scheduling the event there's not enough space for to be fired first next round";
-                            // Schedule the rest of the buffer for immediate dispatch on next go-around
-                            missingBitsBuffer.addEvent(juceMessage.getMessage(), 0);
-                        } else {
-                            if (errorCode != 0) {
-                                qWarning() << Q_FUNC_INFO << "Error writing midi event:" << -errorCode << strerror(-errorCode);
-                            }
-                            ++eventCount;
-#ifdef DEBUG_SYNCTIMER_JACK
-                            commandValues << juceMessage.data[0]; noteValues << juceMessage.data[1]; velocities << juceMessage.data[2];
-#endif
+                    errorCode = jack_midi_event_write(buffer, relativePosition,
+                        const_cast<jack_midi_data_t*>(juceMessage.data), // this might seems odd, but it's really only because juce's internal store is const here, and the data types are otherwise the same
+                        size_t(juceMessage.numBytes) // this changes signedness, but from a lesser space (int) to a larger one (unsigned long)
+                    );
+                    if (errorCode == ENOBUFS) {
+                        qWarning() << "Ran out of space while writing events - scheduling the event there's not enough space for to be fired first next round";
+                        if (!missingBitsBuffer) {
+                            missingBitsBuffer = new juce::MidiBuffer;
                         }
+                        // Schedule the rest of the buffer for immediate dispatch on next go-around
+                        missingBitsBuffer->addEvent(juceMessage.getMessage(), 0);
+                    } else {
+                        if (errorCode != 0) {
+                            qWarning() << Q_FUNC_INFO << "Error writing midi event:" << -errorCode << strerror(-errorCode);
+                        }
+                        ++eventCount;
+#ifdef DEBUG_SYNCTIMER_JACK
+                        commandValues << juceMessage.data[0]; noteValues << juceMessage.data[1]; velocities << juceMessage.data[2];
+#endif
                     }
                 }
 
                 // Then do direct-control samplersynth things
-                if (stepData->clipCommands.count() > 0) {
-                    for (ClipCommand *clipCommand : qAsConst(stepData->clipCommands)) {
-                        // Using the protected function, which only we (and SamplerSynth) can use, to ensure less locking
-                        samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
-                    }
-                    sentOutClips.append(stepData->clipCommands);
+                clipCount = 0;
+                for (ClipCommand *clipCommand : qAsConst(stepData.clipCommands)) {
+                    // Using the protected function, which only we (and SamplerSynth) can use, to ensure less locking
+                    samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
+                    ++clipCount;
+                }
+                if (clipCount > 0) {
+                    sentOutClips.append(stepData.clipCommands);
                 }
 
                 // Do playback control things as the last thing, otherwise we might end up affecting things
                 // currently happening (like, if we stop playback on the last step of a thing, we still want
                 // notes on that step to have been played and so on)
-                for (TimerCommand *command : qAsConst(stepData->timerCommands)) {
+                for (TimerCommand *command : qAsConst(stepData.timerCommands)) {
                     Q_EMIT q->timerCommand(command);
                     if (command->operation == TimerCommand::StartClipLoopOperation || command->operation == TimerCommand::StopClipLoopOperation) {
                         ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
@@ -512,10 +493,10 @@ public:
                         samplerSynth->setChannelEnabled(command->parameter, command->parameter2);
                     }
                 }
-                stepData->played = true;
+                stepData.played = true;
 //                 stepData->isPlaying = false;
             }
-            if (!timerThread->isPaused()) {
+            if (!isPaused) {
                 // Next roll for next time
                 ++jackPlayhead;
                 jackNextPlaybackPosition += jackSubbeatLengthInMicroseconds;
@@ -528,8 +509,9 @@ public:
         // If we've had anything added to the buffer for missing bits, make sure we append that for next time 'round.
         // As a note, this is most likely to be an extremely rare situation (that's kind of a lot of events), but just
         // in case, it's good to cover this base.
-        if (!missingBitsBuffer.isEmpty()) {
-            buffersForImmediateDispatch.append(missingBitsBuffer);
+        if (missingBitsBuffer) {
+            q->sendMidiBufferImmediately(*missingBitsBuffer);
+            delete missingBitsBuffer;
         }
         if (eventCount > 0) {
             if (uint32_t lost = jack_midi_get_lost_event_count(buffer)) {
@@ -582,6 +564,9 @@ SyncTimer::SyncTimer(QObject *parent)
     , d(new SyncTimerPrivate(this))
 {
     d->jackSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
+    connect(timerThread, &SyncTimerThread::pausedChanged, this, [this](){
+        d->isPaused = timerThread->isPaused();
+    });
 }
 
 void SyncTimer::addCallback(void (*functionPtr)(int)) {
@@ -672,7 +657,7 @@ void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
     QMutexLocker locker(&d->mutex);
 
     // First, remove any references to the clip that we're wanting to stop
-    for (quint64 step = 0; step < d->stepRingCount; ++step) {
+    for (quint64 step = 0; step < StepRingCount; ++step) {
         StepData *stepData = d->stepRing.at(step);
         if (!stepData->played) {
             QMutableListIterator<ClipCommand *> stepIterator(stepData->clipCommands);
@@ -710,7 +695,7 @@ void SyncTimer::start(int bpm) {
     d->intervals.clear();
     d->lastRound = frame_clock::now();
 #endif
-    d->stepReadHeadOnStart = d->stepReadHead;
+    d->stepReadHeadOnStart = (*d->stepReadHead).index;
     timerThread->resume();
 }
 
@@ -727,20 +712,18 @@ void SyncTimer::stop() {
     d->jackPlayhead = 0;
 
     // A touch of hackery to ensure we end immediately, and leave a clean state
-    for (quint64 step = 0; step < d->stepRingCount; ++step) {
-        StepData *stepData = d->stepRing.at((step + d->stepReadHead) % d->stepRingCount);
+    for (quint64 step = 0; step < StepRingCount; ++step) {
+        StepData *stepData = d->stepRing.at((step + (*d->stepReadHead).index) % StepRingCount);
         if (!stepData->played) {
             // First, spit out all the queued midi messages immediately, but in strict order, and only off notes...
             juce::MidiBuffer onlyOffs;
-            for (const juce::MidiBuffer& buffer : qAsConst(stepData->midiBuffers)) {
-                for (const juce::MidiMessageMetadata& message : buffer) {
-                    if (message.getMessage().isNoteOff()) {
-                        onlyOffs.addEvent(message.getMessage(), 0);
-                    }
+            for (const juce::MidiMessageMetadata& message : stepData->midiBuffer) {
+                if (message.getMessage().isNoteOff()) {
+                    onlyOffs.addEvent(message.getMessage(), 0);
                 }
             }
             if (!onlyOffs.isEmpty()) {
-                d->buffersForImmediateDispatch.append(onlyOffs);
+                sendMidiBufferImmediately(onlyOffs);
             }
             // Now for the clip commands
             for (ClipCommand *clipCommand : qAsConst(stepData->clipCommands)) {
@@ -816,7 +799,7 @@ quint64 SyncTimer::cumulativeBeat() const {
 const quint64 &SyncTimer::jackPlayhead() const
 {
     if (timerThread->isPaused()) {
-        return d->stepReadHead;
+        return (*d->stepReadHead).index;
     }
     return d->jackPlayhead;
 }
@@ -898,7 +881,7 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
 {
     StepData *stepData = d->stepRing.at(d->delayedStep(delay));
     stepData->ensureFresh();
-    juce::MidiBuffer &addToThis = stepData->midiBuffers[0];
+    juce::MidiBuffer &addToThis = stepData->midiBuffer;
     unsigned char note[3];
     if (setOn) {
         note[0] = 0x90 + midiChannel;
@@ -920,7 +903,7 @@ void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay
 //     qDebug() << Q_FUNC_INFO << "Adding buffer with" << buffer.getNumEvents() << "notes, with delay" << delay << "giving us ring step" << d->delayedStep(delay) << "at ring playhead" << d->stepReadHead << "with cumulative beat" << d->cumulativeBeat;
     StepData *stepData = d->stepRing.at(d->delayedStep(delay));
     stepData->ensureFresh();
-    stepData->midiBuffers << buffer;
+    stepData->insertMidiBuffer(buffer);
 }
 
 void SyncTimer::sendNoteImmediately(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity)
@@ -928,9 +911,9 @@ void SyncTimer::sendNoteImmediately(unsigned char midiNote, unsigned char midiCh
     StepData *stepData = d->stepRing.at(d->delayedStep(0));
     stepData->ensureFresh();
     if (setOn) {
-        stepData->midiBuffers << juce::MidiBuffer(juce::MidiMessage::noteOn(midiChannel + 1, midiNote, juce::uint8(velocity)));
+        stepData->insertMidiBuffer(juce::MidiBuffer(juce::MidiMessage::noteOn(midiChannel + 1, midiNote, juce::uint8(velocity))));
     } else {
-        stepData->midiBuffers << juce::MidiBuffer(juce::MidiMessage::noteOff(midiChannel + 1, midiNote));
+        stepData->insertMidiBuffer(juce::MidiBuffer(juce::MidiMessage::noteOff(midiChannel + 1, midiNote)));
     }
 }
 
@@ -938,16 +921,16 @@ void SyncTimer::sendMidiBufferImmediately(const juce::MidiBuffer& buffer)
 {
     StepData *stepData = d->stepRing.at(d->delayedStep(0));
     stepData->ensureFresh();
-    stepData->midiBuffers << buffer;
+    stepData->insertMidiBuffer(buffer);
 }
 
 bool SyncTimer::timerRunning() {
     return !timerThread->isPaused();
 }
 
-void SyncTimer::process(jack_nframes_t nframes, void *buffer)
+void SyncTimer::process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds)
 {
-    d->process(nframes, buffer);
+    d->process(nframes, buffer, jackPlayhead, jackSubbeatLengthInMicroseconds);
 }
 
 

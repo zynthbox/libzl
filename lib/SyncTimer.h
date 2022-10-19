@@ -199,7 +199,7 @@ public:
 protected:
   // This allows MidiRouter to process SyncTimer explicitly (this way we avoid having to pass through jack, which already has plenty of clients to worry about)
   friend class MidiRouterPrivate;
-  void process(jack_nframes_t nframes, void *buffer);
+  void process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds);
 private:
   SyncTimerPrivate *d{nullptr};
 };
