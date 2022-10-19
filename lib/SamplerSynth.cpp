@@ -46,6 +46,7 @@ public:
     QString portNameLeft{"left_out"};
     jack_port_t *rightPort{nullptr};
     QString portNameRight{"right_out"};
+    jack_port_t *midiInPort{nullptr};
     int midiChannel{-1};
     SamplerSynthVoice* voices[SAMPLER_CHANNEL_VOICE_COUNT];
     int process(jack_nframes_t nframes);
@@ -91,12 +92,14 @@ SamplerChannel::SamplerChannel(const QString &clientName)
                 SamplerSynthVoice *voice = new SamplerSynthVoice();
                 voices[voiceIndex] = voice;
             }
-            leftPort = jack_port_register(jackClient, portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
-            rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
+            midiInPort = jack_port_register(jackClient, "midiIn", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
+            leftPort = jack_port_register(jackClient, portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+            rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
             // Activate the client.
             if (jack_activate(jackClient) == 0) {
                 jackConnect(jackClient, QString("%1:%2").arg(clientName).arg(portNameLeft).toUtf8(), QLatin1String{"system:playback_1"});
                 jackConnect(jackClient, QString("%1:%2").arg(clientName).arg(portNameRight).toUtf8(), QLatin1String{"system:playback_2"});
+                jackConnect(jackClient, QLatin1String("ZynMidiRouter:midi_out"), QString("%1:midiIn").arg(clientName));
                 qDebug() << "Successfully created and set up" << clientName;
             } else {
                 qWarning() << "Failed to activate SamplerSynth Jack client" << clientName;
