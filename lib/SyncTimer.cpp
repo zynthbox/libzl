@@ -46,9 +46,6 @@ struct alignas(64) StepData {
     }
     // Call this before accessing the data to ensure that it is fresh
     void ensureFresh() {
-//         if (isPlaying) {
-//             qWarning() << "Attempted to ensure a thing is fresh that is currently playing";
-//         }
         if (played) {
             played = false;
             // It's our job to delete the timer commands, so do that first
@@ -68,12 +65,13 @@ struct alignas(64) StepData {
     QList<ClipCommand*> clipCommands;
     QList<TimerCommand*> timerCommands;
 
+    StepData *previous{nullptr};
+    StepData *next{nullptr};
+
     quint64 index{0};
 
     // SyncTimer sets this true to mark that it has played the step
     bool played{false};
-    // Basic spin lock
-//     bool isPlaying{false};
 };
 
 using frame_clock = std::conditional_t<
@@ -255,9 +253,13 @@ public:
         : q(q)
     {
         timerThread = new SyncTimerThread(q);
+        StepData* previous{&stepRingIterator[StepRingCount - 1]};
         for (quint64 i = 0; i < StepRingCount; ++i) {
             stepRingIterator[i].index = i;
+            previous->next = &stepRingIterator[i];
+            stepRingIterator[i].previous = previous;
             stepRing << &stepRingIterator[i];
+            previous = &stepRingIterator[i];
         }
         stepReadHead = stepRingIterator;
         samplerSynth = SamplerSynth::instance();
@@ -303,9 +305,6 @@ public:
             // If running, base the delay on the current cumulativeBeat (adjusted to at least stepReadHead, just in case)
             step = (stepReadHeadOnStart + qMax(cumulativeBeat + delay, jackPlayhead + 1)) % StepRingCount;
         }
-//         if (stepRing.at(step)->isPlaying) {
-//             step = (step + 1) % stepRingCount;
-//         }
         return step;
     }
 
@@ -364,6 +363,7 @@ public:
     // This looks like a Jack process call, but it is in fact called explicitly by MidiRouter for insurance purposes (doing it like
     // this means we've got tighter control, and we really don't need to pass it through jack anyway)
     int process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayheadReturn, quint64 *jackSubbeatLengthInMicrosecondsReturn) {
+        auto t1 = std::chrono::high_resolution_clock::now();
         // Clear the buffer that MidiRouter gives us, because we want to be sure we've got a blank slate to work with
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -373,8 +373,8 @@ public:
         QList<int> velocities;
         QList<quint64> framePositions;
         QList<quint64> frameSteps;
-#endif
         quint64 eventCount = 0;
+#endif
 
         jack_nframes_t current_frames;
         jack_time_t current_usecs;
@@ -408,15 +408,10 @@ public:
         while (stepNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
             StepData &stepData = *stepReadHead;
             // Next roll for next time (also do it now, as we're reading out of it)
-            if (stepData.index + 1 == StepRingCount) {
-                stepReadHead = stepRingIterator;
-            } else {
-                ++stepReadHead;
-            }
+            stepReadHead = stepReadHead->next;
             // In case we're cycling through stuff we've already played, let's just... not do anything with that
             // Basically that just means nobody else has attempted to do stuff with the step since we last played it
             if (!stepData.played) {
-//                 stepData->isPlaying = true;
                 // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
                 if (stepNextPlaybackPosition <= current_usecs) {
                     relativePosition = firstAvailableFrame;
@@ -446,8 +441,8 @@ public:
                         if (errorCode != 0) {
                             qWarning() << Q_FUNC_INFO << "Error writing midi event:" << -errorCode << strerror(-errorCode);
                         }
-                        ++eventCount;
 #ifdef DEBUG_SYNCTIMER_JACK
+                        ++eventCount;
                         commandValues << juceMessage.data[0]; noteValues << juceMessage.data[1]; velocities << juceMessage.data[2];
 #endif
                     }
@@ -494,7 +489,6 @@ public:
                     }
                 }
                 stepData.played = true;
-//                 stepData->isPlaying = false;
             }
             if (!isPaused) {
                 // Next roll for next time
@@ -513,18 +507,27 @@ public:
             q->sendMidiBufferImmediately(*missingBitsBuffer);
             delete missingBitsBuffer;
         }
+#ifdef DEBUG_SYNCTIMER_JACK
         if (eventCount > 0) {
             if (uint32_t lost = jack_midi_get_lost_event_count(buffer)) {
                 qDebug() << "Lost some notes:" << lost;
             }
-#ifdef DEBUG_SYNCTIMER_JACK
             qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and we filled up jack with" << eventCount << "events" << nframes << jackSubbeatLengthInMicroseconds << frameSteps << framePositions << commandValues << noteValues << velocities;
         } else {
             qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and scheduled no notes";
-#endif
         }
+#endif
+        std::chrono::duration<double, std::milli> ms_double = std::chrono::high_resolution_clock::now() - t1;
+        if (ms_double.count() > 0.2) {
+            qDebug() << Q_FUNC_INFO << ms_double.count() << "ms after" << belowThreshold << "runs under 0.2ms";
+            belowThreshold = 0;
+        } else {
+            ++belowThreshold;
+        }
+
         return 0;
     }
+    int belowThreshold{0};
     int xrun() {
 #ifdef DEBUG_SYNCTIMER_JACK
         qDebug() << "SyncTimer detected XRun";
