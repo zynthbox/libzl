@@ -360,11 +360,19 @@ public:
     quint64 jackSubbeatLengthInMicroseconds{0};
     quint64 jackLatency{0};
     bool isPaused{true};
+
+    quint64 jackPlayheadReturn{0};
+    quint64 jackSubbeatLengthInMicrosecondsReturn{0};
+
+// Temporarily leaving this behind - this was from when we used to call SyncTimer's process function explicitly from MidiRouter
+//     int process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayheadReturn, quint64 *jackSubbeatLengthInMicrosecondsReturn) {
+// Clear the buffer that MidiRouter gives us, because we want to be sure we've got a blank slate to work with
+
     // This looks like a Jack process call, but it is in fact called explicitly by MidiRouter for insurance purposes (doing it like
     // this means we've got tighter control, and we really don't need to pass it through jack anyway)
-    int process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayheadReturn, quint64 *jackSubbeatLengthInMicrosecondsReturn) {
+    int process(jack_nframes_t nframes) {
         auto t1 = std::chrono::high_resolution_clock::now();
-        // Clear the buffer that MidiRouter gives us, because we want to be sure we've got a blank slate to work with
+        void *buffer = jack_port_get_buffer(jackPort, nframes);
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
         quint64 stepCount = 0;
@@ -383,8 +391,8 @@ public:
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
 
         // Setting here because we need the this-process value, not the next-process
-        *jackPlayheadReturn = jackPlayhead;
-        *jackSubbeatLengthInMicrosecondsReturn = jackSubbeatLengthInMicroseconds;
+        jackPlayheadReturn = jackPlayhead;
+        jackSubbeatLengthInMicrosecondsReturn = jackSubbeatLengthInMicroseconds;
 
         if (!isPaused) {
             if (jackPlayhead == 0) {
@@ -536,8 +544,9 @@ public:
     }
 };
 
-static int client_process(jack_nframes_t /*nframes*/, void* /*arg*/) {
+static int client_process(jack_nframes_t nframes, void* arg) {
     // Just roll empty, we're not really processing anything for SyncTimer here, MidiRouter does that explicitly
+    static_cast<SyncTimerPrivate*>(arg)->process(nframes);
     return 0;
 }
 static int client_xrun(void* arg) {
@@ -605,7 +614,7 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                         static_cast<void*>(d)
                     ) != 0
                 ) {
-                    qWarning() << "Failed to set the SyncTimer Jack processing callback";
+                    qWarning() << "SyncTimer: Failed to set the SyncTimer Jack processing callback";
                 } else {
                     jack_set_xrun_callback(d->jackClient, client_xrun, static_cast<void*>(d));
                     jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
@@ -616,19 +625,25 @@ void SyncTimer::addCallback(void (*functionPtr)(int)) {
                         jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
                         jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
                         d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
-                        qDebug() << "Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
-                        qDebug() << "However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
+                        qDebug() << "SyncTimer: Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
+                        qDebug() << "SyncTimer: However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
                         Q_EMIT scheduleAheadAmountChanged();
-                        qDebug() << "Successfully created and set up the SyncTimer's Jack client";
+                        int result = jack_connect(d->jackClient, "SyncTimer:midi_out", "ZLRouter:SyncTimerIn");
+                        if (result == 0 || result == EEXIST) {
+                            qDebug() << "Successfully created and set up the SyncTimer's Jack client";
+                        } else {
+                            qWarning() << "SyncTimer: Failed to connect SyncTimer's output with the MidiRouter input with error code" << result;
+                            // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
+                        }
                     } else {
-                        qWarning() << "Failed to activate SyncTimer Jack client";
+                        qWarning() << "SyncTimer: Failed to activate SyncTimer Jack client";
                     }
                 }
             } else {
-                qWarning() << "Could not register SyncTimer Jack output port";
+                qWarning() << "SyncTimer: Could not register SyncTimer Jack output port";
             }
         } else {
-            qWarning() << "Could not create SyncTimer Jack client.";
+            qWarning() << "SyncTimer: Could not create SyncTimer Jack client.";
         }
 
     }
@@ -931,9 +946,11 @@ bool SyncTimer::timerRunning() {
     return !timerThread->isPaused();
 }
 
-void SyncTimer::process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds)
+void SyncTimer::process(jack_nframes_t /*nframes*/, void */*buffer*/, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds)
 {
-    d->process(nframes, buffer, jackPlayhead, jackSubbeatLengthInMicroseconds);
+//     d->process(nframes, buffer, jackPlayhead, jackSubbeatLengthInMicroseconds);
+    *jackPlayhead = d->jackPlayheadReturn;
+    *jackSubbeatLengthInMicroseconds = d->jackSubbeatLengthInMicrosecondsReturn;
 }
 
 
