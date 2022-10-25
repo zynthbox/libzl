@@ -422,7 +422,9 @@ public:
                 inputBuffer = jack_port_get_buffer(device->port, nframes);
                 output = outputs[currentChannel];
                 uint32_t eventIndex{0};
+                ChannelOutput *currentOutput{nullptr};
                 while (true) {
+                    currentOutput = output;
                     if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
                         if (err != -ENOBUFS) {
                             qWarning() << "ZLRouter: jack_midi_event_get failed, received note lost! Attempted to fetch at index" << eventIndex << "and the error code is" << err;
@@ -453,7 +455,7 @@ public:
                                         noteActivation = 0;
                                     }
                                     adjustedCurrentChannel = device->activeNoteChannel[midiNote];
-                                    output = outputs[adjustedCurrentChannel];
+                                    currentOutput = outputs[adjustedCurrentChannel];
                                     if (currentChannel == adjustedCurrentChannel) {
                                         event.buffer[0] = event.buffer[0] - eventChannel + currentChannel;
                                     } else {
@@ -462,12 +464,12 @@ public:
                                 }
 
                                 const double timestamp = currentJackPlayhead + (event.time * microsecondsPerFrame / subbeatLengthInMicroseconds);
-                                switch (output->destination) {
+                                switch (currentOutput->destination) {
                                     case MidiRouter::ZynthianDestination:
                                         if (isNoteMessage) {
                                             addMessage(passthroughListener, timestamp, event);
                                         }
-                                        for (const int &zynthianChannel : output->zynthianChannels) {
+                                        for (const int &zynthianChannel : currentOutput->zynthianChannels) {
                                             if (zynthianChannel == -1) {
                                                 break;
                                             }
@@ -481,7 +483,7 @@ public:
                                         break;
                                     case MidiRouter::ExternalDestination:
                                     {
-                                        int externalChannel = (output->externalChannel == -1) ? output->inputChannel : output->externalChannel;
+                                        int externalChannel = (currentOutput->externalChannel == -1) ? currentOutput->inputChannel : currentOutput->externalChannel;
                                         if (isNoteMessage) {
                                             addMessage(passthroughListener, timestamp, event);
                                             addMessage(externalOutListener, timestamp, event);
