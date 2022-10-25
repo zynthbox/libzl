@@ -803,7 +803,7 @@ void MidiRouter::setZynthianChannels(int channel, QList<int> zynthianChannels)
         bool hasChanged{false};
         for (int i = 0; i < 16; ++i) {
             int original = output->zynthianChannels[i];
-            output->zynthianChannels[i] = zynthianChannels.value(-1);
+            output->zynthianChannels[i] = zynthianChannels.value(i, -1);
             if (original != output->zynthianChannels[i]) {
                 hasChanged = true;
             }
