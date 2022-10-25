@@ -71,7 +71,9 @@ struct alignas(64) StepData {
     quint64 index{0};
 
     // SyncTimer sets this true to mark that it has played the step
-    bool played{false};
+    // Conceptually, a step starts out having been played (meaning it is not interesting to the process call),
+    // and it is set to false by ensureFresh above, which is called any time just before adding anything to a step.
+    bool played{true};
 };
 
 using frame_clock = std::conditional_t<
