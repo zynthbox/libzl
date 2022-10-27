@@ -92,7 +92,10 @@ public:
     }
   }
 
-  void destroyClip(ClipAudioSource *c) { delete c; }
+  void destroyClip(ClipAudioSource *c) {
+    SamplerSynth::instance()->unregisterClip(c);
+    c->deleteLater();
+  }
 };
 
 JuceEventLoopThread elThread;
