@@ -78,6 +78,7 @@ SamplerChannel::SamplerChannel(const QString &clientName)
     : clientName(clientName)
 {
     qDebug() << "Setting up SamplerSynth Jack client" << clientName;
+    commandQueue.reserve(commandQueueSize);
     for (int i = 0; i < commandQueueSize; ++i) {
         commandQueue[i] = new SamplerCommand;
     }
