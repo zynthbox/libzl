@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QCoreApplication>
 #include <QList>
 #include <QVariant>
 #include <jack/types.h>
@@ -20,7 +21,15 @@ class SyncTimer : public QObject {
   Q_PROPERTY(quint64 bpm READ getBpm WRITE setBpm NOTIFY bpmChanged)
   Q_PROPERTY(quint64 scheduleAheadAmount READ scheduleAheadAmount NOTIFY scheduleAheadAmountChanged)
 public:
+  static SyncTimer* instance() {
+    static SyncTimer* instance{nullptr};
+    if (!instance) {
+      instance = new SyncTimer(qApp);
+    }
+    return instance;
+  };
   explicit SyncTimer(QObject *parent = nullptr);
+  virtual ~SyncTimer();
   void addCallback(void (*functionPtr)(int));
   void removeCallback(void (*functionPtr)(int));
   void queueClipToStart(ClipAudioSource *clip);

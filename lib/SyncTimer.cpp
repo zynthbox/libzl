@@ -255,6 +255,7 @@ public:
         : q(q)
     {
         timerThread = new SyncTimerThread(q);
+        stepRing.reserve(StepRingCount);
         StepData* previous{&stepRingIterator[StepRingCount - 1]};
         for (quint64 i = 0; i < StepRingCount; ++i) {
             stepRingIterator[i].index = i;
@@ -581,74 +582,59 @@ SyncTimer::SyncTimer(QObject *parent)
     connect(timerThread, &SyncTimerThread::pausedChanged, this, [this](){
         d->isPaused = timerThread->isPaused();
     });
+    // Open the client.
+    jack_status_t real_jack_status{};
+    d->jackClient = jack_client_open(
+        "SyncTimer",
+        JackNullOption,
+        &real_jack_status
+    );
+    if (d->jackClient) {
+        // Register the MIDI output port.
+        d->jackPort = jack_port_register(
+            d->jackClient,
+            "midi_out",
+            JACK_DEFAULT_MIDI_TYPE,
+            JackPortIsOutput,
+            0
+        );
+        if (d->jackPort) {
+            // Set the process callback.
+            if (jack_set_process_callback(d->jackClient, client_process, static_cast<void*>(d)) == 0) {
+                jack_set_xrun_callback(d->jackClient, client_xrun, static_cast<void*>(d));
+                jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
+                // Activate the client.
+                if (jack_activate(d->jackClient) == 0) {
+                    qDebug() << "Successfully created and set up the SyncTimer's Jack client";
+                    jack_latency_range_t range;
+                    jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
+                    jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
+                    jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
+                    d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
+                    qDebug() << "SyncTimer: Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
+                    qDebug() << "SyncTimer: However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
+                    Q_EMIT scheduleAheadAmountChanged();
+                } else {
+                    qWarning() << "SyncTimer: Failed to activate SyncTimer Jack client";
+                }
+            } else {
+                qWarning() << "SyncTimer: Failed to set the SyncTimer Jack processing callback";
+            }
+        } else {
+            qWarning() << "SyncTimer: Could not register SyncTimer Jack output port";
+        }
+    } else {
+        qWarning() << "SyncTimer: Could not create SyncTimer Jack client.";
+    }
+}
+
+SyncTimer::~SyncTimer() {
+    delete d;
 }
 
 void SyncTimer::addCallback(void (*functionPtr)(int)) {
     cerr << "Adding callback " << functionPtr << endl;
     d->callbacks.append(functionPtr);
-    if (!d->jackClient) {
-        // First instantiate out midi router, so we can later connect to it...
-        MidiRouter::instance();
-        connect(MidiRouter::instance(), &MidiRouter::addedHardwareInputDevice, this, &SyncTimer::addedHardwareInputDevice);
-        connect(MidiRouter::instance(), &MidiRouter::removedHardwareInputDevice, this, &SyncTimer::removedHardwareInputDevice);
-        // Open the client.
-        jack_status_t real_jack_status{};
-        d->jackClient = jack_client_open(
-            "SyncTimer",
-            JackNullOption,
-            &real_jack_status
-        );
-        if (d->jackClient) {
-            // Register the MIDI output port.
-            d->jackPort = jack_port_register(
-                d->jackClient,
-                "midi_out",
-                JACK_DEFAULT_MIDI_TYPE,
-                JackPortIsOutput,
-                0
-            );
-            if (d->jackPort) {
-                // Set the process callback.
-                if (
-                    jack_set_process_callback(
-                        d->jackClient,
-                        client_process,
-                        static_cast<void*>(d)
-                    ) != 0
-                ) {
-                    qWarning() << "SyncTimer: Failed to set the SyncTimer Jack processing callback";
-                } else {
-                    jack_set_xrun_callback(d->jackClient, client_xrun, static_cast<void*>(d));
-                    jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
-                    // Activate the client.
-                    if (jack_activate(d->jackClient) == 0) {
-                        jack_latency_range_t range;
-                        jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
-                        jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
-                        jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
-                        d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
-                        qDebug() << "SyncTimer: Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
-                        qDebug() << "SyncTimer: However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
-                        Q_EMIT scheduleAheadAmountChanged();
-                        int result = jack_connect(d->jackClient, "SyncTimer:midi_out", "ZLRouter:SyncTimerIn");
-                        if (result == 0 || result == EEXIST) {
-                            qDebug() << "Successfully created and set up the SyncTimer's Jack client";
-                        } else {
-                            qWarning() << "SyncTimer: Failed to connect SyncTimer's output with the MidiRouter input with error code" << result;
-                            // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
-                        }
-                    } else {
-                        qWarning() << "SyncTimer: Failed to activate SyncTimer Jack client";
-                    }
-                }
-            } else {
-                qWarning() << "SyncTimer: Could not register SyncTimer Jack output port";
-            }
-        } else {
-            qWarning() << "SyncTimer: Could not create SyncTimer Jack client.";
-        }
-
-    }
 }
 
 void SyncTimer::removeCallback(void (*functionPtr)(int)) {

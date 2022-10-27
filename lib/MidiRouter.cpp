@@ -726,6 +726,7 @@ MidiRouter::MidiRouter(QObject *parent)
                     for (const QString &externalPort : d->enabledMidiOutPorts) {
                         d->connectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), externalPort);
                     }
+                    d->connectPorts(QLatin1String{"SyncTimer:midi_out"}, QLatin1String{"ZLRouter:SyncTimerIn"});
                 } else {
                     qWarning() << "ZLRouter: Failed to activate ZLRouter Jack client";
                 }

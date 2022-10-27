@@ -36,7 +36,7 @@ using namespace std::chrono;
 using namespace std;
 
 ScopedJuceInitialiser_GUI *initializer = nullptr;
-SyncTimer *syncTimer = new SyncTimer();
+SyncTimer *syncTimer{nullptr};
 te::Engine *tracktionEngine{nullptr};
 QList<ClipAudioSource*> createdClips;
 
@@ -345,8 +345,14 @@ void initJuce() {
   auto duration = duration_cast<milliseconds>(high_resolution_clock::now() - start);
   qDebug() << "### JUCE initialisation took" << duration.count() << "ms";
 
+  qDebug() << "Initialising SyncTimer";
+  syncTimer = SyncTimer::instance();
+
   qDebug() << "Initialising MidiRouter";
   MidiRouter::instance();
+
+  QObject::connect(MidiRouter::instance(), &MidiRouter::addedHardwareInputDevice, syncTimer, &SyncTimer::addedHardwareInputDevice);
+  QObject::connect(MidiRouter::instance(), &MidiRouter::removedHardwareInputDevice, syncTimer, &SyncTimer::removedHardwareInputDevice);
 
   qDebug() << "Initialising SamplerSynth";
   SamplerSynth::instance()->initialize(tracktionEngine);
