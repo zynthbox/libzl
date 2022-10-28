@@ -73,6 +73,8 @@ void SyncTimer_queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel);
 
 void initJuce();
 void shutdownJuce();
+// Called by zynthbox when the configuration in webconf has been changed (for example the midi setup, so our MidiRouter can pick up any changes)
+void reloadZynthianConfiguration();
 void registerGraphicTypes();
 void stopClips(int size, ClipAudioSource **clips);
 float dBFromVolume(float vol);

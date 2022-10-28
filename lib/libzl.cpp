@@ -375,6 +375,10 @@ void shutdownJuce() {
   initializer = nullptr;
 }
 
+void reloadZynthianConfiguration() {
+  MidiRouter::instance()->reloadConfiguration();
+}
+
 void registerGraphicTypes() {
   qmlRegisterType<WaveFormItem>("JuceGraphics", 1, 0, "WaveFormItem");
 }
