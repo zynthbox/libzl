@@ -219,8 +219,8 @@ void ClipAudioSource::setProgressCallback(void (*functionPtr)(float)) {
 void ClipAudioSource::syncProgress() {
   if (d->nextPositionUpdateTime < QDateTime::currentMSecsSinceEpoch()) {
     double newPosition = d->startPositionInSeconds / getDuration();
-    if (d->progressChangedCallback != nullptr && d->positionsModel && d->positionsModel->rowCount(QModelIndex()) > 0) {
-      newPosition = d->positionsModel->data(d->positionsModel->index(0), ClipAudioSourcePositionsModel::PositionProgressRole).toDouble();
+    if (d->progressChangedCallback != nullptr && d->positionsModel && d->positionsModel->firstProgress() > -1.0f) {
+      newPosition = d->positionsModel->firstProgress();
     }
     if (abs(d->firstPositionProgress - newPosition) > 0.001) {
       d->firstPositionProgress = newPosition;
