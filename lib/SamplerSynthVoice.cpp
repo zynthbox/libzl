@@ -7,7 +7,6 @@
 #include "SyncTimer.h"
 
 #include <QDebug>
-#include <QThread>
 
 static inline float velocityToGain(const float &velocity) {
 //     static const float sensibleMinimum{log10(1.0f/127.0f)};
@@ -125,24 +124,10 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
             d->nextLoopTick = d->startTick + d->clip->getLengthInBeats() * d->syncTimer->getMultiplier();
             d->nextLoopUsecs = 0;
 
-            // Asynchronously request the creation of a new position ID - if we call directly (or blocking
-            // queued), we may end up in deadlocky threading trouble, so... asynchronous api it is!
-            ClipAudioSourcePositionsModel *positionsModel = d->clip->playbackPositionsModel();
-            connect(d->clip->playbackPositionsModel(), &ClipAudioSourcePositionsModel::positionIDCreated, this, [this, positionsModel](void* createdFor, qint64 newPositionID){
-                if (createdFor == this) {
-                    if (d->clip && d->clip->playbackPositionsModel() == positionsModel) {
-                        if (d->clipPositionId > -1) {
-                            QMetaObject::invokeMethod(positionsModel, "removePosition", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId));
-                        }
-                        d->clipPositionId = newPositionID;
-                    } else {
-                        // If we're suddenly playing something else, we didn't receive this quickly enough and should just get rid of it
-                        QMetaObject::invokeMethod(positionsModel, "removePosition", Qt::QueuedConnection, Q_ARG(qint64, newPositionID));
-                    }
-                    positionsModel->disconnect(this);
-                }
-            }, Qt::QueuedConnection);
-            QMetaObject::invokeMethod(positionsModel, "requestPositionID", Qt::QueuedConnection, Q_ARG(void*, this), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
+            if (d->clipPositionId > -1) {
+                d->clip->playbackPositionsModel()->removePosition(d->clipPositionId);
+            }
+            d->clipPositionId = d->clip->playbackPositionsModel()->createPositionID();
 
             d->lgain = velocityToGain(velocity);
             d->rgain = velocityToGain(velocity);
@@ -170,7 +155,7 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
         clearCurrentNote();
         d->adsr.reset();
         if (d->clip) {
-            QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "removePosition", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId));
+            d->clip->playbackPositionsModel()->removePosition(d->clipPositionId);
             d->clip = nullptr;
             d->clipPositionId = -1;
         }
@@ -279,8 +264,7 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
 
             // Because it might have gone away after being stopped above, so let's try and not crash
             if (d->clip && d->clipPositionId > -1) {
-                QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionProgress", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, d->sourceSamplePosition / d->sourceSampleLength));
-                QMetaObject::invokeMethod(d->clip->playbackPositionsModel(), "setPositionGain", Qt::QueuedConnection, Q_ARG(qint64, d->clipPositionId), Q_ARG(float, peakGain * 0.5f));
+                d->clip->playbackPositionsModel()->setPositionGainAndProgress(d->clipPositionId, peakGain * 0.5f, d->sourceSamplePosition / d->sourceSampleLength);
             }
         }
     }
