@@ -29,6 +29,7 @@ public:
     Q_INVOKABLE qint64 createPositionID (float initialProgress = 0.0f);
     Q_INVOKABLE void setPositionProgress(qint64 positionID, float progress);
     Q_INVOKABLE void setPositionGain(qint64 positionID, float gain);
+    Q_INVOKABLE void setPositionGainAndProgress(qint64 positionID, float gain, float progress);
     Q_INVOKABLE void removePosition(qint64 positionID);
     /**
      * \brief Asynchronously request the creation of a new position. Connect to positionIDCreated to learn what the position is.
@@ -46,6 +47,11 @@ public:
     float peakGain() const;
     Q_SIGNAL void peakGainChanged();
 
+    /**
+     * \brief The progress of the first active position (or -1 if there's no active position)
+     * @return The progress (from 0 through 1) of the first active position (or -1 if there is no active position)
+     */
+    double firstProgress() const;
 protected:
     void cleanUpPositions();
 private:

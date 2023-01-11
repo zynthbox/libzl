@@ -1,7 +1,8 @@
 #include "ClipAudioSourcePositionsModel.h"
 #include <QDateTime>
 #include <QDebug>
-#include <QMutex>
+
+#define POSITION_COUNT 32
 
 struct PositionData {
     qint64 id{-1};
@@ -13,11 +14,17 @@ struct PositionData {
 class ClipAudioSourcePositionsModelPrivate
 {
 public:
-    ClipAudioSourcePositionsModelPrivate() {}
+    ClipAudioSourcePositionsModelPrivate() {
+        for (int positionIndex = 0; positionIndex < POSITION_COUNT; ++positionIndex) {
+            positions << new PositionData;
+        }
+    }
+    ~ClipAudioSourcePositionsModelPrivate() {
+        qDeleteAll(positions);
+    }
     QList<PositionData*> positions;
     bool updatePeakGain{false};
     float peakGain{0.0f};
-    QMutex mutex;
 };
 
 ClipAudioSourcePositionsModel::ClipAudioSourcePositionsModel(ClipAudioSource *clip)
@@ -50,7 +57,6 @@ QVariant ClipAudioSourcePositionsModel::data(const QModelIndex &index, int role)
 {
     QVariant result;
     if (checkIndex(index)) {
-        d->mutex.tryLock();
         PositionData *position = d->positions[index.row()];
         switch (role) {
             case PositionIDRole:
@@ -65,84 +71,84 @@ QVariant ClipAudioSourcePositionsModel::data(const QModelIndex &index, int role)
             default:
                 break;
         }
-        d->mutex.unlock();
     }
     return result;
 }
 
 qint64 ClipAudioSourcePositionsModel::createPositionID(float initialProgress)
 {
-    static qint64 nextId{0};
-    PositionData *newPosition = new PositionData();
-    newPosition->id = nextId++;
-    newPosition->progress = initialProgress;
-    newPosition->lastUpdated = QDateTime::currentMSecsSinceEpoch();
-    d->mutex.tryLock();
-    beginInsertRows(QModelIndex(), d->positions.count(), d->positions.count());
-    d->positions << newPosition;
-    d->mutex.unlock();
-    endInsertRows();
-    d->updatePeakGain = true;
-    Q_EMIT peakGainChanged();
-    cleanUpPositions();
-    return newPosition->id;
+    PositionData *position{nullptr};
+    int positionRow{-1};
+    for (PositionData *needle : qAsConst(d->positions)) {
+        ++positionRow;
+        if (needle->id == -1) {
+            position = needle;
+            break;
+        }
+    }
+    if (position) {
+        position->id = positionRow;
+        position->progress = initialProgress;
+        position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
+        QModelIndex modelIndex{createIndex(positionRow, 0)};
+        dataChanged(modelIndex, modelIndex);
+        d->updatePeakGain = true;
+        Q_EMIT peakGainChanged();
+        cleanUpPositions();
+    }
+    return positionRow;
 }
 
 void ClipAudioSourcePositionsModel::setPositionProgress(qint64 positionID, float progress)
 {
-    d->mutex.tryLock();
-    int index{0};
-    for (PositionData *position : d->positions) {
-        if (position->id == positionID) {
-            position->progress = qMin(1.0f, qMax(0.0f, progress));
-            position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
-            const QModelIndex idx{createIndex(index, 0)};
-            d->mutex.unlock();
-            dataChanged(idx, idx, {PositionProgressRole});
-            break;
-        }
-        ++index;
+    if (positionID > -1 && positionID < POSITION_COUNT) {
+        PositionData *position = d->positions[positionID];
+        position->progress = qMin(1.0f, qMax(0.0f, progress));
+        position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
+        const QModelIndex idx{createIndex(positionID, 0)};
+        dataChanged(idx, idx, {PositionProgressRole});
     }
-    d->mutex.unlock();
 }
 
 void ClipAudioSourcePositionsModel::setPositionGain(qint64 positionID, float gain)
 {
-    d->mutex.tryLock();
-    int index{0};
-    for (PositionData *position : d->positions) {
-        if (position->id == positionID) {
-            position->gain = gain;
-            position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
-            const QModelIndex idx{createIndex(index, 0)};
-            d->mutex.unlock();
-            dataChanged(idx, idx, {PositionGainRole});
-            d->updatePeakGain = true;
-            Q_EMIT peakGainChanged();
-            break;
-        }
-        ++index;
+    if (positionID > -1 && positionID < POSITION_COUNT) {
+        PositionData *position = d->positions[positionID];
+        position->gain = gain;
+        position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
+        const QModelIndex idx{createIndex(positionID, 0)};
+        dataChanged(idx, idx, {PositionGainRole});
+        d->updatePeakGain = true;
+        Q_EMIT peakGainChanged();
     }
-    d->mutex.unlock();
+}
+
+void ClipAudioSourcePositionsModel::setPositionGainAndProgress(qint64 positionID, float gain, float progress)
+{
+    if (positionID > -1 && positionID < POSITION_COUNT) {
+        PositionData *position = d->positions[positionID];
+        position->gain = gain;
+        position->progress = progress;
+        position->lastUpdated = QDateTime::currentMSecsSinceEpoch();
+        const QModelIndex idx{createIndex(positionID, 0)};
+        dataChanged(idx, idx, {PositionGainRole, PositionProgressRole});
+        d->updatePeakGain = true;
+        Q_EMIT peakGainChanged();
+    }
 }
 
 void ClipAudioSourcePositionsModel::removePosition(qint64 positionID)
 {
-    d->mutex.tryLock();
-    int index{0};
-    for (PositionData *position : d->positions) {
-        if (position->id == positionID) {
-            beginRemoveRows(QModelIndex(), index, index);
-            d->positions.removeAt(index);
-            d->mutex.unlock();
-            endRemoveRows();
-            d->updatePeakGain = true;
-            Q_EMIT peakGainChanged();
-            break;
-        }
-        ++index;
+    if (positionID > -1 && positionID < POSITION_COUNT) {
+        PositionData *position = d->positions[positionID];
+        position->id = -1;
+        position->gain = 0.0f;
+        position->progress = 0.0f;
+        const QModelIndex idx{createIndex(positionID, 0)};
+        dataChanged(idx, idx);
+        d->updatePeakGain = true;
+        Q_EMIT peakGainChanged();
     }
-    d->mutex.unlock();
     cleanUpPositions();
 }
 
@@ -155,14 +161,27 @@ float ClipAudioSourcePositionsModel::peakGain() const
 {
     if (d->updatePeakGain) {
         float peak{0.0f};
-        for (PositionData *position : d->positions) {
+        for (PositionData *position : qAsConst(d->positions)) {
             peak = qMax(peak, position->gain);
         }
         if (abs(d->peakGain - peak) > 0.01) {
             d->peakGain = peak;
         }
+        d->updatePeakGain = false;
     }
     return d->peakGain;
+}
+
+double ClipAudioSourcePositionsModel::firstProgress() const
+{
+    double progress{-1.0f};
+    for (const PositionData *position : qAsConst(d->positions)) {
+        if (position->id > -1) {
+            progress = position->progress;
+            break;
+        }
+    }
+    return progress;
 }
 
 // This is an unpleasant hack that i'd like to not have to use
@@ -170,14 +189,15 @@ float ClipAudioSourcePositionsModel::peakGain() const
 // positions in the model, and... less of that is better.
 // If someone can work out why we end up with those, though, that'd be lovely
 void ClipAudioSourcePositionsModel::cleanUpPositions() {
-    d->mutex.tryLock();
     const qint64 allowedTime{QDateTime::currentMSecsSinceEpoch() - 1000};
-    QMutableListIterator<PositionData*> i(d->positions);
+    QListIterator<PositionData*> i(d->positions);
     int removedAny{0};
     while (i.hasNext()) {
         PositionData *position = i.next();
-        if (position->lastUpdated < allowedTime) {
-            i.remove();
+        if (position->id > -1 && position->lastUpdated < allowedTime) {
+            position->id = -1;
+            position->gain = 0.0f;
+            position->progress = 0.0f;
             ++removedAny;
         }
     }
@@ -186,5 +206,4 @@ void ClipAudioSourcePositionsModel::cleanUpPositions() {
         Q_EMIT beginResetModel();
         Q_EMIT endResetModel();
     }
-    d->mutex.unlock();
 }
