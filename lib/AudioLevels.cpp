@@ -164,7 +164,7 @@ public:
     DiskWriter* globalPlaybackWriter{new DiskWriter};
     DiskWriter* portsRecorder{new DiskWriter};
     QList<RecordPort> recordPorts;
-    QList<DiskWriter*> channelWriters;
+    QList<DiskWriter*> channelWriters{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     QVariantList channelsToRecord;
     QVariantList levels;
     jack_client_t* jackClient{nullptr};
@@ -294,7 +294,15 @@ AudioLevels::AudioLevels(QObject *parent)
             d->portsRecorder = channel->diskRecorder;
         } else {
           const int sketchpadChannelIndex{channelIndex - 3};
-          d->channelWriters[sketchpadChannelIndex] = channel->diskRecorder;
+          /**
+           * Do not assign items by index like this : d->channelWriters[sketchpadChannelIndex] = channel->diskRecorder;
+           * Assigning items by index causes size() to report 0 even though items are added.
+           * This might be causing a crash sometimes during initialization
+           * 
+           * Instead of assigning by index, create a qlist with 10 elements having nullptr as value
+           * and replace nullptr with DiskWriter pointer when initializing
+           */
+          d->channelWriters.replace(sketchpadChannelIndex, channel->diskRecorder);
         }
         d->audioLevelsChannels << channel;
         ++channelIndex;
