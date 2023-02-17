@@ -15,7 +15,8 @@
 #include <QStringList>
 #include <QCoreApplication>
 #include <jack/jack.h>
-#include <juce_events/juce_events.h>
+#include <atomic>
+#include <mutex>
 
 #define CHANNELS_COUNT 10
 
@@ -35,8 +36,7 @@ class AudioLevelsPrivate;
  * console.log(ZL.AudioLevels.synthA)
  * </code>
  */
-class AudioLevels : public QObject,
-                    public juce::Timer {
+class AudioLevels : public QObject {
 Q_OBJECT
     /**
      * \brief Left Capture channel audio level in decibels
@@ -98,15 +98,7 @@ Q_OBJECT
      */
     Q_PROPERTY(bool isRecording READ isRecording NOTIFY isRecordingChanged)
 public:
-    static AudioLevels* instance() {
-        static AudioLevels* instance{nullptr};
-
-        if (!instance) {
-            instance = new AudioLevels(QCoreApplication::instance());
-        }
-
-        return instance;
-    }
+    static AudioLevels* instance();
 
     // Delete the methods we dont want to avoid having copies of the singleton class
     AudioLevels(AudioLevels const&) = delete;
@@ -223,6 +215,9 @@ private:
     float channelsA[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
           channelsB[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-    void timerCallback() override;
+    Q_SLOT void timerCallback();
     AudioLevelsPrivate *d{nullptr};
+
+    static std::atomic<AudioLevels*> singletonInstance;
+    static std::mutex singletonMutex;
 };

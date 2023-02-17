@@ -15,9 +15,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
-#include <QMutex>
 #include <QString>
-#include <QThread>
 #include <QVariantList>
 #include <QWaitCondition>
 
@@ -131,7 +129,6 @@ public:
         }
         delete diskRecorder;
     }
-    void setup();
     int process(jack_nframes_t nframes);
     jack_port_t *leftPort{nullptr};
     jack_default_audio_sample_t *leftBuffer{nullptr};
@@ -144,6 +141,7 @@ public:
     float peakBHoldSignal{0};
     int peakA{0};
     int peakB{0};
+    bool enabled{false};
     QString clientName;
 private:
     const float** recordingPassthroughBuffer{new const float* [2]};
@@ -167,14 +165,15 @@ public:
     QList<DiskWriter*> channelWriters{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     QVariantList channelsToRecord;
     QVariantList levels;
+    QTimer analysisTimer;
     jack_client_t* jackClient{nullptr};
 
     void connectPorts(const QString &from, const QString &to) {
         int result = jack_connect(jackClient, from.toUtf8(), to.toUtf8());
         if (result == 0 || result == EEXIST) {
-            if (DebugAudioLevels) { qDebug() << "AudioLevels:" << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to; }
+            if (DebugAudioLevels) { qDebug() << Q_FUNC_INFO << (result == EEXIST ? "Retaining existing connection from" : "Successfully created new connection from" ) << from << "to" << to; }
         } else {
-            qWarning() << "AudioLevels: Failed to connect" << from << "with" << to << "with error code" << result;
+            qWarning() << Q_FUNC_INFO << "Failed to connect" << from << "with" << to << "with error code" << result;
             // This should probably reschedule an attempt in the near future, with a limit to how long we're trying for?
         }
     }
@@ -182,9 +181,9 @@ public:
         // Don't attempt to connect already connected ports
         int result = jack_disconnect(jackClient, from.toUtf8(), to.toUtf8());
         if (result == 0) {
-            if (DebugAudioLevels) { qDebug() << "AudioLevels: Successfully disconnected" << from << "from" << to; }
+            if (DebugAudioLevels) { qDebug() << Q_FUNC_INFO << "Successfully disconnected" << from << "from" << to; }
         } else {
-            qWarning() << "AudioLevels: Failed to disconnect" << from << "from" << to << "with error code" << result;
+            qWarning() << Q_FUNC_INFO << "Failed to disconnect" << from << "from" << to << "with error code" << result;
         }
     }
 
@@ -208,27 +207,27 @@ static int audioLevelsChannelProcess(jack_nframes_t nframes, void* arg) {
 AudioLevelsChannel::AudioLevelsChannel(const QString &clientName)
     : clientName(clientName)
 {
-    setup();
-}
-
-void AudioLevelsChannel::setup()
-{
     jack_status_t real_jack_status{};
+    int result{0};
     jackClient = jack_client_open(clientName.toUtf8(), JackNullOption, &real_jack_status);
     if (jackClient) {
         // Set the process callback.
-        if (jack_set_process_callback(jackClient, audioLevelsChannelProcess, this) != 0) {
-            qWarning() << "Failed to set the AudioLevelsChannel Jack processing callback";
-        } else {
+        result = jack_set_process_callback(jackClient, audioLevelsChannelProcess, this);
+        if (result == 0) {
             leftPort = jack_port_register(jackClient, portNameLeft.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
             rightPort = jack_port_register(jackClient, portNameRight.toUtf8(), JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
             // Activate the client.
-            if (jack_activate(jackClient) == 0) {
-                qDebug() << "Successfully created and set up" << clientName << "with status" << real_jack_status;
+            result = jack_activate(jackClient);
+            if (result == 0) {
+                qDebug() << Q_FUNC_INFO << "Successfully created and set up" << clientName;
             } else {
-                qWarning() << "Failed to activate AudioLevelsChannel Jack client" << clientName;
+                qWarning() << Q_FUNC_INFO << "Failed to activate Jack client" << clientName << "with the return code" << result;
             }
+        } else {
+            qWarning() << Q_FUNC_INFO << "Failed to set Jack processing callback for" << clientName << "with the return code" << result;
         }
+    } else {
+        qWarning() << Q_FUNC_INFO << "Failed to open Jack client" << clientName << "with status" << real_jack_status;
     }
 }
 
@@ -238,29 +237,40 @@ inline float addFloat(const float& db1, const float &db2) {
 
 int AudioLevelsChannel::process(jack_nframes_t nframes)
 {
-    if (jackClient && leftPort && rightPort) {
+    if (enabled) {
         leftBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(leftPort, nframes);
         rightBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(rightPort, nframes);
         if (!leftBuffer || !rightBuffer) {
-            qWarning() << Q_FUNC_INFO << jack_get_client_name(jackClient) << "has incorrect ports and things are unhappy - how to fix, though...";
-            leftPort = rightPort = nullptr;
+            qWarning() << Q_FUNC_INFO << clientName << "has incorrect ports and things are unhappy - how to fix, though...";
+            enabled = false;
             bufferReadSize = 0;
-            // FIXME This call causes a crash, but it also crashes when called elsewhere in the situation above, and
-            // so doing it here causes an earlier crash, which causes everything to restart, so it's less
-            // impacting... It will need fixing, but putting the crash here is less-impact for now...
-//             jack_client_close(jackClient);
-            jackClient = nullptr;
         } else {
             bufferReadSize = nframes;
-        }
-        if (diskRecorder->isRecording()) {
-            recordingPassthroughBuffer[0] = leftBuffer;
-            recordingPassthroughBuffer[1] = rightBuffer;
-            diskRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
+            if (diskRecorder->isRecording()) {
+                recordingPassthroughBuffer[0] = leftBuffer;
+                recordingPassthroughBuffer[1] = rightBuffer;
+                diskRecorder->processBlock(recordingPassthroughBuffer, (int)nframes);
+            }
         }
     }
     return 0;
 }
+
+AudioLevels *AudioLevels::instance()  {
+    AudioLevels* sin = singletonInstance.load(std::memory_order_acquire);
+    if (!sin) {
+        std::lock_guard<std::mutex> myLock(singletonMutex);
+        sin = singletonInstance.load(std::memory_order_relaxed);
+        if (!sin) {
+            sin = new AudioLevels(QCoreApplication::instance());
+            singletonInstance.store(sin, std::memory_order_release);
+      }
+    }
+    return sin;
+}
+
+std::atomic<AudioLevels*> AudioLevels::singletonInstance;
+std::mutex AudioLevels::singletonMutex;
 
 AudioLevels::AudioLevels(QObject *parent)
   : QObject(parent)
@@ -308,7 +318,13 @@ AudioLevels::AudioLevels(QObject *parent)
         ++channelIndex;
     }
 
-    startTimerHz(30);
+    for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
+        channel->enabled = true;
+    }
+
+    d->analysisTimer.setInterval(50);
+    connect(&d->analysisTimer, &QTimer::timeout, this, &AudioLevels::timerCallback);
+    d->analysisTimer.start();
 }
 
 inline float AudioLevels::convertTodbFS(float raw) {
@@ -339,8 +355,7 @@ void AudioLevels::timerCallback() {
     // 2^17 = 131072
     static const float floatToIntMultiplier{131072};
     for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
-        // If the setup is broken (as detected during process), re-setup the channel
-        if (channel->leftPort && channel->rightPort) {
+        if (channel->enabled && channel->leftPort && channel->rightPort) {
             channel->peakA = qMax(0, channel->peakA - 10000);
             channel->peakB = qMax(0, channel->peakB - 10000);
             if (channel->bufferReadSize > 0) {
@@ -396,21 +411,6 @@ void AudioLevels::timerCallback() {
 }
 
 const QVariantList AudioLevels::getChannelsAudioLevels() {
-    int channelIndex{0};
-    for (AudioLevelsChannel *channel : d->audioLevelsChannels) {
-        if (channel->leftPort == nullptr || channel->rightPort == nullptr) {
-            QTimer::singleShot(0, this, [this, channel, channelIndex](){
-                qDebug() << "Replacing jack client for" << channel->clientName;
-                channel->setup();
-                if (channelIndex == 0) {
-                    d->jackClient = channel->jackClient;
-                    d->connectPorts("system:capture_1", "AudioLevels-SystemCapture:left_in");
-                    d->connectPorts("system:capture_2", "AudioLevels-SystemCapture:right_in");
-                }
-            });
-        }
-        ++channelIndex;
-    }
     return d->levels;
 }
 
