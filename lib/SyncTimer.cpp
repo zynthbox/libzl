@@ -297,9 +297,10 @@ public:
     /**
      * \brief Get the ring buffer position based on the given delay from the current playback position (cumulativeBeat if playing, or stepReadHead if not playing)
      * @param delay The delay of the position to use
+     * @param ensureFresh Set this to false to disable the freshness insurance
      * @return The stepRing position to use for the given delay
      */
-    inline int delayedStep(quint64 delay) {
+    inline StepData* delayedStep(quint64 delay, bool ensureFresh = true) {
         quint64 step{0};
         if (isPaused) {
             // If paused, base the delay on the current stepReadHead
@@ -308,7 +309,11 @@ public:
             // If running, base the delay on the current cumulativeBeat (adjusted to at least stepReadHead, just in case)
             step = (stepReadHeadOnStart + qMax(cumulativeBeat + delay, jackPlayhead + 1)) % StepRingCount;
         }
-        return step;
+        StepData *stepData = stepRing.at(step);
+        if (ensureFresh) {
+            stepData->ensureFresh();
+        }
+        return stepData;
     }
 
 #ifdef DEBUG_SYNCTIMER_TIMING
@@ -682,7 +687,7 @@ void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
     ClipCommand *command = ClipCommand::channelCommand(clip, midiChannel);
     command->midiNote = 60;
     command->stopPlayback = true;
-    StepData *stepData = d->stepRing.at(d->delayedStep(0));
+    StepData *stepData{d->delayedStep(0)};
     stepData->clipCommands << command;
 }
 
@@ -825,8 +830,7 @@ const quint64 &SyncTimer::jackSubbeatLengthInMicroseconds() const
 
 void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
 {
-    StepData *stepData = d->stepRing.at(d->delayedStep(delay));
-    stepData->ensureFresh();
+    StepData *stepData{d->delayedStep(delay)};
     bool foundExisting{false};
     for (ClipCommand *clipCommand : qAsConst(stepData->clipCommands)) {
         if (clipCommand->equivalentTo(clip)) {
@@ -865,8 +869,7 @@ void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
 
 void SyncTimer::scheduleTimerCommand(quint64 delay, TimerCommand *command)
 {
-    StepData *stepData = d->stepRing.at(d->delayedStep(delay));
-    stepData->ensureFresh();
+    StepData *stepData{d->delayedStep(delay)};
     stepData->timerCommands << command;
 }
 
@@ -885,8 +888,7 @@ void SyncTimer::scheduleTimerCommand(quint64 delay, int operation, int parameter
 
 void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity, quint64 duration, quint64 delay)
 {
-    StepData *stepData = d->stepRing.at(d->delayedStep(delay));
-    stepData->ensureFresh();
+    StepData *stepData{d->delayedStep(delay)};
     juce::MidiBuffer &addToThis = stepData->midiBuffer;
     unsigned char note[3];
     if (setOn) {
@@ -907,15 +909,13 @@ void SyncTimer::scheduleNote(unsigned char midiNote, unsigned char midiChannel, 
 void SyncTimer::scheduleMidiBuffer(const juce::MidiBuffer& buffer, quint64 delay)
 {
 //     qDebug() << Q_FUNC_INFO << "Adding buffer with" << buffer.getNumEvents() << "notes, with delay" << delay << "giving us ring step" << d->delayedStep(delay) << "at ring playhead" << d->stepReadHead << "with cumulative beat" << d->cumulativeBeat;
-    StepData *stepData = d->stepRing.at(d->delayedStep(delay));
-    stepData->ensureFresh();
+    StepData *stepData{d->delayedStep(delay)};
     stepData->insertMidiBuffer(buffer);
 }
 
 void SyncTimer::sendNoteImmediately(unsigned char midiNote, unsigned char midiChannel, bool setOn, unsigned char velocity)
 {
-    StepData *stepData = d->stepRing.at(d->delayedStep(0));
-    stepData->ensureFresh();
+    StepData *stepData{d->delayedStep(0)};
     if (setOn) {
         stepData->insertMidiBuffer(juce::MidiBuffer(juce::MidiMessage::noteOn(midiChannel + 1, midiNote, juce::uint8(velocity))));
     } else {
@@ -925,8 +925,7 @@ void SyncTimer::sendNoteImmediately(unsigned char midiNote, unsigned char midiCh
 
 void SyncTimer::sendMidiBufferImmediately(const juce::MidiBuffer& buffer)
 {
-    StepData *stepData = d->stepRing.at(d->delayedStep(0));
-    stepData->ensureFresh();
+    StepData *stepData{d->delayedStep(0)};
     stepData->insertMidiBuffer(buffer);
 }
 
