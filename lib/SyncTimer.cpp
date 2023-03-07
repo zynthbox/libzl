@@ -261,14 +261,14 @@ public:
         if (result != 0) {
             qDebug() << Q_FUNC_INFO << "Error locking step ring memory" << strerror(result);
         }
-        StepData* previous{&stepRingIterator[StepRingCount - 1]};
+        StepData* previous{&stepRing[StepRingCount - 1]};
         for (quint64 i = 0; i < StepRingCount; ++i) {
-            stepRingIterator[i].index = i;
-            previous->next = &stepRingIterator[i];
-            stepRingIterator[i].previous = previous;
-            previous = &stepRingIterator[i];
+            stepRing[i].index = i;
+            previous->next = &stepRing[i];
+            stepRing[i].previous = previous;
+            previous = &stepRing[i];
         }
-        stepReadHead = stepRingIterator;
+        stepReadHead = stepRing;
         samplerSynth = SamplerSynth::instance();
         // Dangerzone - direct connection from another thread. Yes, dangerous, but also we need the precision, so we need to dill whit it
         QObject::connect(timerThread, &SyncTimerThread::timeout, q, [this](){ hiResTimerCallback(); }, Qt::DirectConnection);
@@ -293,7 +293,6 @@ public:
     QList<ClipCommand*> sentOutClips;
 
     StepData stepRing[StepRingCount];
-    StepData stepRingIterator[StepRingCount];
     // The next step to be read in the step ring
     StepData* stepReadHead{nullptr};
     quint64 stepNextPlaybackPosition{0};
@@ -307,7 +306,7 @@ public:
         quint64 step{0};
         if (isPaused) {
             // If paused, base the delay on the current stepReadHead
-            step = ((*stepReadHead).index + delay + 1) % StepRingCount;
+            step = (stepReadHead->index + delay + 1) % StepRingCount;
         } else {
             // If running, base the delay on the current cumulativeBeat (adjusted to at least stepReadHead, just in case)
             step = (stepReadHeadOnStart + qMax(cumulativeBeat + delay, jackPlayhead + 1)) % StepRingCount;
@@ -717,7 +716,7 @@ void SyncTimer::stop() {
 
     // A touch of hackery to ensure we end immediately, and leave a clean state
     for (quint64 step = 0; step < StepRingCount; ++step) {
-        StepData *stepData = &d->stepRing[(step + (*d->stepReadHead).index) % StepRingCount];
+        StepData *stepData = &d->stepRing[(step + d->stepReadHead->index) % StepRingCount];
         if (!stepData->played) {
             // First, spit out all the queued midi messages immediately, but in strict order, and only off notes...
             juce::MidiBuffer onlyOffs;
