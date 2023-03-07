@@ -1,4 +1,6 @@
 #include <sched.h>
+#include <sys/mman.h>
+
 #include "SyncTimer.h"
 #include "ClipAudioSource.h"
 #include "ClipCommand.h"
@@ -255,13 +257,15 @@ public:
         : q(q)
     {
         timerThread = new SyncTimerThread(q);
-        stepRing.reserve(StepRingCount);
+        int result = mlock(stepRing, sizeof(StepData) * StepRingCount);
+        if (result != 0) {
+            qDebug() << Q_FUNC_INFO << "Error locking step ring memory" << strerror(result);
+        }
         StepData* previous{&stepRingIterator[StepRingCount - 1]};
         for (quint64 i = 0; i < StepRingCount; ++i) {
             stepRingIterator[i].index = i;
             previous->next = &stepRingIterator[i];
             stepRingIterator[i].previous = previous;
-            stepRing << &stepRingIterator[i];
             previous = &stepRingIterator[i];
         }
         stepReadHead = stepRingIterator;
@@ -279,7 +283,6 @@ public:
         if (jackClient) {
             jack_client_close(jackClient);
         }
-        qDeleteAll(stepRing);
     }
     SyncTimer *q{nullptr};
     SamplerSynth *samplerSynth{nullptr};
@@ -289,7 +292,7 @@ public:
     QList<void (*)(int)> callbacks;
     QList<ClipCommand*> sentOutClips;
 
-    QList<StepData*> stepRing;
+    StepData stepRing[StepRingCount];
     StepData stepRingIterator[StepRingCount];
     // The next step to be read in the step ring
     StepData* stepReadHead{nullptr};
@@ -309,7 +312,7 @@ public:
             // If running, base the delay on the current cumulativeBeat (adjusted to at least stepReadHead, just in case)
             step = (stepReadHeadOnStart + qMax(cumulativeBeat + delay, jackPlayhead + 1)) % StepRingCount;
         }
-        StepData *stepData = stepRing.at(step);
+        StepData *stepData = &stepRing[step];
         if (ensureFresh) {
             stepData->ensureFresh();
         }
@@ -589,20 +592,10 @@ SyncTimer::SyncTimer(QObject *parent)
     });
     // Open the client.
     jack_status_t real_jack_status{};
-    d->jackClient = jack_client_open(
-        "SyncTimer",
-        JackNullOption,
-        &real_jack_status
-    );
+    d->jackClient = jack_client_open("SyncTimer", JackNullOption, &real_jack_status);
     if (d->jackClient) {
         // Register the MIDI output port.
-        d->jackPort = jack_port_register(
-            d->jackClient,
-            "midi_out",
-            JACK_DEFAULT_MIDI_TYPE,
-            JackPortIsOutput,
-            0
-        );
+        d->jackPort = jack_port_register(d->jackClient, "midi_out", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
         if (d->jackPort) {
             // Set the process callback.
             if (jack_set_process_callback(d->jackClient, client_process, static_cast<void*>(d)) == 0) {
@@ -610,7 +603,7 @@ SyncTimer::SyncTimer(QObject *parent)
                 jack_set_latency_callback (d->jackClient, client_latency_callback, static_cast<void*>(d));
                 // Activate the client.
                 if (jack_activate(d->jackClient) == 0) {
-                    qDebug() << "Successfully created and set up the SyncTimer's Jack client";
+                    qInfo() << "Successfully created and set up the SyncTimer's Jack client";
                     jack_latency_range_t range;
                     jack_port_get_latency_range (d->jackPort, JackPlaybackLatency, &range);
                     jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
@@ -669,7 +662,7 @@ void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
 
     // First, remove any references to the clip that we're wanting to stop
     for (quint64 step = 0; step < StepRingCount; ++step) {
-        StepData *stepData = d->stepRing.at(step);
+        StepData *stepData = &d->stepRing[step];
         if (!stepData->played) {
             QMutableListIterator<ClipCommand *> stepIterator(stepData->clipCommands);
             while (stepIterator.hasNext()) {
@@ -724,7 +717,7 @@ void SyncTimer::stop() {
 
     // A touch of hackery to ensure we end immediately, and leave a clean state
     for (quint64 step = 0; step < StepRingCount; ++step) {
-        StepData *stepData = d->stepRing.at((step + (*d->stepReadHead).index) % StepRingCount);
+        StepData *stepData = &d->stepRing[(step + (*d->stepReadHead).index) % StepRingCount];
         if (!stepData->played) {
             // First, spit out all the queued midi messages immediately, but in strict order, and only off notes...
             juce::MidiBuffer onlyOffs;
