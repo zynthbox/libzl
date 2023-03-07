@@ -364,7 +364,6 @@ public:
     quint64 jackPlayhead{0};
     quint64 stepReadHeadOnStart{0};
     jack_time_t jackMostRecentNextUsecs{0};
-    jack_time_t jackUsecDeficit{0};
     jack_time_t jackStartTime{0};
     quint64 jackNextPlaybackPosition{0};
     quint64 jackSubbeatLengthInMicroseconds{0};
@@ -381,7 +380,7 @@ public:
     // This looks like a Jack process call, but it is in fact called explicitly by MidiRouter for insurance purposes (doing it like
     // this means we've got tighter control, and we really don't need to pass it through jack anyway)
     int process(jack_nframes_t nframes) {
-        auto t1 = std::chrono::high_resolution_clock::now();
+        const std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
         void *buffer = jack_port_get_buffer(jackPort, nframes);
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -399,6 +398,7 @@ public:
         jack_time_t next_usecs;
         float period_usecs;
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
+        const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
 
         // Setting here because we need the this-process value, not the next-process
         jackPlayheadReturn = jackPlayhead;
@@ -408,28 +408,26 @@ public:
             if (jackPlayhead == 0) {
                 // first run for this playback session, let's do a touch of setup
                 jackNextPlaybackPosition = current_usecs;
-                jackUsecDeficit = 0;
             }
             jackMostRecentNextUsecs = next_usecs;
         }
         if (stepNextPlaybackPosition == 0) {
             stepNextPlaybackPosition = current_usecs;
         }
+
         jack_nframes_t firstAvailableFrame{0};
         jack_nframes_t relativePosition{0};
-        // As long as the next playback position fits inside this frame, and we have space for it, let's post some events
-        const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
         int errorCode{0};
-
         juce::MidiBuffer *missingBitsBuffer{nullptr};
         int clipCount{0};
+        // As long as the next playback position is before this period is supposed to end, and we have frames for it, let's post some events
         while (stepNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
-            StepData &stepData = *stepReadHead;
+            StepData *stepData = stepReadHead;
             // Next roll for next time (also do it now, as we're reading out of it)
             stepReadHead = stepReadHead->next;
             // In case we're cycling through stuff we've already played, let's just... not do anything with that
             // Basically that just means nobody else has attempted to do stuff with the step since we last played it
-            if (!stepData.played) {
+            if (!stepData->played) {
                 // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
                 if (stepNextPlaybackPosition <= current_usecs) {
                     relativePosition = firstAvailableFrame;
@@ -439,7 +437,7 @@ public:
                     firstAvailableFrame = relativePosition;
                 }
                 // First, let's get the midi messages sent out
-                for (const juce::MidiMessageMetadata &juceMessage : qAsConst(stepData.midiBuffer)) {
+                for (const juce::MidiMessageMetadata &juceMessage : qAsConst(stepData->midiBuffer)) {
                     if (firstAvailableFrame >= nframes) {
                         qWarning() << "First available frame is in the future - that's a problem";
                         break;
@@ -468,19 +466,19 @@ public:
 
                 // Then do direct-control samplersynth things
                 clipCount = 0;
-                for (ClipCommand *clipCommand : qAsConst(stepData.clipCommands)) {
+                for (ClipCommand *clipCommand : qAsConst(stepData->clipCommands)) {
                     // Using the protected function, which only we (and SamplerSynth) can use, to ensure less locking
                     samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
                     ++clipCount;
                 }
                 if (clipCount > 0) {
-                    sentOutClips.append(stepData.clipCommands);
+                    sentOutClips.append(stepData->clipCommands);
                 }
 
                 // Do playback control things as the last thing, otherwise we might end up affecting things
                 // currently happening (like, if we stop playback on the last step of a thing, we still want
                 // notes on that step to have been played and so on)
-                for (TimerCommand *command : qAsConst(stepData.timerCommands)) {
+                for (TimerCommand *command : qAsConst(stepData->timerCommands)) {
                     Q_EMIT q->timerCommand(command);
                     if (command->operation == TimerCommand::StartClipLoopOperation || command->operation == TimerCommand::StopClipLoopOperation) {
                         ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
@@ -506,7 +504,7 @@ public:
                         samplerSynth->setChannelEnabled(command->parameter, command->parameter2);
                     }
                 }
-                stepData.played = true;
+                stepData->played = true;
             }
             if (!isPaused) {
                 // Next roll for next time
@@ -535,7 +533,7 @@ public:
             qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and scheduled no notes";
         }
 #endif
-        std::chrono::duration<double, std::milli> ms_double = std::chrono::high_resolution_clock::now() - t1;
+        const std::chrono::duration<double, std::milli> ms_double = std::chrono::high_resolution_clock::now() - t1;
         if (ms_double.count() > 0.2) {
             qDebug() << Q_FUNC_INFO << ms_double.count() << "ms after" << belowThreshold << "runs under 0.2ms";
             belowThreshold = 0;
