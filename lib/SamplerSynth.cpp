@@ -77,7 +77,6 @@ void jackConnect(jack_client_t* jackClient, const QString &from, const QString &
 SamplerChannel::SamplerChannel(const QString &clientName)
     : clientName(clientName)
 {
-    qDebug() << "Setting up SamplerSynth Jack client" << clientName;
     commandQueue.reserve(commandQueueSize);
     for (int i = 0; i < commandQueueSize; ++i) {
         commandQueue[i] = new SamplerCommand;
@@ -86,9 +85,7 @@ SamplerChannel::SamplerChannel(const QString &clientName)
     jackClient = jack_client_open(clientName.toUtf8(), JackNullOption, &real_jack_status);
     if (jackClient) {
         // Set the process callback.
-        if (jack_set_process_callback(jackClient, client_process, this) != 0) {
-            qWarning() << "Failed to set the SamplerSynth Jack processing callback";
-        } else {
+        if (jack_set_process_callback(jackClient, client_process, this) == 0) {
             for (int voiceIndex = 0; voiceIndex < SAMPLER_CHANNEL_VOICE_COUNT; ++voiceIndex) {
                 SamplerSynthVoice *voice = new SamplerSynthVoice();
                 voices[voiceIndex] = voice;
@@ -101,11 +98,15 @@ SamplerChannel::SamplerChannel(const QString &clientName)
                 jackConnect(jackClient, QString("%1:%2").arg(clientName).arg(portNameLeft).toUtf8(), QLatin1String{"system:playback_1"});
                 jackConnect(jackClient, QString("%1:%2").arg(clientName).arg(portNameRight).toUtf8(), QLatin1String{"system:playback_2"});
                 jackConnect(jackClient, QLatin1String("ZynMidiRouter:midi_out"), QString("%1:midiIn").arg(clientName));
-                qDebug() << "Successfully created and set up" << clientName;
+                qInfo() << Q_FUNC_INFO << "Successfully created and set up" << clientName;
             } else {
-                qWarning() << "Failed to activate SamplerSynth Jack client" << clientName;
+                qWarning() << Q_FUNC_INFO << "Failed to activate SamplerSynth Jack client" << clientName;
             }
+        } else {
+            qWarning() << Q_FUNC_INFO << "Failed to set the SamplerSynth Jack processing callback";
         }
+    } else {
+        qWarning() << Q_FUNC_INFO << "Failed to set up SamplerSynth Jack client" << clientName;
     }
 }
 
@@ -254,7 +255,7 @@ SamplerSynth::~SamplerSynth()
 void SamplerSynth::initialize(tracktion_engine::Engine *engine)
 {
     d->engine = engine;
-    qDebug() << "Registering ten (plus two global) channels, with 8 voices each";
+    qInfo() << Q_FUNC_INFO << "Registering ten (plus two global) channels, with 8 voices each";
     for (int channelIndex = 0; channelIndex < 12; ++channelIndex) {
         QString channelName;
         if (channelIndex == 0) {

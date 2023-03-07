@@ -219,7 +219,7 @@ AudioLevelsChannel::AudioLevelsChannel(const QString &clientName)
             // Activate the client.
             result = jack_activate(jackClient);
             if (result == 0) {
-                qDebug() << Q_FUNC_INFO << "Successfully created and set up" << clientName;
+                qInfo() << Q_FUNC_INFO << "Successfully created and set up" << clientName;
             } else {
                 qWarning() << Q_FUNC_INFO << "Failed to activate Jack client" << clientName << "with the return code" << result;
             }

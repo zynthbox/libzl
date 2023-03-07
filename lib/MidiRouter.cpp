@@ -665,31 +665,13 @@ MidiRouter::MidiRouter(QObject *parent)
     reloadConfiguration();
     // Open the client.
     jack_status_t real_jack_status{};
-    d->jackClient = jack_client_open(
-        "ZLRouter",
-        JackNullOption,
-        &real_jack_status
-    );
+    d->jackClient = jack_client_open("ZLRouter", JackNullOption, &real_jack_status);
     if (d->jackClient) {
         // Register the MIDI output port for SyncTimer - only SyncTimer should connect to this port
-        d->syncTimerMidiInPort = jack_port_register(
-            d->jackClient,
-            "SyncTimerIn",
-            JACK_DEFAULT_MIDI_TYPE,
-            JackPortIsInput,
-            0
-        );
+        d->syncTimerMidiInPort = jack_port_register(d->jackClient, "SyncTimerIn", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
         if (d->syncTimerMidiInPort) {
             // Set the process callback.
-            if (
-                jack_set_process_callback(
-                    d->jackClient,
-                    client_process,
-                    static_cast<void*>(d)
-                ) != 0
-            ) {
-                qWarning() << "ZLRouter: Failed to set the ZLRouter Jack processing callback";
-            } else {
+            if (jack_set_process_callback(d->jackClient, client_process, static_cast<void*>(d)) == 0) {
                 jack_set_xrun_callback(d->jackClient, client_xrun, static_cast<void*>(d));
                 d->hardwareInputConnector = new QTimer(this);
                 d->hardwareInputConnector->setSingleShot(true);
@@ -718,7 +700,7 @@ MidiRouter::MidiRouter(QObject *parent)
                 jack_set_client_registration_callback(d->jackClient, client_registration, static_cast<void*>(d));
                 // Activate the client.
                 if (jack_activate(d->jackClient) == 0) {
-                    qDebug() << "ZLRouter: Successfully created and set up the ZLRouter's Jack client";
+                    qInfo() << "ZLRouter: Successfully created and set up the ZLRouter's Jack client";
 //                     for (ChannelOutput *output : d->outputs) {
 //                         d->connectPorts(QString("ZLRouter:%1").arg(output->portName), zmrPort);
 //                     }
@@ -727,12 +709,14 @@ MidiRouter::MidiRouter(QObject *parent)
                         d->connectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), externalPort);
                     }
                     d->connectPorts(QLatin1String{"SyncTimer:midi_out"}, QLatin1String{"ZLRouter:SyncTimerIn"});
+                    // Now hook up the hardware inputs
+                    d->hardwareInputConnector->start();
                 } else {
                     qWarning() << "ZLRouter: Failed to activate ZLRouter Jack client";
                 }
+            } else {
+                qWarning() << "ZLRouter: Failed to set the ZLRouter Jack processing callback";
             }
-            // Now hook up the hardware inputs
-            d->hardwareInputConnector->start();
         } else {
             qWarning() << "ZLRouter: Could not register ZLRouter Jack input port for internal messages";
         }
