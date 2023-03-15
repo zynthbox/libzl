@@ -903,7 +903,7 @@ void SyncTimer::scheduleTimerCommand(quint64 delay, TimerCommand *command)
 
 void SyncTimer::scheduleTimerCommand(quint64 delay, int operation, int parameter1, int parameter2, int parameter3, const QVariant &variantParameter)
 {
-    TimerCommand* timerCommand = new TimerCommand;
+    TimerCommand* timerCommand = getTimerCommand();
     timerCommand->operation = static_cast<TimerCommand::Operation>(operation);
     timerCommand->parameter = parameter1;
     timerCommand->parameter2 = parameter2;
