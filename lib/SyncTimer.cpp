@@ -377,6 +377,7 @@ public:
 //     int process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayheadReturn, quint64 *jackSubbeatLengthInMicrosecondsReturn) {
 // Clear the buffer that MidiRouter gives us, because we want to be sure we've got a blank slate to work with
 
+    juce::MidiBuffer missingBitsBufferInstance;
     // This looks like a Jack process call, but it is in fact called explicitly by MidiRouter for insurance purposes (doing it like
     // this means we've got tighter control, and we really don't need to pass it through jack anyway)
     int process(jack_nframes_t nframes) {
@@ -449,7 +450,7 @@ public:
                     if (errorCode == ENOBUFS) {
                         qWarning() << "Ran out of space while writing events - scheduling the event there's not enough space for to be fired first next round";
                         if (!missingBitsBuffer) {
-                            missingBitsBuffer = new juce::MidiBuffer;
+                            missingBitsBuffer = &missingBitsBufferInstance;
                         }
                         // Schedule the rest of the buffer for immediate dispatch on next go-around
                         missingBitsBuffer->addEvent(juceMessage.getMessage(), 0);
@@ -521,7 +522,8 @@ public:
         // in case, it's good to cover this base.
         if (missingBitsBuffer) {
             q->sendMidiBufferImmediately(*missingBitsBuffer);
-            delete missingBitsBuffer;
+            missingBitsBuffer->clear();
+            missingBitsBuffer = nullptr;
         }
 #ifdef DEBUG_SYNCTIMER_JACK
         if (eventCount > 0) {
