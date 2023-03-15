@@ -124,10 +124,10 @@ public:
    * will be marked to be done on the existing command).
    * @note This function will take ownership of the command, and you should expect it to no longer exist after (especially if the above happens)
    * @note If you want the clip to loop (or not), set this on the clip itself along with the other clip properties
-   * @param clip The audio clip command you wish to fire on at the specified time
+   * @param command The audio clip command you wish to fire on at the specified time
    * @param delay A delay in number of timer ticks counting from the current position
    */
-  void scheduleClipCommand(ClipCommand *clip, quint64 delay);
+  void scheduleClipCommand(ClipCommand *command, quint64 delay);
   /**
     * \brief Fired whenever a scheduled clip command has been sent to SamplerSynth
     * @param clipCommand The clip command which has just been sent to SamplerSynth
@@ -205,6 +205,11 @@ public:
 
   Q_SIGNAL void addedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
   Q_SIGNAL void removedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
+
+  Q_SLOT ClipCommand *getClipCommand();
+  Q_SLOT void deleteClipCommand(ClipCommand *command);
+  Q_SLOT TimerCommand *getTimerCommand();
+  Q_SLOT void deleteTimerCommand(TimerCommand *command);
 protected:
   // This allows MidiRouter to process SyncTimer explicitly (this way we avoid having to pass through jack, which already has plenty of clients to worry about)
   friend class MidiRouterPrivate;

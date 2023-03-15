@@ -249,6 +249,7 @@ private:
     bool paused{true};
 };
 
+#define FreshCommandStashSize 2048
 #define StepRingCount 32768
 SyncTimerThread *timerThread{nullptr};
 class SyncTimerPrivate {
@@ -269,6 +270,10 @@ public:
             previous = &stepRing[i];
         }
         stepReadHead = stepRing;
+        for (int i = 0; i < FreshCommandStashSize; ++i) {
+            freshClipCommands << new ClipCommand;
+            freshTimerCommands << new TimerCommand;
+        }
         samplerSynth = SamplerSynth::instance();
         // Dangerzone - direct connection from another thread. Yes, dangerous, but also we need the precision, so we need to dill whit it
         QObject::connect(timerThread, &SyncTimerThread::timeout, q, [this](){ hiResTimerCallback(); }, Qt::DirectConnection);
@@ -290,6 +295,7 @@ public:
     int beat = 0;
     quint64 cumulativeBeat = 0;
     QList<void (*)(int)> callbacks;
+#warning sentOutClips should be a ring buffer, otherwise we're doing appends during process and we really need to be not doing that
     QList<ClipCommand*> sentOutClips;
 
     StepData stepRing[StepRingCount];
@@ -318,7 +324,12 @@ public:
         return stepData;
     }
 
-#ifdef DEBUG_SYNCTIMER_TIMING
+    QList<TimerCommand*> timerCommandsToDelete;
+    QList<TimerCommand*> freshTimerCommands;
+    QList<ClipCommand*> clipCommandsToDelete;
+    QList<ClipCommand*> freshClipCommands;
+
+    #ifdef DEBUG_SYNCTIMER_TIMING
     frame_clock::time_point lastRound;
     QList<long> intervals;
 #endif
@@ -356,6 +367,27 @@ public:
             // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
             sentOutClips.clear();
             mutex.unlock();
+        }
+
+        // If we've got anything to delete, do so now
+        qDeleteAll(timerCommandsToDelete);
+        timerCommandsToDelete.clear();
+        qDeleteAll(clipCommandsToDelete);
+        clipCommandsToDelete.clear();
+        // Make sure that we've got some fresh commands to hand out
+        QMutableListIterator<TimerCommand*> freshTimerCommandsIterator(freshTimerCommands);
+        while (freshTimerCommandsIterator.hasNext()) {
+            TimerCommand *value = freshTimerCommandsIterator.next();
+            if (value == nullptr) {
+                freshTimerCommandsIterator.setValue(new TimerCommand);
+            }
+        }
+        QMutableListIterator<ClipCommand*> freshClipCommandsIterator(freshClipCommands);
+        while (freshClipCommandsIterator.hasNext()) {
+            ClipCommand *value = freshClipCommandsIterator.next();
+            if (value == nullptr) {
+                freshClipCommandsIterator.setValue(new ClipCommand);
+            }
         }
     }
 
@@ -641,7 +673,9 @@ void SyncTimer::removeCallback(void (*functionPtr)(int)) {
 
 void SyncTimer::queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel)
 {
-    ClipCommand *command = ClipCommand::channelCommand(clip, midiChannel);
+    ClipCommand *command = getClipCommand();
+    command->clip = clip;
+    command->midiChannel = midiChannel;
     command->midiNote = 60;
     command->changeVolume = true;
     command->volume = 1.0;
@@ -665,9 +699,9 @@ void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
         if (!stepData->played) {
             QMutableListIterator<ClipCommand *> stepIterator(stepData->clipCommands);
             while (stepIterator.hasNext()) {
-                stepIterator.next();
-                if (stepIterator.value()->clip == clip) {
-                    delete stepIterator.value();
+                ClipCommand *stepCommand = stepIterator.next();
+                if (stepCommand->clip == clip) {
+                    deleteClipCommand(stepCommand);
                     stepIterator.remove();
                     break;
                 }
@@ -676,7 +710,9 @@ void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
     }
 
     // Then stop it, now, because it should be now
-    ClipCommand *command = ClipCommand::channelCommand(clip, midiChannel);
+    ClipCommand *command = getClipCommand();
+    command->clip = clip;
+    command->midiChannel = midiChannel;
     command->midiNote = 60;
     command->stopPlayback = true;
     StepData *stepData{d->delayedStep(0)};
@@ -820,42 +856,42 @@ const quint64 &SyncTimer::jackSubbeatLengthInMicroseconds() const
     return d->jackSubbeatLengthInMicroseconds;
 }
 
-void SyncTimer::scheduleClipCommand(ClipCommand *clip, quint64 delay)
+void SyncTimer::scheduleClipCommand(ClipCommand *command, quint64 delay)
 {
     StepData *stepData{d->delayedStep(delay)};
     bool foundExisting{false};
-    for (ClipCommand *clipCommand : qAsConst(stepData->clipCommands)) {
-        if (clipCommand->equivalentTo(clip)) {
-            if (clip->changeLooping) {
-                clipCommand->looping = clip->looping;
-                clipCommand->changeLooping = true;
+    for (ClipCommand *existingCommand : qAsConst(stepData->clipCommands)) {
+        if (existingCommand->equivalentTo(command)) {
+            if (command->changeLooping) {
+                existingCommand->looping = command->looping;
+                existingCommand->changeLooping = true;
             }
-            if (clip->changePitch) {
-                clipCommand->pitchChange = clip->pitchChange;
-                clipCommand->changePitch = true;
+            if (command->changePitch) {
+                existingCommand->pitchChange = command->pitchChange;
+                existingCommand->changePitch = true;
             }
-            if (clip->changeSpeed) {
-                clipCommand->speedRatio = clip->speedRatio;
-                clipCommand->changeSpeed = true;
+            if (command->changeSpeed) {
+                existingCommand->speedRatio = command->speedRatio;
+                existingCommand->changeSpeed = true;
             }
-            if (clip->changeGainDb) {
-                clipCommand->gainDb = clip->gainDb;
-                clipCommand->changeGainDb = true;
+            if (command->changeGainDb) {
+                existingCommand->gainDb = command->gainDb;
+                existingCommand->changeGainDb = true;
             }
-            if (clip->changeVolume) {
-                clipCommand->volume = clip->volume;
-                clipCommand->changeVolume = true;
+            if (command->changeVolume) {
+                existingCommand->volume = command->volume;
+                existingCommand->changeVolume = true;
             }
-            if (clip->startPlayback) {
-                clipCommand->startPlayback = true;
+            if (command->startPlayback) {
+                existingCommand->startPlayback = true;
             }
             foundExisting = true;
         }
     }
     if (foundExisting) {
-        delete clip;
+        deleteClipCommand(command);
     } else {
-        stepData->clipCommands << clip;
+        stepData->clipCommands << command;
     }
 }
 
@@ -923,6 +959,39 @@ void SyncTimer::sendMidiBufferImmediately(const juce::MidiBuffer& buffer)
 
 bool SyncTimer::timerRunning() {
     return !timerThread->isPaused();
+}
+
+ClipCommand * SyncTimer::getClipCommand()
+{
+    for (ClipCommand *command : d->freshClipCommands) {
+        if (command) {
+            return command;
+        }
+    }
+    return nullptr;
+}
+
+void SyncTimer::deleteClipCommand(ClipCommand* command)
+{
+    d->clipCommandsToDelete << command;
+}
+
+TimerCommand * SyncTimer::getTimerCommand()
+{
+    QMutableListIterator<TimerCommand*> freshTimerCommandsIterator(d->freshTimerCommands);
+    while (freshTimerCommandsIterator.hasNext()) {
+        TimerCommand *command = freshTimerCommandsIterator.next();
+        if (command) {
+            freshTimerCommandsIterator.setValue(nullptr);
+            return command;
+        }
+    }
+    return nullptr;
+}
+
+void SyncTimer::deleteTimerCommand(TimerCommand* command)
+{
+    d->timerCommandsToDelete << command;
 }
 
 void SyncTimer::process(jack_nframes_t /*nframes*/, void */*buffer*/, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds)
