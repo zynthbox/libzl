@@ -24,7 +24,6 @@ public:
     }
 
     SyncTimer *syncTimer{nullptr};
-    QList<ClipCommand*> clipCommandsForDeleting;
     ClipCommand *clipCommand{nullptr};
     ClipAudioSource *clip{nullptr};
     qint64 clipPositionId{-1};
@@ -91,7 +90,7 @@ void SamplerSynthVoice::setCurrentCommand(ClipCommand *clipCommand)
                 d->sourceSamplePosition = (int) (d->clip->getStartPosition(d->clipCommand->slice) * playingSound->sourceSampleRate());
             }
         }
-        d->clipCommandsForDeleting << clipCommand;
+        d->syncTimer->deleteClipCommand(clipCommand);
     } else {
         d->clipCommand = clipCommand;
     }
@@ -160,7 +159,7 @@ void SamplerSynthVoice::stopNote (float /*velocity*/, bool allowTailOff)
             d->clipPositionId = -1;
         }
         if (d->clipCommand) {
-            d->clipCommandsForDeleting << d->clipCommand;
+            d->syncTimer->deleteClipCommand(d->clipCommand);
             d->clipCommand = nullptr;
             isPlaying = false;
         }
@@ -267,9 +266,5 @@ void SamplerSynthVoice::process(jack_default_audio_sample_t *leftBuffer, jack_de
                 d->clip->playbackPositionsModel()->setPositionGainAndProgress(d->clipPositionId, peakGain * 0.5f, d->sourceSamplePosition / d->sourceSampleLength);
             }
         }
-    }
-    if (!d->clipCommandsForDeleting.isEmpty()) {
-        qDeleteAll(d->clipCommandsForDeleting);
-        d->clipCommandsForDeleting.clear();
     }
 }
