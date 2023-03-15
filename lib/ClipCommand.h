@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SyncTimer.h"
+
 class ClipAudioSource;
 /**
  * \brief Used to schedule clips into the timer's playback queue
@@ -41,7 +43,7 @@ struct ClipCommand {
      */
     static ClipCommand* noEffectCommand(ClipAudioSource *clip)
     {
-        ClipCommand *command = new ClipCommand();
+        ClipCommand *command = SyncTimer::instance()->getClipCommand();
         command->clip = clip;
         command->midiChannel = -2;
         command->midiNote = 60;
@@ -52,7 +54,7 @@ struct ClipCommand {
      */
     static ClipCommand* effectedCommand(ClipAudioSource *clip)
     {
-        ClipCommand *command = new ClipCommand();
+        ClipCommand *command = SyncTimer::instance()->getClipCommand();
         command->clip = clip;
         command->midiChannel = -1;
         command->midiNote = 60;
@@ -63,7 +65,7 @@ struct ClipCommand {
      */
     static ClipCommand* channelCommand(ClipAudioSource *clip, int channelID)
     {
-        ClipCommand *command = new ClipCommand();
+        ClipCommand *command = SyncTimer::instance()->getClipCommand();
         command->clip = clip;
         command->midiChannel = channelID;
         return command;
