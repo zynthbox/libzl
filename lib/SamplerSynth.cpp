@@ -23,10 +23,13 @@ using namespace juce;
 #define SAMPLER_CHANNEL_VOICE_COUNT 8
 
 struct SamplerCommand {
-    ClipCommand* clipCommand{nullptr};
     quint64 timestamp;
+    ClipCommand* clipCommand{nullptr};
+    SamplerCommand* next{nullptr};
+    SamplerCommand* previous{nullptr};
 };
 
+#define CommandQueueSize 256
 class SamplerChannel
 {
 public:
@@ -35,10 +38,12 @@ public:
         if (jackClient) {
             jack_client_close(jackClient);
         }
-        qDeleteAll(commandQueue);
     }
-
-    bool enabled{true};
+    int process(jack_nframes_t nframes);
+    inline void handleCommand(ClipCommand *clipCommand, quint64 currentTick);
+    SamplerCommand commandRing[CommandQueueSize];
+    SamplerCommand *readHead{nullptr};
+    SamplerCommand *writeHead{nullptr};
 
     QString clientName;
     jack_client_t *jackClient{nullptr};
@@ -47,17 +52,12 @@ public:
     jack_port_t *rightPort{nullptr};
     QString portNameRight{"right_out"};
     jack_port_t *midiInPort{nullptr};
-    int midiChannel{-1};
     SamplerSynthVoice* voices[SAMPLER_CHANNEL_VOICE_COUNT];
-    int process(jack_nframes_t nframes);
+    SamplerSynthPrivate* d{nullptr};
+    int midiChannel{-1};
     float cpuLoad{0.0f};
 
-    SamplerSynthPrivate* d{nullptr};
-    int queueHandled{0};
-    QAtomicInt queueMostRecentlyAdded{0};
-    static const int commandQueueSize{256};
-    QHash<int, SamplerCommand*> commandQueue;
-    inline void handleCommand(ClipCommand *clipCommand, quint64 currentTick);
+    bool enabled{true};
 };
 
 static int client_process(jack_nframes_t nframes, void* arg) {
@@ -77,9 +77,12 @@ void jackConnect(jack_client_t* jackClient, const QString &from, const QString &
 SamplerChannel::SamplerChannel(const QString &clientName)
     : clientName(clientName)
 {
-    commandQueue.reserve(commandQueueSize);
-    for (int i = 0; i < commandQueueSize; ++i) {
-        commandQueue[i] = new SamplerCommand;
+    writeHead = readHead = commandRing;
+    SamplerCommand *previous = &commandRing[CommandQueueSize - 1];
+    for (quint64 i = 0; i < CommandQueueSize; ++i) {
+        previous->next = &commandRing[i];
+        commandRing[i].previous = previous;
+        previous = &commandRing[i];
     }
     jack_status_t real_jack_status{};
     jackClient = jack_client_open(clientName.toUtf8(), JackNullOption, &real_jack_status);
@@ -112,14 +115,10 @@ SamplerChannel::SamplerChannel(const QString &clientName)
 
 int SamplerChannel::process(jack_nframes_t nframes) {
     // First handle any queued up commands (starting, stopping, changes to voice state, that sort of stuff)
-    while (queueHandled != queueMostRecentlyAdded) {
-        ++queueHandled;
-        if (queueHandled >= commandQueueSize) {
-            queueHandled = 0;
-        }
-//         qDebug() << Q_FUNC_INFO << "Handling command at position" << queueHandled << "for channel" << clientName;
-        const SamplerCommand *command = commandQueue[queueHandled];
-        handleCommand(command->clipCommand, command->timestamp);
+    while (readHead->clipCommand) {
+        handleCommand(readHead->clipCommand, readHead->timestamp);
+        readHead->clipCommand = nullptr;
+        readHead = readHead->next;
     }
     if (enabled) {
         jack_nframes_t current_frames;
@@ -330,16 +329,14 @@ void SamplerSynth::handleClipCommand(ClipCommand *clipCommand, quint64 currentTi
 {
     if (d->clipSounds.contains(clipCommand->clip) && clipCommand->midiChannel + 2 < d->channels.count()) {
         SamplerChannel *channel = d->channels[clipCommand->midiChannel + 2];
-        int queueMostRecentlyAdded = channel->queueMostRecentlyAdded;
-        queueMostRecentlyAdded++;
-        if (queueMostRecentlyAdded >= channel->commandQueueSize) {
-            queueMostRecentlyAdded = 0;
+        if (channel->writeHead->clipCommand) {
+            qWarning() << Q_FUNC_INFO << "Big problem! Attempted to add a clip command to the queue, but we've not handled the one that's already in the queue.";
+        } else {
+            SamplerCommand* ringPosition = channel->writeHead;
+            channel->writeHead = channel->writeHead->next;
+            ringPosition->clipCommand = clipCommand;
+            ringPosition->timestamp = currentTick;
         }
-//         qDebug() << Q_FUNC_INFO << "Adding new command to position" << queueMostRecentlyAdded << "on channel" << channel->clientName;
-        SamplerCommand *samplerCommand = channel->commandQueue[queueMostRecentlyAdded];
-        samplerCommand->clipCommand = clipCommand;
-        samplerCommand->timestamp = currentTick;
-        channel->queueMostRecentlyAdded = queueMostRecentlyAdded;
     }
 }
 
