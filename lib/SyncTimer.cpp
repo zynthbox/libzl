@@ -13,8 +13,7 @@
 #include <QDebug>
 #include <QHash>
 #include <QMutex>
-#include <QMutexLocker>
-#include "QProcess"
+#include <QProcess>
 #include <QThread>
 #include <QTimer>
 #include <QWaitCondition>
@@ -76,6 +75,12 @@ struct alignas(64) StepData {
     // Conceptually, a step starts out having been played (meaning it is not interesting to the process call),
     // and it is set to false by ensureFresh above, which is called any time just before adding anything to a step.
     bool played{true};
+};
+
+struct alignas(32) ClipCommandRingEntry {
+    ClipCommand *clipCommand{nullptr};
+    ClipCommandRingEntry *previous{nullptr};
+    ClipCommandRingEntry *next{nullptr};
 };
 
 using frame_clock = std::conditional_t<
@@ -270,6 +275,15 @@ public:
             previous = &stepRing[i];
         }
         stepReadHead = stepRing;
+
+        ClipCommandRingEntry* clipPrevious{&sentOutClipsRing[FreshCommandStashSize - 1]};
+        for (quint64 i = 0; i < FreshCommandStashSize; ++i) {
+            clipPrevious->next = &sentOutClipsRing[i];
+            sentOutClipsRing[i].previous = clipPrevious;
+            clipPrevious = &sentOutClipsRing[i];
+        }
+        sentOutClipsReadHead = sentOutClipsWriteHead = sentOutClipsRing;
+
         for (int i = 0; i < FreshCommandStashSize; ++i) {
             freshClipCommands << new ClipCommand;
             freshTimerCommands << new TimerCommand;
@@ -295,8 +309,10 @@ public:
     int beat = 0;
     quint64 cumulativeBeat = 0;
     QList<void (*)(int)> callbacks;
-#warning sentOutClips should be a ring buffer, otherwise we're doing appends during process and we really need to be not doing that
-    QList<ClipCommand*> sentOutClips;
+
+    ClipCommandRingEntry sentOutClipsRing[FreshCommandStashSize];
+    ClipCommandRingEntry *sentOutClipsReadHead{nullptr};
+    ClipCommandRingEntry *sentOutClipsWriteHead{nullptr};
 
     StepData stepRing[StepRingCount];
     // The next step to be read in the step ring
@@ -333,7 +349,6 @@ public:
     frame_clock::time_point lastRound;
     QList<long> intervals;
 #endif
-    QMutex mutex;
     int i{0};
     void hiResTimerCallback() {
 #ifdef DEBUG_SYNCTIMER_TIMING
@@ -357,16 +372,12 @@ public:
             ++cumulativeBeat;
         }
 
-        // Finally, remove old queues that are sufficiently far behind us in time.
-        // That is to say, get rid of any queues that are older than the current jack playback position
-        if (mutex.tryLock(timerThread->getInterval().count() / 5000000)) {
-            // Finally, notify any listeners that commands have been sent out
-            for (ClipCommand *clipCommand : qAsConst(sentOutClips)) {
-                Q_EMIT q->clipCommandSent(clipCommand);
-            }
-            // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
-            sentOutClips.clear();
-            mutex.unlock();
+        // Finally, notify any listeners that commands have been sent out
+        // You must not delete the commands themselves here, as SamplerSynth takes ownership of them
+        while (sentOutClipsReadHead->clipCommand) {
+            Q_EMIT q->clipCommandSent(sentOutClipsReadHead->clipCommand);
+            sentOutClipsReadHead->clipCommand = nullptr;
+            sentOutClipsReadHead = sentOutClipsReadHead->next;
         }
 
         // If we've got anything to delete, do so now
@@ -452,7 +463,6 @@ public:
         jack_nframes_t relativePosition{0};
         int errorCode{0};
         juce::MidiBuffer *missingBitsBuffer{nullptr};
-        int clipCount{0};
         // As long as the next playback position is before this period is supposed to end, and we have frames for it, let's post some events
         while (stepNextPlaybackPosition < next_usecs && firstAvailableFrame < nframes) {
             StepData *stepData = stepReadHead;
@@ -498,14 +508,11 @@ public:
                 }
 
                 // Then do direct-control samplersynth things
-                clipCount = 0;
                 for (ClipCommand *clipCommand : qAsConst(stepData->clipCommands)) {
                     // Using the protected function, which only we (and SamplerSynth) can use, to ensure less locking
                     samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
-                    ++clipCount;
-                }
-                if (clipCount > 0) {
-                    sentOutClips.append(stepData->clipCommands);
+                    sentOutClipsWriteHead->clipCommand = clipCommand;
+                    sentOutClipsWriteHead = sentOutClipsWriteHead->next;
                 }
 
                 // Do playback control things as the last thing, otherwise we might end up affecting things
@@ -517,7 +524,8 @@ public:
                         ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
                         if (clipCommand) {
                             samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
-                            sentOutClips.append(clipCommand);
+                            sentOutClipsWriteHead->clipCommand = clipCommand;
+                            sentOutClipsWriteHead = sentOutClipsWriteHead->next;
                         } else {
                             qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
                         }
@@ -691,8 +699,6 @@ void SyncTimer::queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel
 
 void SyncTimer::queueClipToStopOnChannel(ClipAudioSource *clip, int midiChannel)
 {
-    QMutexLocker locker(&d->mutex);
-
     // First, remove any references to the clip that we're wanting to stop
     for (quint64 step = 0; step < StepRingCount; ++step) {
         StepData *stepData = &d->stepRing[step];
@@ -741,7 +747,6 @@ void SyncTimer::start(int bpm) {
 void SyncTimer::stop() {
     cerr << "#### Stopping timer" << endl;
 
-    QMutexLocker locker(&d->mutex);
     if(!timerThread->isPaused()) {
         timerThread->pause();
     }
@@ -779,10 +784,11 @@ void SyncTimer::stop() {
 
     // Make sure we're actually informing about any clips that have been sent out, in case we
     // hit somewhere between a jack roll and a synctimer tick
-    for (ClipCommand *clipCommand : d->sentOutClips) {
-        Q_EMIT clipCommandSent(clipCommand);
+    while (d->sentOutClipsReadHead->clipCommand) {
+        Q_EMIT clipCommandSent(d->sentOutClipsReadHead->clipCommand);
+        d->sentOutClipsReadHead->clipCommand = nullptr;
+        d->sentOutClipsReadHead = d->sentOutClipsReadHead->next;
     }
-    d->sentOutClips.clear();
 #ifdef DEBUG_SYNCTIMER_TIMING
     qDebug() << d->intervals;
 #endif
