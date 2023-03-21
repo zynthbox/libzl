@@ -520,7 +520,17 @@ public:
                 // notes on that step to have been played and so on)
                 for (TimerCommand *command : qAsConst(stepData->timerCommands)) {
                     Q_EMIT q->timerCommand(command);
-                    if (command->operation == TimerCommand::StartClipLoopOperation || command->operation == TimerCommand::StopClipLoopOperation) {
+                    if (command->operation == TimerCommand::ClipCommandOperation) {
+                        ClipCommand *clipCommand = static_cast<ClipCommand *>(command->dataParameter);
+                        if (clipCommand) {
+                            samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
+                            sentOutClipsWriteHead->clipCommand = clipCommand;
+                            sentOutClipsWriteHead = sentOutClipsWriteHead->next;
+                        } else {
+                            qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
+                        }
+                        command->dataParameter = nullptr;
+                    } else if (command->operation == TimerCommand::StartClipLoopOperation || command->operation == TimerCommand::StopClipLoopOperation) {
                         ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
                         if (clipCommand) {
                             samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
@@ -531,7 +541,7 @@ public:
                         }
                         command->variantParameter.clear();
                     } else if (command->operation == TimerCommand::RegisterCASOperation || command->operation == TimerCommand::UnregisterCASOperation) {
-                        ClipAudioSource *clip = static_cast<ClipAudioSource*>(command->variantParameter.value<void*>());
+                        ClipAudioSource *clip = static_cast<ClipAudioSource*>(command->dataParameter);
                         if (clip) {
                             if (command->operation == TimerCommand::RegisterCASOperation) {
                                 samplerSynth->registerClip(clip);
