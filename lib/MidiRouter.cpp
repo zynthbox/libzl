@@ -32,22 +32,22 @@ public:
         }
     }
     ~InputDevice() {}
-    // The string name which identifies this input device in jack
-    QString jackPortName;
-    // A human-readable name for the port (derived from the port's first alias, if one exists, otherwise it's the port name)
-    QString humanReadableName;
+    // Whether or not we should read events from this device
+    alignas(8) bool enabled{false};
+    // The jack port we connect to for reading events
+    jack_port_t* port;
     // The number of times we have received a note activation on this channel
     // After the first, assume that all other activations will go to the same destination
-    QHash<int, int> noteActivations;
+    int noteActivations[128];
     // The channel which the most recent note activation went to
     // This will be written the first time the associated noteActivations position gets
     // incremented above 0 (all subsequent events read from this hash to determine the
     // destination instead)
-    QHash<int, int> activeNoteChannel;
-    // The jack port we connect to for reading events
-    jack_port_t* port;
-    // Whether or not we should read events from this device
-    bool enabled{false};
+    int activeNoteChannel[128];
+    // The string name which identifies this input device in jack
+    QString jackPortName;
+    // A human-readable name for the port (derived from the port's first alias, if one exists, otherwise it's the port name)
+    QString humanReadableName;
 };
 
 // This is our translation from midi input channels to destinations. It contains
@@ -229,7 +229,7 @@ public:
     MidiListenerPort externalOutListener;
     QList<MidiListenerPort*> listenerPorts;
     // FIXME The consumers of this currently functionally assume a note message, and... we will need to handle other things as well, but for now we only call this for note messages
-    inline void addMessage(MidiListenerPort &port, const double &timeStamp, const jack_midi_event_t &event)
+    static inline void addMessage(MidiListenerPort &port, const double &timeStamp, const jack_midi_event_t &event)
     {
         NoteMessage &message = port.getNextAvailableWriteMessage();
         message.timeStamp = timeStamp;
