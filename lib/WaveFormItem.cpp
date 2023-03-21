@@ -110,7 +110,7 @@ void WaveFormItem::setEnd(qreal end)
 void WaveFormItem::changeListenerCallback(juce::ChangeBroadcaster *source)
 {
     if (source == &m_thumbnail) {
-        qWarning() << "Thumbnail Source Changed. Repainting.";
+        // qWarning() << "Thumbnail Source Changed. Repainting.";
         QMetaObject::invokeMethod(this, "thumbnailChanged", Qt::QueuedConnection);
     }
 }
