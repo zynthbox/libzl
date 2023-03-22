@@ -381,9 +381,9 @@ public:
         }
 
         // If we've got anything to delete, do so now
-        qDeleteAll(timerCommandsToDelete);
+        // qDeleteAll(timerCommandsToDelete);
         timerCommandsToDelete.clear();
-        qDeleteAll(clipCommandsToDelete);
+        // qDeleteAll(clipCommandsToDelete);
         clipCommandsToDelete.clear();
         // Make sure that we've got some fresh commands to hand out
         QMutableListIterator<TimerCommand*> freshTimerCommandsIterator(freshTimerCommands);
