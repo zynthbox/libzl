@@ -295,6 +295,32 @@ public:
         QObject::connect(timerThread, &QThread::finished, q, [q](){ Q_EMIT q->timerRunningChanged(); });
         QObject::connect(timerThread, &SyncTimerThread::pausedChanged, q, [q](){ q->timerRunningChanged(); });
         timerThread->start();
+
+        objectGarbageHandler.setInterval(50);
+        objectGarbageHandler.setSingleShot(true);
+        QObject::connect(&objectGarbageHandler, &QTimer::timeout, q, [this](){
+            // If we've got anything to delete, do so now
+            qDeleteAll(timerCommandsToDelete);
+            timerCommandsToDelete.clear();
+            qDeleteAll(clipCommandsToDelete);
+            clipCommandsToDelete.clear();
+
+            // Make sure that we've got some fresh commands to hand out
+            QMutableListIterator<TimerCommand*> freshTimerCommandsIterator(freshTimerCommands);
+            while (freshTimerCommandsIterator.hasNext()) {
+                TimerCommand *value = freshTimerCommandsIterator.next();
+                if (value == nullptr) {
+                    freshTimerCommandsIterator.setValue(new TimerCommand);
+                }
+            }
+            QMutableListIterator<ClipCommand*> freshClipCommandsIterator(freshClipCommands);
+            while (freshClipCommandsIterator.hasNext()) {
+                ClipCommand *value = freshClipCommandsIterator.next();
+                if (value == nullptr) {
+                    freshClipCommandsIterator.setValue(new ClipCommand);
+                }
+            }
+        });
     }
     ~SyncTimerPrivate() {
         timerThread->requestAbort();
@@ -344,6 +370,7 @@ public:
     QList<TimerCommand*> freshTimerCommands;
     QList<ClipCommand*> clipCommandsToDelete;
     QList<ClipCommand*> freshClipCommands;
+    QTimer objectGarbageHandler;
 
     #ifdef DEBUG_SYNCTIMER_TIMING
     frame_clock::time_point lastRound;
@@ -378,27 +405,6 @@ public:
             Q_EMIT q->clipCommandSent(sentOutClipsReadHead->clipCommand);
             sentOutClipsReadHead->clipCommand = nullptr;
             sentOutClipsReadHead = sentOutClipsReadHead->next;
-        }
-
-        // If we've got anything to delete, do so now
-        // qDeleteAll(timerCommandsToDelete);
-        timerCommandsToDelete.clear();
-        // qDeleteAll(clipCommandsToDelete);
-        clipCommandsToDelete.clear();
-        // Make sure that we've got some fresh commands to hand out
-        QMutableListIterator<TimerCommand*> freshTimerCommandsIterator(freshTimerCommands);
-        while (freshTimerCommandsIterator.hasNext()) {
-            TimerCommand *value = freshTimerCommandsIterator.next();
-            if (value == nullptr) {
-                freshTimerCommandsIterator.setValue(new TimerCommand);
-            }
-        }
-        QMutableListIterator<ClipCommand*> freshClipCommandsIterator(freshClipCommands);
-        while (freshClipCommandsIterator.hasNext()) {
-            ClipCommand *value = freshClipCommandsIterator.next();
-            if (value == nullptr) {
-                freshClipCommandsIterator.setValue(new ClipCommand);
-            }
         }
     }
 
@@ -979,8 +985,12 @@ bool SyncTimer::timerRunning() {
 
 ClipCommand * SyncTimer::getClipCommand()
 {
-    for (ClipCommand *command : d->freshClipCommands) {
+    QMutableListIterator<ClipCommand*> freshClipCommandsIterator(d->freshClipCommands);
+    while (freshClipCommandsIterator.hasNext()) {
+        ClipCommand *command = freshClipCommandsIterator.next();
         if (command) {
+            d->objectGarbageHandler.start();
+            freshClipCommandsIterator.setValue(nullptr);
             return command;
         }
     }
@@ -990,6 +1000,7 @@ ClipCommand * SyncTimer::getClipCommand()
 void SyncTimer::deleteClipCommand(ClipCommand* command)
 {
     d->clipCommandsToDelete << command;
+    d->objectGarbageHandler.start();
 }
 
 TimerCommand * SyncTimer::getTimerCommand()
@@ -998,6 +1009,7 @@ TimerCommand * SyncTimer::getTimerCommand()
     while (freshTimerCommandsIterator.hasNext()) {
         TimerCommand *command = freshTimerCommandsIterator.next();
         if (command) {
+            d->objectGarbageHandler.start();
             freshTimerCommandsIterator.setValue(nullptr);
             return command;
         }
@@ -1008,6 +1020,7 @@ TimerCommand * SyncTimer::getTimerCommand()
 void SyncTimer::deleteTimerCommand(TimerCommand* command)
 {
     d->timerCommandsToDelete << command;
+    d->objectGarbageHandler.start();
 }
 
 void SyncTimer::process(jack_nframes_t /*nframes*/, void */*buffer*/, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds)
@@ -1016,6 +1029,5 @@ void SyncTimer::process(jack_nframes_t /*nframes*/, void */*buffer*/, quint64 *j
     *jackPlayhead = d->jackPlayheadReturn;
     *jackSubbeatLengthInMicroseconds = d->jackSubbeatLengthInMicrosecondsReturn;
 }
-
 
 #include "SyncTimer.moc"
