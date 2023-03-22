@@ -181,13 +181,16 @@ public:
         }
         passthroughListener.identifier = MidiRouter::PassthroughPort;
         passthroughListener.waitTime = 1;
+        listenerPorts[0] = &passthroughListener;
         internalPassthroughListener.identifier = MidiRouter::InternalPassthroughPort;
         internalPassthroughListener.waitTime = 5;
+        listenerPorts[1] = &internalPassthroughListener;
         hardwareInListener.identifier = MidiRouter::HardwareInPassthroughPort;
         hardwareInListener.waitTime = 5;
+        listenerPorts[2] = &hardwareInListener;
         externalOutListener.identifier = MidiRouter::ExternalOutPort;
         externalOutListener.waitTime = 5;
-        listenerPorts = {&passthroughListener, &internalPassthroughListener, &hardwareInListener, &externalOutListener};
+        listenerPorts[3] = &externalOutListener;
         syncTimer = qobject_cast<SyncTimer*>(SyncTimer_instance());
     };
     ~MidiRouterPrivate() {
@@ -227,7 +230,7 @@ public:
     MidiListenerPort internalPassthroughListener;
     MidiListenerPort hardwareInListener;
     MidiListenerPort externalOutListener;
-    QList<MidiListenerPort*> listenerPorts;
+    MidiListenerPort* listenerPorts[4];
     // FIXME The consumers of this currently functionally assume a note message, and... we will need to handle other things as well, but for now we only call this for note messages
     static inline void addMessage(MidiListenerPort &port, const double &timeStamp, const jack_midi_event_t &event)
     {
@@ -740,7 +743,8 @@ void MidiRouter::run() {
         if (d->done) {
             break;
         }
-        for (MidiListenerPort *listenerPort : qAsConst(d->listenerPorts)) {
+        for (int i = 0; i < 4; ++i) {
+            MidiListenerPort *listenerPort = d->listenerPorts[i];
             NoteMessage *message = listenerPort->readHead;
             while (!message->submitted) {
                 const unsigned char &byte1 = message->jackEvent.buffer[0];
