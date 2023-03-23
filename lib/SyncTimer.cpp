@@ -254,6 +254,9 @@ private:
     bool paused{true};
 };
 
+using TimerCallback = void(*)(int);
+#define CallbackSpaces 16
+
 #define FreshCommandStashSize 2048
 #define StepRingCount 32768
 SyncTimerThread *timerThread{nullptr};
@@ -334,7 +337,8 @@ public:
     int playingClipsCount = 0;
     int beat = 0;
     quint64 cumulativeBeat = 0;
-    QList<void (*)(int)> callbacks;
+    int callbackCount{0};
+    TimerCallback callbacks[CallbackSpaces];
 
     ClipCommandRingEntry sentOutClipsRing[FreshCommandStashSize];
     ClipCommandRingEntry *sentOutClipsReadHead{nullptr};
@@ -383,10 +387,10 @@ public:
         intervals << (thisRound - lastRound).count();
         lastRound = thisRound;
 #endif
-        while (cumulativeBeat < (jackPlayhead + (q->scheduleAheadAmount() * 2))) {
+        while (cumulativeBeat < (jackPlayhead + (scheduleAheadAmount * 2))) {
             // Call any callbacks registered to us
-            for (auto cb : qAsConst(callbacks)) {
-                cb(beat);
+            for (int i = 0; i < callbackCount; ++i) {
+                callbacks[i](beat);
             }
 
             // Spit out a touch of useful information on beat zero
@@ -608,6 +612,12 @@ public:
 #endif
         return 0;
     }
+
+    quint64 scheduleAheadAmount{0};
+    void updateScheduleAheadAmount() {
+        scheduleAheadAmount = (timerThread->nanosecondsToSubbeatCount(timerThread->getBpm(), jackLatency * (float)1000000)) + 1;
+        Q_EMIT q->scheduleAheadAmountChanged();
+    }
 };
 
 static int client_process(jack_nframes_t nframes, void* arg) {
@@ -630,8 +640,8 @@ void client_latency_callback(jack_latency_callback_mode_t mode, void *arg)
             quint64 newLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
             if (newLatency != d->jackLatency) {
                 d->jackLatency = newLatency;
+                d->updateScheduleAheadAmount();
                 qDebug() << "Latency changed, max is now" << range.max << "That means we will now suggest scheduling things" << d->q->scheduleAheadAmount() << "steps into the future";
-                Q_EMIT d->q->scheduleAheadAmountChanged();
             }
         }
     }
@@ -664,9 +674,9 @@ SyncTimer::SyncTimer(QObject *parent)
                     jack_nframes_t bufferSize = jack_get_buffer_size(d->jackClient);
                     jack_nframes_t sampleRate = jack_get_sample_rate(d->jackClient);
                     d->jackLatency = (1000 * (double)qMax(bufferSize, range.max)) / (double)sampleRate;
+                    d->updateScheduleAheadAmount();
                     qDebug() << "SyncTimer: Buffer size is supposed to be" << bufferSize << "but our maximum latency is" << range.max << "and we should be using that one to calculate how far out things should go, as that should include the amount of extra buffers alsa might (and likely does) use.";
                     qDebug() << "SyncTimer: However, as that is sometimes zero, we use the highest of the two. That means we will now suggest scheduling things" << scheduleAheadAmount() << "steps into the future";
-                    Q_EMIT scheduleAheadAmountChanged();
                 } else {
                     qWarning() << "SyncTimer: Failed to activate SyncTimer Jack client";
                 }
@@ -686,13 +696,26 @@ SyncTimer::~SyncTimer() {
 }
 
 void SyncTimer::addCallback(void (*functionPtr)(int)) {
-    cerr << "Adding callback " << functionPtr << endl;
-    d->callbacks.append(functionPtr);
+    qDebug() << Q_FUNC_INFO << "Adding callback" << functionPtr << "at position" << d->callbackCount;
+    d->callbacks[d->callbackCount] = functionPtr;
+    d->callbackCount++;
 }
 
 void SyncTimer::removeCallback(void (*functionPtr)(int)) {
-    bool result = d->callbacks.removeOne(functionPtr);
-    cerr << "Removing callback " << functionPtr << " : " << result << endl;
+    bool foundCallback{false};
+    for (int i = 0; i < CallbackSpaces; ++i) {
+        if (foundCallback) {
+            if (i < CallbackSpaces - 1) {
+                d->callbacks[i] = d->callbacks[i + 1];
+            }
+        } else {
+            if (functionPtr == d->callbacks[i]) {
+                foundCallback = true;
+                d->callbacks[i] = nullptr;
+            }
+        }
+    }
+    qDebug() << Q_FUNC_INFO << "Removing callback" << functionPtr << " - found it to remove:" << foundCallback;
 }
 
 void SyncTimer::queueClipToStartOnChannel(ClipAudioSource *clip, int midiChannel)
@@ -840,13 +863,13 @@ void SyncTimer::setBpm(quint64 bpm)
         timerThread->setBPM(bpm);
         d->jackSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
         Q_EMIT bpmChanged();
-        Q_EMIT scheduleAheadAmountChanged();
+        d->updateScheduleAheadAmount();
     }
 }
 
 quint64 SyncTimer::scheduleAheadAmount() const
 {
-    return (timerThread->nanosecondsToSubbeatCount(timerThread->getBpm(), d->jackLatency * (float)1000000)) + 1;
+    return d->scheduleAheadAmount;
 }
 
 int SyncTimer::beat() const {
