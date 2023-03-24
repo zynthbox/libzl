@@ -41,6 +41,7 @@ target_sources(libzl
         lib/SamplerSynthSound.cpp
         lib/SamplerSynthVoice.cpp
         lib/SyncTimer.cpp
+        lib/TransportManager.cpp
         lib/Helper.cpp
         lib/QPainterContext.cpp
         lib/WaveFormItem.cpp
