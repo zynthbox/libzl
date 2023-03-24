@@ -14,6 +14,8 @@ class MidiRouterPrivate;
  *
  * To ensure that Zynthian targets are correct, use setZynthianChannels() to change from the
  * default (that is, targeting the same channel in Zynthian as the channel's input channel)
+ *
+ * There is also the passthrough jack port (called PassthroughOut), which can be used to listen to all accepted midi messages for any destination other than NoDestination
  */
 class MidiRouter : public QThread
 {
