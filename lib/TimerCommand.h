@@ -12,9 +12,9 @@ struct alignas(64) TimerCommand {
     // TODO Before shipping this, make sure these are sequential...
     enum Operation {
         InvalidOperation = 0, ///@< An invalid operation, ignored
-        StartPlaybackOperation = 8, ///@< Start global playback
-        StopPlaybackOperation = 1, ///@< Stop all playback
-        StartPartOperation = 2, ///@< Start playing the given part. Pass channel index as parameter 1, track index as parameter2 and part index as parameter3
+        StartPlaybackOperation = 1, ///@< Start global playback
+        StopPlaybackOperation = 2, ///@< Stop all playback
+        StartPartOperation = 3, ///@< Start playing the given part. Pass channel index as parameter 1, track index as parameter2 and part index as parameter3
         StopPartOperation = 4, ///@< Stop playing the given part. Pass channel index as parameter 1, track index as parameter2 and part index as parameter3
         StartClipLoopOperation = 6, ///@< DEPRECATED Use ClipCommandOperation (originally, now handled by segmenthandler: Start playing a clip looped, parameter being the midi channel, parameter2 being the clip ID, and parameter3 being the note, and bigParameter can be used to define a timer offset value for adjusting the part's playback position relative to the timer's cumulative beat)
         StopClipLoopOperation = 7, ///@< DEPRECATED Use ClipCommandOperation (originally, now handled by segmenthandler: Stop playing a clip looping style, parameter being the midi channel to stop it on, parameter2 being the clip ID, and parameter3 being the note)
