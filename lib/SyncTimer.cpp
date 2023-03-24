@@ -9,6 +9,7 @@
 #include "MidiRouter.h"
 #include "SamplerSynth.h"
 #include "TimerCommand.h"
+#include "TransportManager.h"
 
 #include <QDebug>
 #include <QHash>
@@ -92,6 +93,9 @@ using frame_clock = std::conditional_t<
 #define NanosecondsPerSecond 1000000000
 #define NanosecondsPerMillisecond 1000000
 #define BeatSubdivisions 32
+#define BeatsPerBar 4
+// There's BeatsPerBar * BeatSubdivisions ticks per bar
+#define TicksPerBar 128
 class SyncTimerThread : public QThread {
     Q_OBJECT
 public:
@@ -265,6 +269,7 @@ public:
     SyncTimerPrivate(SyncTimer *q)
         : q(q)
     {
+        transportManager = TransportManager::instance(q);
         timerThread = new SyncTimerThread(q);
         int result = mlock(stepRing, sizeof(StepData) * StepRingCount);
         if (result != 0) {
@@ -334,6 +339,7 @@ public:
     }
     SyncTimer *q{nullptr};
     SamplerSynth *samplerSynth{nullptr};
+    TransportManager *transportManager{nullptr};
     int playingClipsCount = 0;
     int beat = 0;
     quint64 cumulativeBeat = 0;
@@ -415,6 +421,11 @@ public:
     jack_client_t* jackClient{nullptr};
     jack_port_t* jackPort{nullptr};
     quint64 jackPlayhead{0};
+    int32_t jackBar{0};
+    int32_t jackBeat{0};
+    int32_t jackBeatTick{0};
+    int32_t jackTick{0};
+    int32_t jackBarStartTick{0};
     quint64 stepReadHeadOnStart{0};
     jack_time_t jackMostRecentNextUsecs{0};
     jack_time_t jackStartTime{0};
@@ -462,6 +473,8 @@ public:
             if (jackPlayhead == 0) {
                 // first run for this playback session, let's do a touch of setup
                 jackNextPlaybackPosition = current_usecs;
+                jackBar = jackBeat = jackTick = 0;
+                transportManager->restartTransport();
             }
             jackMostRecentNextUsecs = next_usecs;
         }
@@ -561,6 +574,10 @@ public:
                         } else {
                             qWarning() << Q_FUNC_INFO << "Failed to retrieve clip from clip registration timer command";
                         }
+                    } else if (command->operation == TimerCommand::StartPlaybackOperation) {
+                        Q_EMIT q->pleaseStartPlayback();
+                    } else if (command->operation == TimerCommand::StopPlaybackOperation) {
+                        Q_EMIT q->pleaseStopPlayback();
                     } else if (command->operation == TimerCommand::SamplerChannelEnabledStateOperation) {
                         samplerSynth->setChannelEnabled(command->parameter, command->parameter2);
                     }
@@ -576,6 +593,18 @@ public:
 #endif
             }
             stepNextPlaybackPosition += jackSubbeatLengthInMicroseconds;
+            // Update our timecode data
+            ++jackTick;
+            ++jackBeatTick;
+            if (jackBeatTick == BeatSubdivisions) {
+                jackBeatTick = 0;
+                ++jackBeat;
+                if (jackBeat == BeatsPerBar) {
+                    jackBeat = 0;
+                    ++jackBar;
+                    jackBarStartTick = jackTick;
+                }
+            }
         }
         // If we've had anything added to the buffer for missing bits, make sure we append that for next time 'round.
         // As a note, this is most likely to be an extremely rare situation (that's kind of a lot of events), but just
@@ -1012,7 +1041,7 @@ ClipCommand * SyncTimer::getClipCommand()
     while (freshClipCommandsIterator.hasNext()) {
         ClipCommand *command = freshClipCommandsIterator.next();
         if (command) {
-            d->objectGarbageHandler.start();
+            QMetaObject::invokeMethod(&d->objectGarbageHandler,"start", Qt::QueuedConnection);
             freshClipCommandsIterator.setValue(nullptr);
             return command;
         }
@@ -1023,7 +1052,7 @@ ClipCommand * SyncTimer::getClipCommand()
 void SyncTimer::deleteClipCommand(ClipCommand* command)
 {
     d->clipCommandsToDelete << command;
-    d->objectGarbageHandler.start();
+    QMetaObject::invokeMethod(&d->objectGarbageHandler,"start", Qt::QueuedConnection);
 }
 
 TimerCommand * SyncTimer::getTimerCommand()
@@ -1032,7 +1061,7 @@ TimerCommand * SyncTimer::getTimerCommand()
     while (freshTimerCommandsIterator.hasNext()) {
         TimerCommand *command = freshTimerCommandsIterator.next();
         if (command) {
-            d->objectGarbageHandler.start();
+            QMetaObject::invokeMethod(&d->objectGarbageHandler,"start", Qt::QueuedConnection);
             freshTimerCommandsIterator.setValue(nullptr);
             return command;
         }
@@ -1043,7 +1072,7 @@ TimerCommand * SyncTimer::getTimerCommand()
 void SyncTimer::deleteTimerCommand(TimerCommand* command)
 {
     d->timerCommandsToDelete << command;
-    d->objectGarbageHandler.start();
+    QMetaObject::invokeMethod(&d->objectGarbageHandler,"start", Qt::QueuedConnection);
 }
 
 void SyncTimer::process(jack_nframes_t /*nframes*/, void */*buffer*/, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds)
@@ -1051,6 +1080,18 @@ void SyncTimer::process(jack_nframes_t /*nframes*/, void */*buffer*/, quint64 *j
 //     d->process(nframes, buffer, jackPlayhead, jackSubbeatLengthInMicroseconds);
     *jackPlayhead = d->jackPlayheadReturn;
     *jackSubbeatLengthInMicroseconds = d->jackSubbeatLengthInMicrosecondsReturn;
+}
+
+void SyncTimer::setPosition(jack_position_t* position) const
+{
+    position->bar = d->jackBar;
+    position->beat = d->jackBeat;
+    position->tick = d->jackBeatTick;
+    position->bar_start_tick = d->jackBarStartTick;
+    position->beats_per_bar = BeatsPerBar;
+    position->beat_type = BeatsPerBar;
+    position->ticks_per_beat = BeatSubdivisions;
+    position->beats_per_minute = timerThread->getBpm();
 }
 
 #include "SyncTimer.moc"

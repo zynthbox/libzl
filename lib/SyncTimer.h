@@ -210,10 +210,16 @@ public:
   Q_SLOT void deleteClipCommand(ClipCommand *command);
   Q_SLOT TimerCommand *getTimerCommand();
   Q_SLOT void deleteTimerCommand(TimerCommand *command);
+
+  Q_SIGNAL void pleaseStartPlayback();
+  Q_SIGNAL void pleaseStopPlayback();
 protected:
   // This allows MidiRouter to process SyncTimer explicitly (this way we avoid having to pass through jack, which already has plenty of clients to worry about)
   friend class MidiRouterPrivate;
   void process(jack_nframes_t nframes, void *buffer, quint64 *jackPlayhead, quint64 *jackSubbeatLengthInMicroseconds);
+  // This allows TransportManager to call us, so we avoid some back and forth since SyncTimer has all the information needed to set the position
+  friend class TransportManagerPrivate;
+  void setPosition(jack_position_t *position) const;
 private:
   SyncTimerPrivate *d{nullptr};
 };
