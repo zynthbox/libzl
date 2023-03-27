@@ -3,6 +3,7 @@
 #include "SyncTimer.h"
 #include "libzl.h"
 #include "DeviceMessageTranslations.h"
+#include "TransportManager.h"
 
 #include <QDebug>
 #include <QProcessEnvironment>
@@ -369,9 +370,7 @@ public:
                 if (int err = jack_midi_event_get(&event, inputBuffer, eventIndex)) {
                     qWarning() << "ZLRouter: jack_midi_event_get, received note lost! We were supposed to have" << eventCount << "events, attempted to fetch at index" << eventIndex << "and the error code is" << err;
                 } else {
-                    if ((event.buffer[0] & 0xf0) == 0xf0) {
-                        // Don't do anything if the message is undesired
-                    } else {
+                    if (event.buffer[0] < 0xf0) {
                         eventChannel = (event.buffer[0] & 0xf);
                         if (eventChannel > -1 && eventChannel < OUTPUT_CHANNEL_COUNT) {
                             const unsigned char &byte1 = event.buffer[0];
@@ -390,7 +389,7 @@ public:
                                         }
                                         writeEventToBuffer(event, zynthianOutputBuffer, eventChannel, &zynthianMostRecentTime, zynthianOutputPort, zynthianChannel);
                                     }
-                                    writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort, eventChannel);
+                                    writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                                     break;
                                 case MidiRouter::SamplerDestination:
                                     if (isNoteMessage) {
@@ -398,7 +397,7 @@ public:
                                         addMessage(internalPassthroughListener, timestamp, event);
                                     }
                                     ++nonEmittedEvents; // if we return the above line, remove this
-                                    writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort, eventChannel);
+                                    writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                                     break;
                                 case MidiRouter::ExternalDestination:
                                 {
@@ -409,7 +408,7 @@ public:
                                         addMessage(externalOutListener, timestamp, event);
                                     }
                                     writeEventToBuffer(event, externalOutputBuffer, eventChannel, &externalMostRecentTime, externalOutputPort, externalChannel);
-                                    writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort, eventChannel);
+                                    writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                                 }
                                 case MidiRouter::NoDestination:
                                 default:
@@ -422,6 +421,11 @@ public:
                         } else {
                             qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
                         }
+                    } else if (event.buffer[0] == 0xf0) {
+                        // We don't know what to do with sysex messages, so (for now) we're just ignoring them entirely
+                        // Likely want to pass them through directly to any connected midi output devices, though
+                    } else {
+                        writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                     }
                 }
                 ++eventIndex;
@@ -459,9 +463,7 @@ public:
                             }
                             break;
                         } else {
-                            if ((event.buffer[0] & 0xf0) == 0xf0) {
-                                // Don't do anything if the message is undesired
-                            } else {
+                            if (event.buffer[0] < 0xf0) {
                                 // Check whether we've got any message translation to do
                                 if (event.buffer[0] > 0xAF && event.buffer[0] < 0xC0) {
                                     // Then it's a CC thing, and maybe we want to do a thing?
@@ -513,13 +515,13 @@ public:
                                                 }
                                                 writeEventToBuffer(event, zynthianOutputBuffer, adjustedCurrentChannel, &zynthianMostRecentTime, zynthianOutputPort, zynthianChannel);
                                             }
-                                            writeEventToBuffer(event, passthroughOutputBuffer, adjustedCurrentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort, eventChannel);
+                                            writeEventToBuffer(event, passthroughOutputBuffer, adjustedCurrentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                                             break;
                                         case MidiRouter::SamplerDestination:
                                             if (isNoteMessage) {
                                                 addMessage(passthroughListener, timestamp, event);
                                             }
-                                            writeEventToBuffer(event, passthroughOutputBuffer, adjustedCurrentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort, eventChannel);
+                                            writeEventToBuffer(event, passthroughOutputBuffer, adjustedCurrentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                                             break;
                                         case MidiRouter::ExternalDestination:
                                         {
@@ -529,7 +531,7 @@ public:
                                                 addMessage(externalOutListener, timestamp, event);
                                             }
                                             writeEventToBuffer(event, externalOutputBuffer, adjustedCurrentChannel, &externalMostRecentTime, externalOutputPort, externalChannel);
-                                            writeEventToBuffer(event, passthroughOutputBuffer, adjustedCurrentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort, eventChannel);
+                                            writeEventToBuffer(event, passthroughOutputBuffer, adjustedCurrentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                                         }
                                         case MidiRouter::NoDestination:
                                         default:
@@ -539,9 +541,16 @@ public:
                                     if (isNoteMessage) {
                                         addMessage(hardwareInListener, timestamp, event);
                                     }
+                                } else if (event.size == 1 || event.size == 2) {
+                                    writeEventToBuffer(event, passthroughOutputBuffer, adjustedCurrentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                                 } else {
                                     qWarning() << "ZLRouter: Something's badly wrong and we've ended up with a message supposedly on channel" << eventChannel;
                                 }
+                            } else if (event.buffer[0] == 0xf0) {
+                                // We don't know what to do with sysex messages, so (for now) we're just ignoring them entirely
+                                // Likely want to pass them through directly to any connected midi output devices, though
+                            } else {
+                                writeEventToBuffer(event, passthroughOutputBuffer, currentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                             }
                         }
                         ++eventIndex;
@@ -699,6 +708,7 @@ MidiRouter::MidiRouter(QObject *parent)
 {
     // First, load up our configuration (TODO: also remember to reload it when the config changes)
     reloadConfiguration();
+    TransportManager::instance(d->syncTimer)->initialize();
     // Open the client.
     jack_status_t real_jack_status{};
     d->jackClient = jack_client_open("ZLRouter", JackNullOption, &real_jack_status);
