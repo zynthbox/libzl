@@ -38,13 +38,13 @@ public:
             } else {
                 // switch (event.size) {
                 //     case 1:
-                //         qDebug() << Q_FUNC_INFO << "Event data (size 1)" << event.buffer[0];
+                //         qDebug() << Q_FUNC_INFO << "Event data (size 1)" << QString("0x%1").arg(event.buffer[0], 2, 16, QLatin1Char('0'));
                 //         break;
                 //     case 2:
-                //         qDebug() << Q_FUNC_INFO << "Event data (size 2)" << event.buffer[0] << event.buffer[1];
+                //         qDebug() << Q_FUNC_INFO << "Event data (size 2)" << QString("0x%1").arg(event.buffer[0], 2, 16, QLatin1Char('0')) << QString("0x%1").arg(event.buffer[1], 2, 16, QLatin1Char('0'));
                 //         break;
                 //     case 3:
-                //         qDebug() << Q_FUNC_INFO << "Event data (size 3)" << event.buffer[0] << event.buffer[1] << event.buffer[3];
+                //         qDebug() << Q_FUNC_INFO << "Event data (size 3)" << QString("0x%1").arg(event.buffer[0], 2, 16, QLatin1Char('0')) << QString("0x%1").arg(event.buffer[1], 2, 16, QLatin1Char('0')) << QString("0x%1").arg(event.buffer[2], 2, 16, QLatin1Char('0'));
                 //         break;
                 //     default:
                 //         qDebug() << Q_FUNC_INFO << "Weird event received we don't know anything about... apparently size" << event.size;
@@ -54,6 +54,7 @@ public:
                         // (event->buffer[2]<<7) | event->buffer[1];
                         break;
                     case 0xf8: // clock
+                        // qDebug() << Q_FUNC_INFO << "Clock signal received";
                         break;
                     case 0xfa: // start
                     case 0xfb: // continue
@@ -122,18 +123,34 @@ void transport_timebase_callback(jack_transport_state_t state, jack_nframes_t nf
 TransportManagerPrivate::TransportManagerPrivate(SyncTimer *syncTimerInstance)
 {
     syncTimer = syncTimerInstance;
+}
+
+
+TransportManager::TransportManager(SyncTimer *parent)
+    : QObject(parent)
+    , d(new TransportManagerPrivate(parent))
+{
+}
+
+TransportManager::~TransportManager()
+{
+    delete d;
+}
+
+void TransportManager::initialize()
+{
     jack_status_t real_jack_status{};
-    client = jack_client_open("TransportManager", JackNullOption, &real_jack_status);
-    if (client) {
-        inPort = jack_port_register(client, "midi_in", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
-        outPort = jack_port_register(client, "midi_out", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
-        if (inPort && outPort) {
-            if (jack_set_timebase_callback(client, 0, transport_timebase_callback, static_cast<void*>(this)) == 0) {
+    d->client = jack_client_open("TransportManager", JackNullOption, &real_jack_status);
+    if (d->client) {
+        d->inPort = jack_port_register(d->client, "midi_in", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput | JackPortIsTerminal, 0);
+        d->outPort = jack_port_register(d->client, "midi_out", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
+        if (d->inPort && d->outPort) {
+            if (jack_set_timebase_callback(d->client, 0, transport_timebase_callback, static_cast<void*>(d)) == 0) {
                 // Set the process callback.
-                if (jack_set_process_callback(client, transport_process, static_cast<void*>(this)) == 0) {
-                    if (jack_activate(client) == 0) {
+                if (jack_set_process_callback(d->client, transport_process, static_cast<void*>(d)) == 0) {
+                    if (jack_activate(d->client) == 0) {
                         qDebug() << Q_FUNC_INFO << "Set up the transport manager, which lets us handle midi sync messages, and function as a Jack timebase master";
-                        jack_transport_start(client);
+                        jack_transport_start(d->client);
                     } else {
                         qWarning() << Q_FUNC_INFO << "Failed to activate the Jack client";
                     }
@@ -149,18 +166,6 @@ TransportManagerPrivate::TransportManagerPrivate(SyncTimer *syncTimerInstance)
     } else {
         qWarning() << Q_FUNC_INFO << "Failed to create Jack client";
     }
-}
-
-
-TransportManager::TransportManager(SyncTimer *parent)
-    : QObject(parent)
-    , d(new TransportManagerPrivate(parent))
-{
-}
-
-TransportManager::~TransportManager()
-{
-    delete d;
 }
 
 void TransportManager::restartTransport()

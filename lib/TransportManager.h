@@ -16,6 +16,9 @@ public:
     explicit TransportManager(SyncTimer *parent = nullptr);
     virtual ~TransportManager();
 
+    // This is called by MidiRouter, to ensure we are ready and able to connect to things
+    void initialize();
+
     void restartTransport();
 private:
     TransportManagerPrivate *d{nullptr};
