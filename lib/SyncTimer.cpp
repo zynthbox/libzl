@@ -92,10 +92,13 @@ using frame_clock = std::conditional_t<
 #define NanosecondsPerMinute 60000000000
 #define NanosecondsPerSecond 1000000000
 #define NanosecondsPerMillisecond 1000000
-#define BeatSubdivisions 32
+#define BeatSubdivisions 96
 #define BeatsPerBar 4
+// The midi beat clock signal should go out at a rate of 24ppqn - at the current beat subdivision of 96, that makes it every 3rd tick of our step ring
+#define TicksPerMidiBeatClock 3
+static const jack_midi_data_t jackMidiBeatMessage{0xF8};
 // There's BeatsPerBar * BeatSubdivisions ticks per bar
-#define TicksPerBar 128
+#define TicksPerBar 384
 class SyncTimerThread : public QThread {
     Q_OBJECT
 public:
@@ -424,6 +427,7 @@ public:
     int32_t jackBeatTick{0};
     int32_t jackTick{0};
     int32_t jackBarStartTick{0};
+    int32_t jackMidiBeatTick{0};
     quint64 stepReadHeadOnStart{0};
     jack_time_t jackMostRecentNextUsecs{0};
     jack_time_t jackStartTime{0};
@@ -472,6 +476,8 @@ public:
                 // first run for this playback session, let's do a touch of setup
                 jackNextPlaybackPosition = current_usecs;
                 jackBar = jackBeat = jackBeatTick = jackTick = 0;
+                // We need to send out a beat clock tick on the first position as well, so let's make sure we do that
+                jackMidiBeatTick = TicksPerMidiBeatClock - 1;
                 transportManager->restartTransport();
             }
             jackMostRecentNextUsecs = next_usecs;
@@ -489,17 +495,23 @@ public:
             StepData *stepData = stepReadHead;
             // Next roll for next time (also do it now, as we're reading out of it)
             stepReadHead = stepReadHead->next;
+            // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
+            if (stepNextPlaybackPosition <= current_usecs) {
+                relativePosition = firstAvailableFrame;
+                ++firstAvailableFrame;
+            } else {
+                relativePosition = std::clamp<jack_nframes_t>((stepNextPlaybackPosition - current_usecs) / microsecondsPerFrame, firstAvailableFrame, nframes - 1);
+                firstAvailableFrame = relativePosition;
+            }
+            // Make sure there's a midi beat pulse going out if one is needed
+            ++jackMidiBeatTick;
+            if (jackMidiBeatTick == TicksPerMidiBeatClock) {
+                jack_midi_event_write(buffer, relativePosition, &jackMidiBeatMessage, 1);
+                jackMidiBeatTick = 0;
+            }
             // In case we're cycling through stuff we've already played, let's just... not do anything with that
             // Basically that just means nobody else has attempted to do stuff with the step since we last played it
             if (!stepData->played) {
-                // If the notes are in the past, they need to be scheduled as soon as we can, so just put those on position 0, and if we are here, that means that ending up in the future is a rounding error, so clamp that
-                if (stepNextPlaybackPosition <= current_usecs) {
-                    relativePosition = firstAvailableFrame;
-                    ++firstAvailableFrame;
-                } else {
-                    relativePosition = std::clamp<jack_nframes_t>((stepNextPlaybackPosition - current_usecs) / microsecondsPerFrame, firstAvailableFrame, nframes - 1);
-                    firstAvailableFrame = relativePosition;
-                }
                 // First, let's get the midi messages sent out
                 for (const juce::MidiMessageMetadata &juceMessage : qAsConst(stepData->midiBuffer)) {
                     if (firstAvailableFrame >= nframes) {
