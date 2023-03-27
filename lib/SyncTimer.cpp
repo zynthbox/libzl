@@ -471,7 +471,7 @@ public:
             if (jackPlayhead == 0) {
                 // first run for this playback session, let's do a touch of setup
                 jackNextPlaybackPosition = current_usecs;
-                jackBar = jackBeat = jackTick = 0;
+                jackBar = jackBeat = jackBeatTick = jackTick = 0;
                 transportManager->restartTransport();
             }
             jackMostRecentNextUsecs = next_usecs;
