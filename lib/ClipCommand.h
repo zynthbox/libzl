@@ -70,4 +70,23 @@ struct ClipCommand {
         command->midiChannel = channelID;
         return command;
     }
+
+    static void clear(ClipCommand *command) {
+        command->clip = nullptr;
+        command->midiNote = -1;
+        command->startPlayback = false;
+        command->stopPlayback = false;
+        command->changeSlice = false;
+        command->slice = -1;
+        command->changeLooping = false;
+        command->looping = false;
+        command->changePitch = false;
+        command->pitchChange = 0.0f;
+        command->changeSpeed = false;
+        command->speedRatio = 0.0f;
+        command->changeGainDb = false;
+        command->gainDb = 0.0f;
+        command->changeVolume = false;
+        command->volume = 0.0f;
+    }
 };

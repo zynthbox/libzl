@@ -261,7 +261,7 @@ private:
 using TimerCallback = void(*)(int);
 #define CallbackSpaces 16
 
-#define FreshCommandStashSize 2048
+#define FreshCommandStashSize 4096
 #define StepRingCount 32768
 SyncTimerThread *timerThread{nullptr};
 class SyncTimerPrivate {
@@ -307,25 +307,23 @@ public:
         objectGarbageHandler.setInterval(50);
         objectGarbageHandler.setSingleShot(true);
         QObject::connect(&objectGarbageHandler, &QTimer::timeout, q, [this](){
-            // If we've got anything to delete, do so now
-            qDeleteAll(timerCommandsToDelete);
-            timerCommandsToDelete.clear();
-            qDeleteAll(clipCommandsToDelete);
-            clipCommandsToDelete.clear();
-
-            // Make sure that we've got some fresh commands to hand out
+            // Stuff any commands we've been asked to delete back into the list, at a reasonable location, and cleaned up
             QMutableListIterator<TimerCommand*> freshTimerCommandsIterator(freshTimerCommands);
-            while (freshTimerCommandsIterator.hasNext()) {
+            while (freshTimerCommandsIterator.hasNext() && timerCommandsToDelete.count() > 0) {
                 TimerCommand *value = freshTimerCommandsIterator.next();
                 if (value == nullptr) {
-                    freshTimerCommandsIterator.setValue(new TimerCommand);
+                    TimerCommand* refreshedCommand = timerCommandsToDelete.takeFirst();
+                    TimerCommand::clear(refreshedCommand);
+                    freshTimerCommandsIterator.setValue(refreshedCommand);
                 }
             }
             QMutableListIterator<ClipCommand*> freshClipCommandsIterator(freshClipCommands);
-            while (freshClipCommandsIterator.hasNext()) {
+            while (freshClipCommandsIterator.hasNext() && clipCommandsToDelete.count() > 0) {
                 ClipCommand *value = freshClipCommandsIterator.next();
                 if (value == nullptr) {
-                    freshClipCommandsIterator.setValue(new ClipCommand);
+                    ClipCommand *refreshedCommand = clipCommandsToDelete.takeFirst();
+                    ClipCommand::clear(refreshedCommand);
+                    freshClipCommandsIterator.setValue(refreshedCommand);
                 }
             }
         });

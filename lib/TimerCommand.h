@@ -47,4 +47,14 @@ struct alignas(64) TimerCommand {
         }
         return clonedCommand;
     }
+
+    static void clear(TimerCommand *command) {
+        command->operation = InvalidOperation;
+        command->parameter = command->parameter2 = command->parameter3 = command->parameter4 = 0;
+        command->bigParameter = 0;
+        command->dataParameter = nullptr;
+        if (command->variantParameter.isValid()) {
+            command->variantParameter.clear();
+        }
+    }
 };
