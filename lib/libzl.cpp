@@ -279,6 +279,8 @@ void SyncTimer_startTimer(int interval) { syncTimer->start(interval); }
 
 void SyncTimer_setBpm(uint bpm) { syncTimer->setBpm(bpm); }
 
+int SyncTimer_getMultiplier() { return syncTimer->getMultiplier(); }
+
 void SyncTimer_stopTimer() { syncTimer->stop(); }
 
 void SyncTimer_registerTimerCallback(void (*functionPtr)(int)) {
@@ -325,7 +327,7 @@ void initJuce() {
 
   bool initialisationCompleted{false};
   auto juceInitialiser = [&](){
-    qDebug() << "Getting us an engine";
+    qDebug() << "Instantiating tracktion engine";
     tracktionEngine = new te::Engine("libzl", nullptr, std::make_unique<ZLEngineBehavior>());
     qDebug() << "Setting device type to JACK";
     tracktionEngine->getDeviceManager().deviceManager.setCurrentAudioDeviceType("JACK", true);
