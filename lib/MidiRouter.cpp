@@ -23,6 +23,22 @@
 
 #define MAX_LISTENER_MESSAGES 1024
 
+class OutputDevice {
+public:
+    OutputDevice(const QString &jackPortName)
+        : jackPortName(jackPortName)
+    {}
+    ~OutputDevice() {}
+    // The string name which identifies this input device in jack
+    QString jackPortName;
+    // A human-readable name for the port (derived from the port's first alias, if one exists, otherwise it's the port name)
+    QString humanReadableName;
+    // The device's ID, as understood by Zynthian.
+    QString zynthianId;
+    // Whether or not we are supposed to send events to this device
+    bool enabled{false};
+};
+
 class InputDevice {
 public:
     InputDevice(const QString &jackPortName)
@@ -52,6 +68,8 @@ public:
     QString jackPortName;
     // A human-readable name for the port (derived from the port's first alias, if one exists, otherwise it's the port name)
     QString humanReadableName;
+    // The device's ID, as understood by Zynthian.
+    QString zynthianId;
 };
 
 // This is our translation from midi input channels to destinations. It contains
@@ -425,7 +443,11 @@ public:
                         // We don't know what to do with sysex messages, so (for now) we're just ignoring them entirely
                         // Likely want to pass them through directly to any connected midi output devices, though
                     } else {
-                        writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
+                        writeEventToBuffer(event, externalOutputBuffer, eventChannel, &externalMostRecentTime, externalOutputPort);
+                        // Don't pass time code type things through from the SyncTimer input, otherwise we're feeding timecodes back to TransportManager that it likely sent out itself, which would be impractical)
+                        if (event.buffer[0] != 0xf2 && event.buffer[0] != 0xf8 && event.buffer[0] != 0xfa && event.buffer[0] != 0xfb && event.buffer[0] != 0xfc) {
+                            writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
+                        }
                     }
                 }
                 ++eventIndex;
@@ -550,6 +572,7 @@ public:
                                 // We don't know what to do with sysex messages, so (for now) we're just ignoring them entirely
                                 // Likely want to pass them through directly to any connected midi output devices, though
                             } else {
+                                writeEventToBuffer(event, externalOutputBuffer, eventChannel, &externalMostRecentTime, externalOutputPort);
                                 writeEventToBuffer(event, passthroughOutputBuffer, currentChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                             }
                         }
@@ -582,7 +605,7 @@ public:
     QTimer *hardwareInputConnector{nullptr};
     void connectHardwareInputs() {
         const char **ports = jack_get_ports(jackClient, nullptr, JACK_DEFAULT_MIDI_TYPE, JackPortIsPhysical | JackPortIsOutput);
-        QList<InputDevice*> newDevices;
+        QList<InputDevice*> connectedDevices;
         for (const char **p = ports; *p; p++) {
             const QString inputPortName{QString::fromLocal8Bit(*p)};
             InputDevice *device{nullptr};
@@ -613,11 +636,13 @@ public:
                                         splitAlias.removeFirst();
                                     }
                                     device->humanReadableName = splitAlias.join(" ");
+                                    device->zynthianId = splitAlias.join("_");
                                 }
                             }
                         }
                         if (device->humanReadableName.isEmpty()) {
                             device->humanReadableName = device->jackPortName.split(':').last();
+                            device->zynthianId = device->jackPortName;
                         }
                         qDebug() << "ZLRouter: Discovered a new bit of hardware, named" << inputPortName << "which we have given the friendly name" << device->humanReadableName;
                         DeviceMessageTranslations::apply(device->humanReadableName, &device->device_translations_cc);
@@ -633,16 +658,16 @@ public:
                 }
             }
             if (device->port) {
-                device->enabled = !disabledMidiInPorts.contains(device->jackPortName);
+                device->enabled = !disabledMidiInPorts.contains(device->zynthianId);
                 qDebug() << "ZLRouter: Updated" << device->jackPortName << "enabled state to" << device->enabled;
             }
-            newDevices << device;
+            connectedDevices << device;
         }
         // Clean up, in case something's been removed
         QMutableListIterator<InputDevice*> iterator(hardwareInputs);
         while (iterator.hasNext()) {
             InputDevice *device = iterator.next();
-            if (!newDevices.contains(device)) {
+            if (!connectedDevices.contains(device)) {
                 iterator.remove();
                 qDebug() << "ZLRouter: Detected removal of a hardware device" << device->jackPortName;
                 Q_EMIT q->removedHardwareInputDevice(device->jackPortName, device->humanReadableName);
@@ -664,6 +689,70 @@ public:
                 enabledInputs[i] = nullptr;
             }
         }
+    }
+
+    QList<OutputDevice *> hardwareOutputs;
+    void refreshOutputsList() {
+        const char **ports = jack_get_ports(jackClient, nullptr, JACK_DEFAULT_MIDI_TYPE, JackPortIsPhysical | JackPortIsInput);
+        QList<OutputDevice*> connectedDevices;
+        for (const char **p = ports; *p; p++) {
+            const QString portName{QString::fromLocal8Bit(*p)};
+            OutputDevice *device{nullptr};
+            for (OutputDevice *needle : hardwareOutputs) {
+                if (needle->jackPortName == portName) {
+                    device = needle;
+                    break;
+                }
+            }
+            if (!device) {
+                device = new OutputDevice(portName);
+                hardwareOutputs << device;
+                jack_port_t *hardwarePort = jack_port_by_name(jackClient, *p);
+                if (hardwarePort) {
+                    int num_aliases;
+                    char *aliases[2];
+                    aliases[0] = (char *)malloc(size_t(jack_port_name_size()));
+                    aliases[1] = (char *)malloc(size_t(jack_port_name_size()));
+                    num_aliases = jack_port_get_aliases(hardwarePort, aliases);
+                    if (num_aliases > 0) {
+                        int i;
+                        for (i = 0; i < num_aliases; i++) {
+                            QStringList splitAlias = QString::fromUtf8(aliases[i]).split('-');
+                            if (splitAlias.length() > 5) {
+                                for (int i = 0; i < 5; ++i) {
+                                    splitAlias.removeFirst();
+                                }
+                                device->humanReadableName = splitAlias.join(" ");
+                                device->zynthianId = splitAlias.join("_");
+                            }
+                        }
+                    }
+                    if (device->humanReadableName.isEmpty()) {
+                        device->humanReadableName = device->jackPortName.split(':').last();
+                        device->zynthianId = device->jackPortName;
+                    }
+                    qDebug() << "ZLRouter: Discovered a new bit of output hardware, named" << portName << "which we have given the friendly name" << device->humanReadableName;
+                } else {
+                    qWarning() << "ZLRouter: Failed to open hardware port for identification:" << portName;
+                }
+                Q_EMIT q->addedHardwareOutputDevice(portName, device->humanReadableName);
+            }
+            device->enabled = enabledMidiOutPorts.contains(device->zynthianId);
+            qDebug() << "ZLRouter: Updated" << device->jackPortName << "aka" << device->zynthianId << "enabled state to" << device->enabled;
+            connectedDevices << device;
+        }
+        // Clean up, in case something's been removed
+        QMutableListIterator<OutputDevice*> iterator(hardwareOutputs);
+        while (iterator.hasNext()) {
+            OutputDevice *device = iterator.next();
+            if (!connectedDevices.contains(device)) {
+                iterator.remove();
+                qDebug() << "ZLRouter: Detected removal of a hardware device" << device->jackPortName;
+                Q_EMIT q->removedHardwareOutputDevice(device->jackPortName, device->humanReadableName);
+                delete device;
+            }
+        }
+        free(ports);
     }
 
     void disconnectFromOutputs(ChannelOutput *output) {
@@ -722,7 +811,15 @@ MidiRouter::MidiRouter(QObject *parent)
                 d->hardwareInputConnector = new QTimer(this);
                 d->hardwareInputConnector->setSingleShot(true);
                 d->hardwareInputConnector->setInterval(300);
-                connect(d->hardwareInputConnector, &QTimer::timeout, this, [this](){ d->connectHardwareInputs(); });
+                connect(d->hardwareInputConnector, &QTimer::timeout, this, [this](){
+                    d->connectHardwareInputs();
+                    d->refreshOutputsList();
+                    for (OutputDevice *device : d->hardwareOutputs) {
+                        if (device->enabled) {
+                            d->connectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), device->jackPortName);
+                        }
+                    }
+                });
                 // To ensure we always have the expected channels, ZynMidiRouter wants us to use step_in
                 // (or it'll rewrite to whatever it thinks the current channel is)
                 const QString zmrPort{"ZynMidiRouter:step_in"};
@@ -755,9 +852,6 @@ MidiRouter::MidiRouter(QObject *parent)
 //                         d->connectPorts(QString("ZLRouter:%1").arg(output->portName), zmrPort);
 //                     }
                     d->connectPorts(QString("ZLRouter:%1").arg(d->zynthianOutputPort->portName), zmrPort);
-                    for (const QString &externalPort : d->enabledMidiOutPorts) {
-                        d->connectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), externalPort);
-                    }
                     d->connectPorts(QLatin1String{"SyncTimer:midi_out"}, QLatin1String{"ZLRouter:SyncTimerIn"});
 
                     d->connectPorts(QLatin1String{"ZLRouter:PassthroughOut"}, QLatin1String{"TransportManager:midi_in"});
@@ -870,8 +964,10 @@ void MidiRouter::reloadConfiguration()
         for (ChannelOutput *output : d->outputs) {
             d->disconnectFromOutputs(output);
         }
-        for (const QString &externalPort : d->enabledMidiOutPorts) {
-            d->disconnectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), externalPort);
+        for (OutputDevice *device : d->hardwareOutputs) {
+            if (device->enabled) {
+                d->disconnectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), device->jackPortName);
+            }
         }
     }
     // If 0, zynthian expects no midi to be routed externally, and if 1 it expects everything to go out
@@ -915,8 +1011,11 @@ void MidiRouter::reloadConfiguration()
             d->connectToOutputs(output);
         }
         d->connectHardwareInputs();
-        for (const QString &externalPort : d->enabledMidiOutPorts) {
-            d->connectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), externalPort);
+        d->refreshOutputsList();
+        for (OutputDevice *device : d->hardwareOutputs) {
+            if (device->enabled) {
+                d->connectPorts(QString("ZLRouter:%1").arg(d->externalOutputPort->portName), device->jackPortName);
+            }
         }
     }
 }
