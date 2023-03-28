@@ -205,6 +205,8 @@ public:
 
   Q_SIGNAL void addedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
   Q_SIGNAL void removedHardwareInputDevice(const QString &deviceName, const QString &humanReadableName);
+  Q_SIGNAL void addedHardwareOutputDevice(const QString &deviceName, const QString &humanReadableName);
+  Q_SIGNAL void removedHardwareOutputDevice(const QString &deviceName, const QString &humanReadableName);
 
   Q_SLOT ClipCommand *getClipCommand();
   Q_SLOT void deleteClipCommand(ClipCommand *command);

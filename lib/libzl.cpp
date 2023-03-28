@@ -358,6 +358,8 @@ void initJuce() {
 
   QObject::connect(MidiRouter::instance(), &MidiRouter::addedHardwareInputDevice, syncTimer, &SyncTimer::addedHardwareInputDevice);
   QObject::connect(MidiRouter::instance(), &MidiRouter::removedHardwareInputDevice, syncTimer, &SyncTimer::removedHardwareInputDevice);
+  QObject::connect(MidiRouter::instance(), &MidiRouter::addedHardwareOutputDevice, syncTimer, &SyncTimer::addedHardwareOutputDevice);
+  QObject::connect(MidiRouter::instance(), &MidiRouter::removedHardwareOutputDevice, syncTimer, &SyncTimer::removedHardwareOutputevice);
 
   qDebug() << "Initialising SamplerSynth";
   SamplerSynth::instance()->initialize(tracktionEngine);
