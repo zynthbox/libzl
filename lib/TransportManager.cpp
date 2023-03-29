@@ -24,7 +24,16 @@ public:
     bool running{false};
 
     uint32_t mostRecentEventCount{0};
+    jack_time_t nextMidiTick{0};
+    jack_midi_data_t midiTickEvent{0xf9};
     int process(jack_nframes_t nframes) {
+        jack_nframes_t current_frames;
+        jack_time_t current_usecs;
+        jack_time_t next_usecs;
+        float period_usecs;
+        jack_get_cycle_times(client, &current_frames, &current_usecs, &next_usecs, &period_usecs);
+
+        // Handle transport input as thrown at us by others
         void *inputBuffer = jack_port_get_buffer(inPort, nframes);
         jack_midi_event_t event;
         uint32_t eventIndex = 0;
@@ -75,6 +84,9 @@ public:
                             syncTimer->scheduleTimerCommand(0, stopCommand);
                         }
                         break;
+                    case 0xf9: // tick
+                        // qDebug() << Q_FUNC_INFO << "Received MIDI Tick";
+                        break;
                     default:
                         break;
                 }
@@ -83,7 +95,20 @@ public:
         }
         void *outputBuffer = jack_port_get_buffer(outPort, nframes);
         jack_midi_clear_buffer(outputBuffer);
-        // TODO These messages want to go onto the control channel (whatever is set in the zynthian settings)
+        // TODO These messages want to go onto the control channel (whatever is set in the zynthian settings), whenever appropriate... Tick is an rt message, so don't worry about that
+        if (nextMidiTick == 0) {
+            nextMidiTick = current_usecs;
+        }
+        int errorCode{0};
+        while (nextMidiTick < next_usecs) {
+            errorCode = jack_midi_event_write(outputBuffer, std::clamp<jack_nframes_t>(jack_time_to_frames(client, nextMidiTick) - current_frames, 0, nframes - 1), &midiTickEvent, 1);
+            if (errorCode == ENOBUFS) {
+                qWarning() << "Ran out of space while writing ticks to the buffer, how did this even happen?!";
+            } else if (errorCode != 0) {
+                qWarning() << Q_FUNC_INFO << "Error writing midi event at time point" << std::clamp<jack_nframes_t>(jack_time_to_frames(client, nextMidiTick) - current_frames, 0, nframes - 1) << "with error:" << -errorCode << strerror(-errorCode);
+            }
+            nextMidiTick += 10000;
+        }
         return 0;
     }
     /**

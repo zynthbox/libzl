@@ -445,7 +445,7 @@ public:
                     } else {
                         writeEventToBuffer(event, externalOutputBuffer, eventChannel, &externalMostRecentTime, externalOutputPort);
                         // Don't pass time code type things through from the SyncTimer input, otherwise we're feeding timecodes back to TransportManager that it likely sent out itself, which would be impractical)
-                        if (event.buffer[0] != 0xf2 && event.buffer[0] != 0xf8 && event.buffer[0] != 0xfa && event.buffer[0] != 0xfb && event.buffer[0] != 0xfc) {
+                        if (event.buffer[0] != 0xf2 && event.buffer[0] != 0xf8 && event.buffer[0] != 0xfa && event.buffer[0] != 0xfb && event.buffer[0] != 0xfc && event.buffer[0] != 0xf9) {
                             writeEventToBuffer(event, passthroughOutputBuffer, eventChannel, &passthroughOutputMostRecentTime, passthroughOutputPort);
                         }
                     }
