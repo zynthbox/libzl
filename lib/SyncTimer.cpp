@@ -422,12 +422,15 @@ public:
     jack_client_t* jackClient{nullptr};
     jack_port_t* jackPort{nullptr};
     quint64 jackPlayhead{0};
+    // Used to calculate the quantized block rate BPM for the jack transport position's beats_per_minute field (jackBeatsPerMinute)
+    double jackPlayheadBpm{120};
     int32_t jackBar{0};
     int32_t jackBeat{0};
     int32_t jackBeatTick{0};
     int32_t jackTick{0};
     int32_t jackBarStartTick{0};
     int32_t jackMidiBeatTick{0};
+    double jackBeatsPerMinute{0.0};
     quint64 stepReadHeadOnStart{0};
     jack_time_t jackMostRecentNextUsecs{0};
     jack_time_t jackStartTime{0};
@@ -467,9 +470,12 @@ public:
         jack_get_cycle_times(jackClient, &current_frames, &current_usecs, &next_usecs, &period_usecs);
         const quint64 microsecondsPerFrame = (next_usecs - current_usecs) / nframes;
 
+        double thisStepBpm{jackPlayheadBpm};
+        double thisStepSubbeatLengthInMicroseconds{double(timerThread->subbeatCountToNanoseconds(jackPlayheadBpm, 1)) / 1000.0};
+
         // Setting here because we need the this-process value, not the next-process
         jackPlayheadReturn = jackPlayhead;
-        jackSubbeatLengthInMicrosecondsReturn = jackSubbeatLengthInMicroseconds;
+        jackSubbeatLengthInMicrosecondsReturn = thisStepSubbeatLengthInMicroseconds;
 
         if (!isPaused) {
             if (jackPlayhead == 0) {
@@ -486,6 +492,9 @@ public:
             stepNextPlaybackPosition = current_usecs;
         }
 
+        jack_time_t currentStepUsecsStart{0};
+        jack_time_t currentStepUsecsEnd = qMin(period_usecs, float(stepNextPlaybackPosition - current_usecs));
+        double updatedJackBeatsPerMinute{0};
         jack_nframes_t firstAvailableFrame{0};
         jack_nframes_t relativePosition{0};
         int errorCode{0};
@@ -553,56 +562,87 @@ public:
                 // notes on that step to have been played and so on)
                 for (TimerCommand *command : qAsConst(stepData->timerCommands)) {
                     Q_EMIT q->timerCommand(command);
-                    if (command->operation == TimerCommand::ClipCommandOperation) {
-                        ClipCommand *clipCommand = static_cast<ClipCommand *>(command->dataParameter);
-                        if (clipCommand) {
-                            samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
-                            sentOutClipsWriteHead->clipCommand = clipCommand;
-                            sentOutClipsWriteHead = sentOutClipsWriteHead->next;
-                        } else {
-                            qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
-                        }
-                        command->dataParameter = nullptr;
-                    } else if (command->operation == TimerCommand::StartClipLoopOperation || command->operation == TimerCommand::StopClipLoopOperation) {
-                        ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
-                        if (clipCommand) {
-                            samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
-                            sentOutClipsWriteHead->clipCommand = clipCommand;
-                            sentOutClipsWriteHead = sentOutClipsWriteHead->next;
-                        } else {
-                            qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
-                        }
-                        command->variantParameter.clear();
-                    } else if (command->operation == TimerCommand::RegisterCASOperation || command->operation == TimerCommand::UnregisterCASOperation) {
-                        ClipAudioSource *clip = static_cast<ClipAudioSource*>(command->dataParameter);
-                        if (clip) {
-                            if (command->operation == TimerCommand::RegisterCASOperation) {
-                                samplerSynth->registerClip(clip);
-                            } else {
-                                samplerSynth->unregisterClip(clip);
+                    switch (command->operation) {
+                        case TimerCommand::StartPlaybackOperation:
+                            Q_EMIT q->pleaseStartPlayback();
+                            break;
+                        case TimerCommand::StopPlaybackOperation:
+                            Q_EMIT q->pleaseStopPlayback();
+                            break;
+                        case TimerCommand::StartClipLoopOperation:
+                        case TimerCommand::StopClipLoopOperation:
+                            {
+                                ClipCommand *clipCommand = static_cast<ClipCommand *>(command->variantParameter.value<void*>());
+                                if (clipCommand) {
+                                    samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
+                                    sentOutClipsWriteHead->clipCommand = clipCommand;
+                                    sentOutClipsWriteHead = sentOutClipsWriteHead->next;
+                                } else {
+                                    qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
+                                }
+                                command->variantParameter.clear();
                             }
-                        } else {
-                            qWarning() << Q_FUNC_INFO << "Failed to retrieve clip from clip registration timer command";
-                        }
-                    } else if (command->operation == TimerCommand::StartPlaybackOperation) {
-                        Q_EMIT q->pleaseStartPlayback();
-                    } else if (command->operation == TimerCommand::StopPlaybackOperation) {
-                        Q_EMIT q->pleaseStopPlayback();
-                    } else if (command->operation == TimerCommand::SamplerChannelEnabledStateOperation) {
-                        samplerSynth->setChannelEnabled(command->parameter, command->parameter2);
+                            break;
+                        case TimerCommand::SamplerChannelEnabledStateOperation:
+                            samplerSynth->setChannelEnabled(command->parameter, command->parameter2);
+                            break;
+                        case TimerCommand::ClipCommandOperation:
+                            {
+                                ClipCommand *clipCommand = static_cast<ClipCommand *>(command->dataParameter);
+                                if (clipCommand) {
+                                    samplerSynth->handleClipCommand(clipCommand, jackPlayhead);
+                                    sentOutClipsWriteHead->clipCommand = clipCommand;
+                                    sentOutClipsWriteHead = sentOutClipsWriteHead->next;
+                                } else {
+                                    qWarning() << Q_FUNC_INFO << "Failed to retrieve clip command from clip based timer command";
+                                }
+                                command->dataParameter = nullptr;
+                            }
+                            break;
+                        case TimerCommand::SetBpmOperation:
+                            {
+                                const quint64 newBpm{std::clamp<quint64>(quint64(command->parameter), 50, 200)};
+                                q->setBpm(newBpm);
+                                thisStepBpm = newBpm;
+                            }
+                            break;
+                        case TimerCommand::RegisterCASOperation:
+                        case TimerCommand::UnregisterCASOperation:
+                            {
+                                ClipAudioSource *clip = static_cast<ClipAudioSource*>(command->dataParameter);
+                                if (clip) {
+                                    if (command->operation == TimerCommand::RegisterCASOperation) {
+                                        samplerSynth->registerClip(clip);
+                                    } else {
+                                        samplerSynth->unregisterClip(clip);
+                                    }
+                                } else {
+                                    qWarning() << Q_FUNC_INFO << "Failed to retrieve clip from clip registration timer command";
+                                }
+                            }
+                            break;
+                        case TimerCommand::StartPartOperation:
+                        case TimerCommand::StopPartOperation:
+                        case TimerCommand::InvalidOperation:
+                        default:
+                            break;
                     }
                 }
                 stepData->played = true;
             }
-            if (!isPaused) {
-                // Next roll for next time
-                ++jackPlayhead;
-                jackNextPlaybackPosition += jackSubbeatLengthInMicroseconds;
-#ifdef DEBUG_SYNCTIMER_JACK
-                    ++stepCount;
-#endif
+            // Update our internal BPM state, based on what we had on the previous step
+            if (jackPlayheadBpm != thisStepBpm) {
+                // update the playhead's BPM
+                jackPlayheadBpm = thisStepBpm;
+                // update the subbeat length in ms
+                thisStepSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(jackPlayheadBpm, 1) / 1000;
             }
-            stepNextPlaybackPosition += jackSubbeatLengthInMicroseconds;
+            // Add the amount of the BPM value appropriate to this step's duration inside the current period
+            updatedJackBeatsPerMinute += jackPlayheadBpm * double(currentStepUsecsEnd - currentStepUsecsStart) / period_usecs;
+            // qDebug() << Q_FUNC_INFO << "After a step between" << currentStepUsecsStart << "and" << currentStepUsecsEnd << "the updated jack bpm is" << updatedJackBeatsPerMinute;
+            const quint64 nextStepUsecsEnd = qMin(float(currentStepUsecsEnd + thisStepSubbeatLengthInMicroseconds), period_usecs);
+            currentStepUsecsStart = currentStepUsecsEnd;
+            currentStepUsecsEnd = nextStepUsecsEnd;
             // Update our timecode data
             ++jackTick;
             ++jackBeatTick;
@@ -615,7 +655,21 @@ public:
                     jackBarStartTick = jackTick;
                 }
             }
+            if (!isPaused) {
+                // Next roll for next time
+                ++jackPlayhead;
+                jackNextPlaybackPosition += thisStepSubbeatLengthInMicroseconds;
+#ifdef DEBUG_SYNCTIMER_JACK
+                    ++stepCount;
+#endif
+            }
+            // Now roll to the next step's playback position
+            stepNextPlaybackPosition += thisStepSubbeatLengthInMicroseconds;
         }
+        // Finally, update with whatever is left
+        updatedJackBeatsPerMinute += jackPlayheadBpm * double(currentStepUsecsEnd - currentStepUsecsStart) / period_usecs;
+        jackBeatsPerMinute = std::round(updatedJackBeatsPerMinute * 100.0) / 100.0; // Round to within the nearest two decimal points - otherwise we run into precision issues
+        // qDebug() << Q_FUNC_INFO << "Final updated jack beats per minute:" << jackBeatsPerMinute;
         // If we've had anything added to the buffer for missing bits, make sure we append that for next time 'round.
         // As a note, this is most likely to be an extremely rare situation (that's kind of a lot of events), but just
         // in case, it's good to cover this base.
@@ -655,7 +709,7 @@ public:
     quint64 scheduleAheadAmount{0};
     void updateScheduleAheadAmount() {
         scheduleAheadAmount = (timerThread->nanosecondsToSubbeatCount(timerThread->getBpm(), jackLatency * (float)1000000)) + 1;
-        Q_EMIT q->scheduleAheadAmountChanged();
+        QMetaObject::invokeMethod(q, "scheduleAheadAmountChanged", Qt::QueuedConnection);
     }
 };
 
@@ -901,8 +955,20 @@ void SyncTimer::setBpm(quint64 bpm)
     if (timerThread->getBpm() != bpm) {
         timerThread->setBPM(bpm);
         d->jackSubbeatLengthInMicroseconds = timerThread->subbeatCountToNanoseconds(timerThread->getBpm(), 1) / 1000;
-        Q_EMIT bpmChanged();
         d->updateScheduleAheadAmount();
+        QMetaObject::invokeMethod(this, "bpmChanged", Qt::QueuedConnection);
+        // Finally, let's schedule a timer command into the timer - this is to ensure that
+        // the bpm is updated for jack transport calculation purposes as well, at the time
+        // at which it would be expected. While this does involve adding more work, it is
+        // vital that our bpm calculations are correct for syncing reasona, otherwise things
+        // just start drifting out of time and that's not nice at all.
+        // Optimally, we'd do all our bpm setting through the timer, but i'm pretty sure
+        // that'd cause some havoc on the UI side of things... so just not doing that for
+        // now.
+        TimerCommand *timerCommand = getTimerCommand();
+        timerCommand->operation = TimerCommand::SetBpmOperation;
+        timerCommand->parameter = bpm;
+        scheduleTimerCommand(0, timerCommand);
     }
 }
 
@@ -1101,7 +1167,7 @@ void SyncTimer::setPosition(jack_position_t* position) const
     position->beats_per_bar = BeatsPerBar;
     position->beat_type = BeatsPerBar;
     position->ticks_per_beat = BeatSubdivisions;
-    position->beats_per_minute = timerThread->getBpm();
+    position->beats_per_minute = d->jackBeatsPerMinute;
 }
 
 #include "SyncTimer.moc"
