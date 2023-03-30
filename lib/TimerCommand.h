@@ -20,6 +20,7 @@ struct alignas(64) TimerCommand {
         StopClipLoopOperation = 7, ///@< DEPRECATED Use ClipCommandOperation (originally, now handled by segmenthandler: Stop playing a clip looping style, parameter being the midi channel to stop it on, parameter2 being the clip ID, and parameter3 being the note)
         SamplerChannelEnabledStateOperation = 8, ///@< Sets the state of a SamplerSynth channel to enabled or not enabled. parameter is the sampler channel (-2 through 9, -2 being uneffected global, -1 being effected global, and 0 through 9 being zl channels), and parameter2 is 0 for disabled, any other number for enabled
         ClipCommandOperation = 9, ///@< Handle a clip command at the given timer point (this could also be done by scheduling the clip command directly)
+        SetBpmOperation = 10, ///@< Set the BPM of the timer to the value in stored in parameter (this will be clamped to fit between SyncTimer's allowed values)
         RegisterCASOperation = 10001, ///@< INTERNAL - Register a ClipAudioSource with SamplerSynth, so it can be used for playback - dataParameter should contain a ClipAudioSource* object instance
         UnregisterCASOperation = 10002, ///@< INTERNAL - Unregister a ClipAudioSource with SamplerSynth, so it can be used for playback - dataParameter should contain a ClipAudioSource* object instance
     };
