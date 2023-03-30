@@ -447,7 +447,7 @@ public:
     // This looks like a Jack process call, but it is in fact called explicitly by MidiRouter for insurance purposes (doing it like
     // this means we've got tighter control, and we really don't need to pass it through jack anyway)
     int process(jack_nframes_t nframes) {
-        const std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+        // const std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
         void *buffer = jack_port_get_buffer(jackPort, nframes);
         jack_midi_clear_buffer(buffer);
 #ifdef DEBUG_SYNCTIMER_JACK
@@ -634,13 +634,13 @@ public:
             qDebug() << "We advanced jack playback by" << stepCount << "steps, and are now at position" << jackPlayhead << "and scheduled no notes";
         }
 #endif
-        const std::chrono::duration<double, std::milli> ms_double = std::chrono::high_resolution_clock::now() - t1;
-        if (ms_double.count() > 0.2) {
-            qDebug() << Q_FUNC_INFO << ms_double.count() << "ms after" << belowThreshold << "runs under 0.2ms";
-            belowThreshold = 0;
-        } else {
-            ++belowThreshold;
-        }
+        // const std::chrono::duration<double, std::milli> ms_double = std::chrono::high_resolution_clock::now() - t1;
+        // if (ms_double.count() > 0.2) {
+        //     qDebug() << Q_FUNC_INFO << ms_double.count() << "ms after" << belowThreshold << "runs under 0.2ms";
+        //     belowThreshold = 0;
+        // } else {
+        //     ++belowThreshold;
+        // }
 
         return 0;
     }

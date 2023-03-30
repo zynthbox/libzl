@@ -324,7 +324,7 @@ public:
     uint32_t mostRecentEventsForZynthian{0};
     QAtomicInt jack_xrun_count{0};
     int process(jack_nframes_t nframes) {
-        auto t1 = std::chrono::high_resolution_clock::now();
+        // auto t1 = std::chrono::high_resolution_clock::now();
         jack_nframes_t current_frames;
         jack_time_t current_usecs;
         jack_time_t next_usecs;
@@ -586,13 +586,13 @@ public:
 #endif
         }
 
-        std::chrono::duration<double, std::milli> ms_double = std::chrono::high_resolution_clock::now() - t1;
-        if (ms_double.count() > 0.2) {
-            qDebug() << Q_FUNC_INFO << ms_double.count() << "ms after" << belowThreshold << "runs under 0.2ms";
-            belowThreshold = 0;
-        } else {
-            ++belowThreshold;
-        }
+        // std::chrono::duration<double, std::milli> ms_double = std::chrono::high_resolution_clock::now() - t1;
+        // if (ms_double.count() > 0.2) {
+        //     qDebug() << Q_FUNC_INFO << ms_double.count() << "ms after" << belowThreshold << "runs under 0.2ms";
+        //     belowThreshold = 0;
+        // } else {
+        //     ++belowThreshold;
+        // }
 
         return 0;
     }
