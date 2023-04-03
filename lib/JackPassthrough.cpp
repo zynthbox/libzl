@@ -26,6 +26,15 @@ public:
     QString clientName;
     float dryAmount{1.0f};
     float wetAmount{1.0f};
+    float panAmount{0.0f};
+    float dryOutLeftSample;
+    float dryOutRightSample;
+    float wetOutLeftSample;
+    float wetOutRightSample;
+    float lPan = 0.5 * (1.0 + panAmount);
+    float rPan = 0.5 * (1.0 - panAmount);
+    jack_default_audio_sample_t channelSampleLeft;
+    jack_default_audio_sample_t channelSampleRight;
 
     jack_client_t *client{nullptr};
     jack_port_t *inputLeft{nullptr};
@@ -44,49 +53,56 @@ public:
         jack_default_audio_sample_t *wetOutRightBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(wetOutRight, nframes);
         bool outputDry{true};
         bool outputWet{true};
-        if (dryAmount == 0) {
+        if (panAmount == 0 && dryAmount == 0) {
             outputDry = false;
             memset(dryOutLeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
             memset(dryOutRightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
-        } else if (dryAmount == 1) {
+        } else if (panAmount == 0 && dryAmount == 1) {
             outputDry = false;
             memcpy(dryOutLeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
             memcpy(dryOutRightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
         }
-        if (wetAmount == 0) {
+        if (panAmount == 0 && wetAmount == 0) {
             outputWet = false;
             memset(wetOutLeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
             memset(wetOutRightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
-        } else if (wetAmount == 1) {
+        } else if (panAmount == 0 && wetAmount == 1) {
             outputWet = false;
             memcpy(wetOutLeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
             memcpy(wetOutRightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
         }
-        if (outputDry || outputWet) {
-            const jack_default_audio_sample_t *portBuffer{nullptr};
-            const jack_default_audio_sample_t *portBufferEnd{nullptr};
-
-            portBuffer = inputLeftBuffer;
-            portBufferEnd = inputLeftBuffer + nframes;
-            for (const float* channelSample = portBuffer; channelSample < portBufferEnd; ++channelSample) {
-                if (outputDry) {
-                    *dryOutLeftBuffer = dryAmount * (*channelSample);
+        if (panAmount != 0 || outputDry || outputWet) {
+            for (jack_nframes_t frame=0; frame<nframes; ++frame) {
+                channelSampleLeft = *(inputLeftBuffer + frame);
+                channelSampleRight = *(inputRightBuffer + frame);
+                if (panAmount != 0 || outputDry) {
+                    dryOutLeftSample = dryAmount * channelSampleLeft;
+                    dryOutRightSample = dryAmount * channelSampleRight;
+                    if (panAmount != 0) {
+                        // Implement M/S Panning
+                        const float mSignal = 0.5 * (dryOutLeftSample + dryOutRightSample);
+                        const float sSignal = dryOutLeftSample - dryOutRightSample;
+                        dryOutLeftSample = lPan * mSignal + sSignal;
+                        dryOutRightSample = rPan * mSignal - sSignal;
+                    }
+                    *dryOutLeftBuffer = dryOutLeftSample;
+                    *dryOutRightBuffer = dryOutRightSample;
                     ++dryOutLeftBuffer;
-                }
-                if (outputWet) {
-                    *wetOutLeftBuffer = wetAmount * (*channelSample);
-                    ++wetOutLeftBuffer;
-                }
-            }
-            portBuffer = inputRightBuffer;
-            portBufferEnd = inputRightBuffer + nframes;
-            for (const float* channelSample = portBuffer; channelSample < portBufferEnd; ++channelSample) {
-                if (outputDry) {
-                    *dryOutRightBuffer = dryAmount * (*channelSample);
                     ++dryOutRightBuffer;
                 }
-                if (outputWet) {
-                    *wetOutRightBuffer = wetAmount * (*channelSample);
+                if (panAmount != 0 || outputWet) {
+                    wetOutLeftSample = wetAmount * channelSampleLeft;
+                    wetOutRightSample = wetAmount * channelSampleRight;
+                    if (panAmount != 0) {
+                        // Implement M/S Panning
+                        const float mSignal = 0.5 * (wetOutLeftSample + wetOutRightSample);
+                        const float sSignal = wetOutLeftSample - wetOutRightSample;
+                        wetOutLeftSample = lPan * mSignal + sSignal;
+                        wetOutRightSample = rPan * mSignal - sSignal;
+                    }
+                    *wetOutLeftBuffer = wetOutLeftSample;
+                    *wetOutRightBuffer = wetOutRightSample;
+                    ++wetOutLeftBuffer;
                     ++wetOutRightBuffer;
                 }
             }
@@ -163,5 +179,20 @@ void JackPassthrough::setWetAmount(const float &newValue)
     if (d->wetAmount != newValue) {
         d->wetAmount = newValue;
         Q_EMIT wetAmountChanged();
+    }
+}
+
+float JackPassthrough::panAmount() const
+{
+    return d->panAmount;
+}
+
+void JackPassthrough::setPanAmount(const float &newValue)
+{
+    if (d->panAmount != newValue) {
+        d->panAmount = newValue;
+        d->lPan = 0.5 * (1.0 + d->panAmount);
+        d->rPan = 0.5 * (1.0 - d->panAmount);
+        Q_EMIT panAmountChanged();
     }
 }

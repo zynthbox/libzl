@@ -27,6 +27,7 @@ class JackPassthrough : public QObject {
     Q_OBJECT
     Q_PROPERTY(float dryAmount READ dryAmount WRITE setDryAmount NOTIFY dryAmountChanged)
     Q_PROPERTY(float wetAmount READ wetAmount WRITE setWetAmount NOTIFY wetAmountChanged)
+    Q_PROPERTY(float panAmount READ panAmount WRITE setPanAmount NOTIFY panAmountChanged)
 public:
     explicit JackPassthrough(const QString &clientName, QObject *parent = nullptr);
     ~JackPassthrough() override;
@@ -39,6 +40,9 @@ public:
     void setWetAmount(const float& newValue);
     Q_SIGNAL void wetAmountChanged();
 
+    float panAmount() const;
+    void setPanAmount(const float& newValue);
+    Q_SIGNAL void panAmountChanged();
 private:
     JackPassthroughPrivate *d{nullptr};
 };
