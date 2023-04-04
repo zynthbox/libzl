@@ -236,6 +236,7 @@ public:
     MidiRouterWatchdog *watchdog{new MidiRouterWatchdog};
     SyncTimer *syncTimer{nullptr};
     JackPassthrough *globalEffectsPassthrough{nullptr};
+    JackPassthrough *globalPlayback{nullptr};
     QList<JackPassthrough*> channelEffectsPassthroughClients;
     bool done{false};
     bool constructing{true};
@@ -873,6 +874,8 @@ MidiRouter::MidiRouter(QObject *parent)
     }
 
     d->globalEffectsPassthrough = new JackPassthrough("GlobalFXPassthrough", this);
+    d->globalPlayback = new JackPassthrough("GlobalPlayback", this);
+    d->globalPlayback->setWetAmount(0.0f);
     for (int i=0; i<10; ++i) {
         d->channelEffectsPassthroughClients << new JackPassthrough(QString("FXPassthrough-Channel%1").arg(i+1), this);
     }
