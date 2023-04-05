@@ -1026,3 +1026,22 @@ void MidiRouter::reloadConfiguration()
         }
     }
 }
+
+QObjectList MidiRouter::channelPassthroughClients() const
+{
+    QObjectList clients;
+    for (JackPassthrough *client : d->channelEffectsPassthroughClients) {
+        clients << client;
+    }
+    return clients;
+}
+
+QObject * MidiRouter::globalEffectsPassthroughClient() const
+{
+    return d->globalEffectsPassthrough;
+}
+
+QObject * MidiRouter::globalPlaybackClient() const
+{
+    return d->globalPlayback;
+}
