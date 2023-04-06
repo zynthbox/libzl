@@ -797,6 +797,7 @@ MidiRouter::MidiRouter(QObject *parent)
     : QThread(parent)
     , d(new MidiRouterPrivate(this))
 {
+    qRegisterMetaType<MidiRouter::ListenerPort>();
     // First, load up our configuration (TODO: also remember to reload it when the config changes)
     reloadConfiguration();
     TransportManager::instance(d->syncTimer)->initialize();

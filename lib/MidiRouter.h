@@ -101,7 +101,7 @@ public:
     /**
      * \brief Fired whenever a note has changed
      */
-    Q_SIGNAL void noteChanged( ListenerPort port, int midiNote, int midiChannel, int velocity, bool setOn, double timeStamp, const unsigned char &byte1, const unsigned char &byte2, const unsigned char &byte3);
+    Q_SIGNAL void noteChanged( MidiRouter::ListenerPort port, int midiNote, int midiChannel, int velocity, bool setOn, double timeStamp, const unsigned char &byte1, const unsigned char &byte2, const unsigned char &byte3);
 
     QObjectList channelPassthroughClients() const;
     QObject *globalEffectsPassthroughClient() const;
@@ -109,3 +109,4 @@ public:
 private:
     MidiRouterPrivate *d{nullptr};
 };
+Q_DECLARE_METATYPE(MidiRouter::ListenerPort)
