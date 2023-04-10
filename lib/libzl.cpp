@@ -441,9 +441,7 @@ void AudioLevels_setShouldRecordPorts(bool shouldRecord)
 
 void JackPassthrough_setPanAmount(int channel, float amount)
 {
-  if (channel == -2) {
-    qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalEffectsPassthroughClient())->setPanAmount(amount);
-  } else if (channel == -1) {
+  if (channel == -1) {
     qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->setPanAmount(amount);
   } else if (channel > -1 && channel < 10) {
     qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->setPanAmount(amount);
@@ -453,12 +451,51 @@ void JackPassthrough_setPanAmount(int channel, float amount)
 float JackPassthrough_getPanAmount(int channel)
 {
   float amount{0.0f};
-  if (channel == -2) {
-    amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalEffectsPassthroughClient())->panAmount();
-  } else if (channel == -1) {
+  if (channel == -1) {
     amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->panAmount();
   } else if (channel > -1 && channel < 10) {
     amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->panAmount();
   }
   return amount;
+}
+
+float JackPassthrough_getWetFx1Amount(int channel)
+{
+    float amount{0.0f};
+    if (channel == -1) {
+      amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->wetFx1Amount();
+    } else if (channel > -1 && channel < 10) {
+      amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->wetFx1Amount();
+    }
+    return amount;
+}
+
+void JackPassthrough_setWetFx1Amount(int channel, float amount)
+{
+    if (channel == -1) {
+      qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->setWetFx1Amount(amount);
+    } else if (channel > -1 && channel < 10) {
+      qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->setWetFx1Amount(amount);
+    }
+}
+
+float JackPassthrough_getWetFx2Amount(int channel)
+{
+    float amount{0.0f};
+    if (channel == -1) {
+      amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->wetFx2Amount();
+    } else if (channel > -1 && channel < 10) {
+      amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->wetFx2Amount();
+    }
+    return amount;
+}
+
+void JackPassthrough_setWetFx2Amount(int channel, float amount)
+{
+
+    if (channel == -1) {
+      qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->setWetFx2Amount(amount);
+    } else if (channel > -1 && channel < 10) {
+      qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->setWetFx2Amount(amount);
+    }
 }

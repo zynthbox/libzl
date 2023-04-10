@@ -102,16 +102,42 @@ void AudioLevels_setShouldRecordPorts(bool shouldRecord);
 //////////////
 /**
  * \brief Set the panning amount for the given channel
- * @param channel The channel you wish to set the pan amount for (-1 is GlobalFX, -2 is GlobalPlayback, 0-9 is the channel with that index)
+ * @param channel The channel you wish to set the pan amount for (-1 is GlobalPlayback, 0-9 is the channel with that index)
  * @param amount The amount (-1 through 1, 0 being neutral) that you wish to set as the new pan amount
  */
 void JackPassthrough_setPanAmount(int channel, float amount);
 /**
 * \brief Retrieve the panning amount for the given channel
- * @param channel The channel you wish to get the pan amount for (-1 is GlobalFX, -2 is GlobalPlayback, 0-9 is the channel with that index)
+ * @param channel The channel you wish to get the pan amount for (-1 is GlobalPlayback, 0-9 is the channel with that index)
  * @return The panning amount for the given channel (-1 through 1, 0 being neutral or if channel is out of bounds)
  */
 float JackPassthrough_getPanAmount(int channel);
+
+/**
+* \brief Retrieve the wet amount for Fx1
+ * @param channel The channel you wish to get the wet amount for (-1 is GlobalPlayback, 0-9 is the channel with that index)
+ * @return The wet amount for the given channel (0 through 1, 0 being no audio and 1 being full)
+ */
+float JackPassthrough_getWetFx1Amount(int channel);
+/**
+ * \brief Set the wet amount for the Fx1
+ * @param channel The channel you wish to get the wet amount for (-1 is GlobalPlayback, 0-9 is the channel with that index)
+ * @param amount The amount (0 through 1, 0 being no audio and 1 being full) that you wish to set as the new wet amount for Fx1
+ */
+void JackPassthrough_setWetFx1Amount(int channel, float amount);
+
+/**
+* \brief Retrieve the wet amount for Fx2
+ * @param channel The channel you wish to get the wet amount for (-1 is GlobalPlayback, 0-9 is the channel with that index)
+ * @return The wet amount for the given channel (0 through 1, 0 being no audio and 1 being full)
+ */
+float JackPassthrough_getWetFx2Amount(int channel);
+/**
+ * \brief Set the wet amount for the Fx2
+ * @param channel The channel you wish to get the wet amount for (-1 is GlobalPlayback, 0-9 is the channel with that index)
+ * @param amount The amount (0 through 1, 0 being no audio and 1 being full) that you wish to set as the new wet amount for Fx2
+ */
+void JackPassthrough_setWetFx2Amount(int channel, float amount);
 //////////////
 /// END JackPassthrough API Bridge
 //////////////
