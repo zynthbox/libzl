@@ -31,10 +31,6 @@ class MidiRouter : public QThread
      */
     Q_PROPERTY(QObjectList channelPassthroughClients READ channelPassthroughClients CONSTANT)
     /**
-     * \brief The JackPassthrough client that sends things through the global effects
-     */
-    Q_PROPERTY(QObject globalEffectsPassthroughClient READ globalEffectsPassthroughClient CONSTANT)
-    /**
      * \brief The JackPassthrough client that sends audio to system playback and the global audiolevels client
      */
     Q_PROPERTY(QObject globalPlaybackClient READ globalPlaybackClient CONSTANT)
@@ -104,7 +100,6 @@ public:
     Q_SIGNAL void noteChanged( MidiRouter::ListenerPort port, int midiNote, int midiChannel, int velocity, bool setOn, double timeStamp, const unsigned char &byte1, const unsigned char &byte2, const unsigned char &byte3);
 
     QObjectList channelPassthroughClients() const;
-    QObject *globalEffectsPassthroughClient() const;
     QObject *globalPlaybackClient() const;
 private:
     MidiRouterPrivate *d{nullptr};
