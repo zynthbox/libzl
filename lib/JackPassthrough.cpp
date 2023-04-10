@@ -27,12 +27,6 @@ public:
     float dryAmount{1.0f};
     float wetAmount{1.0f};
     float panAmount{0.0f};
-    float dryOutLeftSample;
-    float dryOutRightSample;
-    float wetOutLeftSample;
-    float wetOutRightSample;
-    float lPan = 0.5 * (1.0 + panAmount);
-    float rPan = 0.5 * (1.0 - panAmount);
     jack_default_audio_sample_t channelSampleLeft;
     jack_default_audio_sample_t channelSampleRight;
 
@@ -75,35 +69,15 @@ public:
             for (jack_nframes_t frame=0; frame<nframes; ++frame) {
                 channelSampleLeft = *(inputLeftBuffer + frame);
                 channelSampleRight = *(inputRightBuffer + frame);
+                // Implement Linear panning : https://forum.juce.com/t/how-do-stereo-panning-knobs-work/25773/9
+                // Implementing M/S panning is not producing intended result. For our case Linear(Simple) Panning seems to do the job
                 if (panAmount != 0 || outputDry) {
-                    dryOutLeftSample = dryAmount * channelSampleLeft;
-                    dryOutRightSample = dryAmount * channelSampleRight;
-                    if (panAmount != 0) {
-                        // Implement M/S Panning
-                        const float mSignal = 0.5 * (dryOutLeftSample + dryOutRightSample);
-                        const float sSignal = dryOutLeftSample - dryOutRightSample;
-                        dryOutLeftSample = lPan * mSignal + sSignal;
-                        dryOutRightSample = rPan * mSignal - sSignal;
-                    }
-                    *dryOutLeftBuffer = dryOutLeftSample;
-                    *dryOutRightBuffer = dryOutRightSample;
-                    ++dryOutLeftBuffer;
-                    ++dryOutRightBuffer;
+                    *(dryOutLeftBuffer + frame) = dryAmount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
+                    *(dryOutRightBuffer + frame) = dryAmount * channelSampleRight * std::min(1 + panAmount, 1.0f);
                 }
                 if (panAmount != 0 || outputWet) {
-                    wetOutLeftSample = wetAmount * channelSampleLeft;
-                    wetOutRightSample = wetAmount * channelSampleRight;
-                    if (panAmount != 0) {
-                        // Implement M/S Panning
-                        const float mSignal = 0.5 * (wetOutLeftSample + wetOutRightSample);
-                        const float sSignal = wetOutLeftSample - wetOutRightSample;
-                        wetOutLeftSample = lPan * mSignal + sSignal;
-                        wetOutRightSample = rPan * mSignal - sSignal;
-                    }
-                    *wetOutLeftBuffer = wetOutLeftSample;
-                    *wetOutRightBuffer = wetOutRightSample;
-                    ++wetOutLeftBuffer;
-                    ++wetOutRightBuffer;
+                    *(wetOutLeftBuffer + frame) = wetAmount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
+                    *(wetOutRightBuffer + frame) = wetAmount * channelSampleRight * std::min(1 + panAmount, 1.0f);
                 }
             }
         }
@@ -191,8 +165,6 @@ void JackPassthrough::setPanAmount(const float &newValue)
 {
     if (d->panAmount != newValue) {
         d->panAmount = newValue;
-        d->lPan = 0.5 * (1.0 + d->panAmount);
-        d->rPan = 0.5 * (1.0 - d->panAmount);
         Q_EMIT panAmountChanged();
     }
 }
