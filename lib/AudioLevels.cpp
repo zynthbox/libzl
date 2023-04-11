@@ -391,6 +391,7 @@ void AudioLevels::timerCallback() {
             } else if (channelIndex == 1) {
                 playbackA = peakDbA <= -200 ? -200 : peakDbA;
                 playbackB = peakDbB <= -200 ? -200 : peakDbB;
+                playback = add(peakDbA, peakDbB);
                 channel->peakAHoldSignal = (peakA >= channel->peakAHoldSignal) ? peakA : channel->peakAHoldSignal * 0.9f;
                 channel->peakBHoldSignal = (peakB >= channel->peakBHoldSignal) ? peakB : channel->peakBHoldSignal * 0.9f;
                 playbackAHold = convertTodbFS(channel->peakAHoldSignal);

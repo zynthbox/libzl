@@ -63,6 +63,10 @@ Q_OBJECT
      * \brief Right system playback channel hold value (the slow-fade peak)
      */
     Q_PROPERTY(float playbackBHold MEMBER playbackBHold NOTIFY audioLevelsChanged)
+    /**
+     * \brief Combined playback channel audio level in decibels
+     */
+    Q_PROPERTY(float playback MEMBER playback NOTIFY audioLevelsChanged)
 
     /**
      * \brief Left recording channel audio level in decibels
@@ -210,7 +214,7 @@ private:
     float convertTodbFS(float raw);
 
     float captureA{-200.0f}, captureB{-200.0f};
-    float playbackA{-200.0f}, playbackB{-200.0f}, playbackAHold{-200.0f}, playbackBHold{-200.0f};
+    float playbackA{-200.0f}, playbackB{-200.0f}, playbackAHold{-200.0f}, playbackBHold{-200.0f}, playback{-200.0f};
     float recordingA{-200.0f}, recordingB{-200.0f};
     float channelsA[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
           channelsB[CHANNELS_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
