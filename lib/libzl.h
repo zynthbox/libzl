@@ -151,6 +151,19 @@ float JackPassthrough_getDryAmount(int channel);
  * @param amount The amount (0 through 1, 0 being no audio and 1 being full) that you wish to set as the new dry amount
  */
 void JackPassthrough_setDryAmount(int channel, float amount);
+
+/**
+* \brief Get muted property value
+ * @param channel The channel you wish to get the muted value for (-1 is GlobalPlayback, 0-9 is the channel with that index)
+ * @return The value for the given channel
+ */
+float JackPassthrough_getMuted(int channel);
+/**
+ * \brief Set muted property value
+ * @param channel The channel you wish to set muted (-1 is GlobalPlayback, 0-9 is the channel with that index)
+ * @param muted The value for the given channel that you wish to set
+ */
+void JackPassthrough_setMuted(int channel, bool muted);
 //////////////
 /// END JackPassthrough API Bridge
 //////////////
