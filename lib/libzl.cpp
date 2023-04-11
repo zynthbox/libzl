@@ -499,3 +499,23 @@ void JackPassthrough_setWetFx2Amount(int channel, float amount)
       qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->setWetFx2Amount(amount);
     }
 }
+
+float JackPassthrough_getDryAmount(int channel)
+{
+    float amount{0.0f};
+    if (channel == -1) {
+      amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->dryAmount();
+    } else if (channel > -1 && channel < 10) {
+      amount = qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->dryAmount();
+    }
+    return amount;
+}
+
+void JackPassthrough_setDryAmount(int channel, float amount)
+{
+    if (channel == -1) {
+      qobject_cast<JackPassthrough*>(MidiRouter::instance()->globalPlaybackClient())->setDryAmount(amount);
+    } else if (channel > -1 && channel < 10) {
+      qobject_cast<JackPassthrough*>(MidiRouter::instance()->channelPassthroughClients().at(channel))->setDryAmount(amount);
+    }
+}
