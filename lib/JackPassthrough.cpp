@@ -28,6 +28,7 @@ public:
     float wetFx1Amount{1.0f};
     float wetFx2Amount{1.0f};
     float panAmount{0.0f};
+    bool muted{false};
     jack_default_audio_sample_t channelSampleLeft;
     jack_default_audio_sample_t channelSampleRight;
 
@@ -50,53 +51,63 @@ public:
         jack_default_audio_sample_t *wetOutFx1RightBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(wetOutFx1Right, nframes);
         jack_default_audio_sample_t *wetOutFx2LeftBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(wetOutFx2Left, nframes);
         jack_default_audio_sample_t *wetOutFx2RightBuffer = (jack_default_audio_sample_t *)jack_port_get_buffer(wetOutFx2Right, nframes);
-        bool outputDry{true};
-        bool outputWetFx1{true};
-        bool outputWetFx2{true};
-        if (panAmount == 0 && dryAmount == 0) {
-            outputDry = false;
+
+        if (muted) {
             memset(dryOutLeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
             memset(dryOutRightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
-        } else if (panAmount == 0 && dryAmount == 1) {
-            outputDry = false;
-            memcpy(dryOutLeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
-            memcpy(dryOutRightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
-        }
-        if (panAmount == 0 && wetFx1Amount == 0) {
-            outputWetFx1 = false;
             memset(wetOutFx1LeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
             memset(wetOutFx1RightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
-        } else if (panAmount == 0 && wetFx1Amount == 1) {
-            outputWetFx1 = false;
-            memcpy(wetOutFx1LeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
-            memcpy(wetOutFx1RightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
-        }
-        if (panAmount == 0 && wetFx2Amount == 0) {
-            outputWetFx2 = false;
             memset(wetOutFx2LeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
             memset(wetOutFx2RightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
-        } else if (panAmount == 0 && wetFx2Amount == 1) {
-            outputWetFx2 = false;
-            memcpy(wetOutFx2LeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
-            memcpy(wetOutFx2RightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
-        }
-        if (panAmount != 0 || outputDry || outputWetFx1 || outputWetFx2) {
-            for (jack_nframes_t frame=0; frame<nframes; ++frame) {
-                channelSampleLeft = *(inputLeftBuffer + frame);
-                channelSampleRight = *(inputRightBuffer + frame);
-                // Implement Linear panning : https://forum.juce.com/t/how-do-stereo-panning-knobs-work/25773/9
-                // Implementing M/S panning is not producing intended result. For our case Linear(Simple) Panning seems to do the job
-                if (panAmount != 0 || outputDry) {
-                    *(dryOutLeftBuffer + frame) = dryAmount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
-                    *(dryOutRightBuffer + frame) = dryAmount * channelSampleRight * std::min(1 + panAmount, 1.0f);
-                }
-                if (panAmount != 0 || outputWetFx1) {
-                    *(wetOutFx1LeftBuffer + frame) = wetFx1Amount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
-                    *(wetOutFx1RightBuffer + frame) = wetFx1Amount * channelSampleRight * std::min(1 + panAmount, 1.0f);
-                }
-                if (panAmount != 0 || outputWetFx2) {
-                    *(wetOutFx2LeftBuffer + frame) = wetFx2Amount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
-                    *(wetOutFx2RightBuffer + frame) = wetFx2Amount * channelSampleRight * std::min(1 + panAmount, 1.0f);
+        } else {
+            bool outputDry{true};
+            bool outputWetFx1{true};
+            bool outputWetFx2{true};
+            if (panAmount == 0 && dryAmount == 0) {
+                outputDry = false;
+                memset(dryOutLeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
+                memset(dryOutRightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
+            } else if (panAmount == 0 && dryAmount == 1) {
+                outputDry = false;
+                memcpy(dryOutLeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
+                memcpy(dryOutRightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
+            }
+            if (panAmount == 0 && wetFx1Amount == 0) {
+                outputWetFx1 = false;
+                memset(wetOutFx1LeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
+                memset(wetOutFx1RightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
+            } else if (panAmount == 0 && wetFx1Amount == 1) {
+                outputWetFx1 = false;
+                memcpy(wetOutFx1LeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
+                memcpy(wetOutFx1RightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
+            }
+            if (panAmount == 0 && wetFx2Amount == 0) {
+                outputWetFx2 = false;
+                memset(wetOutFx2LeftBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
+                memset(wetOutFx2RightBuffer, 0, nframes * sizeof(jack_default_audio_sample_t));
+            } else if (panAmount == 0 && wetFx2Amount == 1) {
+                outputWetFx2 = false;
+                memcpy(wetOutFx2LeftBuffer, inputLeftBuffer, nframes * sizeof(jack_default_audio_sample_t));
+                memcpy(wetOutFx2RightBuffer, inputRightBuffer, nframes * sizeof(jack_default_audio_sample_t));
+            }
+            if (panAmount != 0 || outputDry || outputWetFx1 || outputWetFx2) {
+                for (jack_nframes_t frame=0; frame<nframes; ++frame) {
+                    channelSampleLeft = *(inputLeftBuffer + frame);
+                    channelSampleRight = *(inputRightBuffer + frame);
+                    // Implement Linear panning : https://forum.juce.com/t/how-do-stereo-panning-knobs-work/25773/9
+                    // Implementing M/S panning is not producing intended result. For our case Linear(Simple) Panning seems to do the job
+                    if (panAmount != 0 || outputDry) {
+                        *(dryOutLeftBuffer + frame) = dryAmount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
+                        *(dryOutRightBuffer + frame) = dryAmount * channelSampleRight * std::min(1 + panAmount, 1.0f);
+                    }
+                    if (panAmount != 0 || outputWetFx1) {
+                        *(wetOutFx1LeftBuffer + frame) = wetFx1Amount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
+                        *(wetOutFx1RightBuffer + frame) = wetFx1Amount * channelSampleRight * std::min(1 + panAmount, 1.0f);
+                    }
+                    if (panAmount != 0 || outputWetFx2) {
+                        *(wetOutFx2LeftBuffer + frame) = wetFx2Amount * channelSampleLeft * std::min(1 - panAmount, 1.0f);
+                        *(wetOutFx2RightBuffer + frame) = wetFx2Amount * channelSampleRight * std::min(1 + panAmount, 1.0f);
+                    }
                 }
             }
         }
@@ -200,5 +211,18 @@ void JackPassthrough::setPanAmount(const float &newValue)
     if (d->panAmount != newValue) {
         d->panAmount = newValue;
         Q_EMIT panAmountChanged();
+    }
+}
+
+bool JackPassthrough::muted() const
+{
+    return d->muted;
+}
+
+void JackPassthrough::setMuted(const bool &newValue)
+{
+    if (d->muted != newValue) {
+        d->muted = newValue;
+        Q_EMIT mutedChanged();
     }
 }
