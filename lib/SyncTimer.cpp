@@ -624,6 +624,8 @@ public:
                         case TimerCommand::StartPartOperation:
                         case TimerCommand::StopPartOperation:
                         case TimerCommand::InvalidOperation:
+                        case TimerCommand::AutomationOperation:
+                        case TimerCommand::PassthroughClientOperation:
                         default:
                             break;
                     }
