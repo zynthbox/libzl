@@ -15,6 +15,7 @@
 #include <iostream>
 
 #include <juce_events/juce_events.h>
+#include <juce_audio_basics/utilities/juce_ADSR.h>
 
 class SyncTimer;
 class ClipAudioSourcePositionsModel;
@@ -83,6 +84,22 @@ class ClipAudioSource : public QObject {
      * @default 0.0f
      */
     Q_PROPERTY(float pan READ pan WRITE setPan NOTIFY panChanged)
+    /**
+     * \brief The attack part of an ADSR envelope (number of seconds from the start of the clip playback start point)
+     */
+    Q_PROPERTY(float adsrAttack READ adsrAttack WRITE setADSRAttack NOTIFY adsrParametersChanged)
+    /**
+     * \brief The decay part of an ADSR envelope (number of seconds from the attack part)
+     */
+    Q_PROPERTY(float adsrDecay READ adsrDecay WRITE setADSRDecay NOTIFY adsrParametersChanged)
+    /**
+     * \brief The sustain part of an ADSR envelope (amount of volume at the sustain point, from 0 through 1)
+     */
+    Q_PROPERTY(float adsrSustain READ adsrSustain WRITE setADSRSustain NOTIFY adsrParametersChanged)
+    /**
+     * \brief The release part of an ADSR envelope (the duration of the release in seconds)
+     */
+    Q_PROPERTY(float adsrRelease READ adsrRelease WRITE setADSRRelease NOTIFY adsrParametersChanged)
 public:
   explicit ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *syncTimer, const char *filepath,
                   bool muted = false, QObject *parent = nullptr);
@@ -204,6 +221,19 @@ public:
    */
   void setPan(float pan);
   Q_SIGNAL void panChanged();
+
+  float adsrAttack() const;
+  void setADSRAttack(const float& newValue);
+  float adsrDecay() const;
+  void setADSRDecay(const float& newValue);
+  float adsrSustain() const;
+  void setADSRSustain(const float& newValue);
+  float adsrRelease() const;
+  void setADSRRelease(const float& newValue);
+  const juce::ADSR::Parameters &adsrParameters() const;
+  void setADSRParameters(const juce::ADSR::Parameters &parameters);
+  const juce::ADSR &adsr() const;
+  Q_SIGNAL void adsrParametersChanged();
 private:
   class Private;
   Private *d;

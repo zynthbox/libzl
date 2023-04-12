@@ -79,6 +79,7 @@ public:
   int keyZoneStart{0};
   int keyZoneEnd{127};
   int rootNote{60};
+  juce::ADSR adsr;
 
   qint64 nextPositionUpdateTime{0};
   double firstPositionProgress{0};
@@ -160,6 +161,11 @@ ClipAudioSource::ClipAudioSource(tracktion_engine::Engine *engine, SyncTimer *sy
           clip->setAutoTempo(false);
           clip->setAutoPitch(false);
           clip->setTimeStretchMode(te::TimeStretcher::defaultMode);
+          juce::ADSR::Parameters params;
+          params.attack  = static_cast<float> (0);
+          params.release = static_cast<float> (0.05f);
+          d->adsr.setSampleRate(clip->getWaveInfo().sampleRate);
+          d->adsr.setParameters(params);
         }
 
         transport.setLoopRange(te::EditTimeRange::withStartAndLength(
@@ -620,4 +626,55 @@ void ClipAudioSource::setPan(float pan) {
     d->pan = pan;
     Q_EMIT panChanged();
   }
+}
+
+void ClipAudioSource::setADSRAttack(const float& newValue)
+{
+  if (d->adsr.getParameters().attack != newValue) {
+    juce::ADSR::Parameters params;
+    params.attack = newValue;
+    d->adsr.setParameters(params);
+  }
+}
+
+void ClipAudioSource::setADSRDecay(const float& newValue)
+{
+  if (d->adsr.getParameters().decay != newValue) {
+    juce::ADSR::Parameters params;
+    params.decay = newValue;
+    d->adsr.setParameters(params);
+  }
+}
+
+void ClipAudioSource::setADSRSustain(const float& newValue)
+{
+  if (d->adsr.getParameters().sustain != newValue) {
+    juce::ADSR::Parameters params;
+    params.sustain = newValue;
+    d->adsr.setParameters(params);
+  }
+}
+
+void ClipAudioSource::setADSRRelease(const float& newValue)
+{
+  if (d->adsr.getParameters().release != newValue) {
+    juce::ADSR::Parameters params;
+    params.release = newValue;
+    d->adsr.setParameters(params);
+  }
+}
+
+void ClipAudioSource::setADSRParameters(const juce::ADSR::Parameters& parameters)
+{
+  d->adsr.setParameters(parameters);
+}
+
+const juce::ADSR::Parameters & ClipAudioSource::adsrParameters() const
+{
+  return d->adsr.getParameters();
+}
+
+const juce::ADSR & ClipAudioSource::adsr() const
+{
+  return d->adsr;
 }
