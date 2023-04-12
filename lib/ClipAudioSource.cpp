@@ -628,6 +628,11 @@ void ClipAudioSource::setPan(float pan) {
   }
 }
 
+float ClipAudioSource::adsrAttack() const
+{
+  return d->adsr.getParameters().attack;
+}
+
 void ClipAudioSource::setADSRAttack(const float& newValue)
 {
   if (d->adsr.getParameters().attack != newValue) {
@@ -635,6 +640,11 @@ void ClipAudioSource::setADSRAttack(const float& newValue)
     params.attack = newValue;
     d->adsr.setParameters(params);
   }
+}
+
+float ClipAudioSource::adsrDecay() const
+{
+  return d->adsr.getParameters().decay;
 }
 
 void ClipAudioSource::setADSRDecay(const float& newValue)
@@ -646,6 +656,11 @@ void ClipAudioSource::setADSRDecay(const float& newValue)
   }
 }
 
+float ClipAudioSource::adsrSustain() const
+{
+  return d->adsr.getParameters().sustain;
+}
+
 void ClipAudioSource::setADSRSustain(const float& newValue)
 {
   if (d->adsr.getParameters().sustain != newValue) {
@@ -653,6 +668,11 @@ void ClipAudioSource::setADSRSustain(const float& newValue)
     params.sustain = newValue;
     d->adsr.setParameters(params);
   }
+}
+
+float ClipAudioSource::adsrRelease() const
+{
+  return d->adsr.getParameters().release;
 }
 
 void ClipAudioSource::setADSRRelease(const float& newValue)

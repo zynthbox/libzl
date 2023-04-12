@@ -14,8 +14,8 @@
 
 #include <iostream>
 
+#include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_events/juce_events.h>
-#include <juce_audio_basics/utilities/juce_ADSR.h>
 
 class SyncTimer;
 class ClipAudioSourcePositionsModel;
@@ -89,7 +89,7 @@ class ClipAudioSource : public QObject {
      */
     Q_PROPERTY(float adsrAttack READ adsrAttack WRITE setADSRAttack NOTIFY adsrParametersChanged)
     /**
-     * \brief The decay part of an ADSR envelope (number of seconds from the attack part)
+     * \brief The decay part of an ADSR envelope (duration of the decay part in seconds)
      */
     Q_PROPERTY(float adsrDecay READ adsrDecay WRITE setADSRDecay NOTIFY adsrParametersChanged)
     /**
