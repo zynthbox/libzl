@@ -18,7 +18,6 @@ public:
     int stopPosition(int slice = 0) const;
     int rootMidiNote() const;
     double sourceSampleRate() const;
-    ADSR::Parameters &params() const;
 private:
     SamplerSynthSoundPrivate *d{nullptr};
 };

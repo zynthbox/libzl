@@ -22,7 +22,6 @@ public:
     std::unique_ptr<AudioBuffer<float>> data;
     int length{0};
     double sourceSampleRate{0.0f};
-    ADSR::Parameters params;
 
     ClipAudioSource *clip{nullptr};
 
@@ -65,8 +64,6 @@ SamplerSynthSound::SamplerSynthSound(ClipAudioSource *clip)
     , d(new SamplerSynthSoundPrivate)
 {
     d->clip = clip;
-    d->params.attack  = static_cast<float> (0);
-    d->params.release = static_cast<float> (0.05f);
     d->loadSoundData();
     QObject::connect(clip, &ClipAudioSource::playbackFileChanged, &d->soundLoader, [this](){ d->soundLoader.start(1); }, Qt::QueuedConnection);
 }
@@ -114,11 +111,6 @@ int SamplerSynthSound::rootMidiNote() const
 double SamplerSynthSound::sourceSampleRate() const
 {
     return d->sourceSampleRate;
-}
-
-ADSR::Parameters &SamplerSynthSound::params() const
-{
-    return d->params;
 }
 
 // Since our pimpl is a qobject, let's make sure we do it properly
