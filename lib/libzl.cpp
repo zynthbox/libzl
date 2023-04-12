@@ -267,6 +267,40 @@ void ClipAudioSource_destroy(ClipAudioSource *c) {
 }
 
 int ClipAudioSource_id(ClipAudioSource *c) { return c->id(); }
+
+float ClipAudioSource_adsrAttack(ClipAudioSource *c)
+{
+  return c->adsrAttack();
+}
+void ClipAudioSource_setADSRAttack(ClipAudioSource *c, float newValue)
+{
+  c->setADSRAttack(newValue);
+}
+float ClipAudioSource_adsrDecay(ClipAudioSource *c)
+{
+  return c->adsrDecay();
+}
+void ClipAudioSource_setADSRDecay(ClipAudioSource *c, float newValue)
+{
+  c->setADSRDecay(newValue);
+}
+float ClipAudioSource_adsrSustain(ClipAudioSource *c)
+{
+  return c->adsrSustain();
+}
+void ClipAudioSource_setADSRSustain(ClipAudioSource *c, float newValue)
+{
+  c->setADSRSustain(newValue);
+}
+float ClipAudioSource_adsrRelease(ClipAudioSource *c)
+{
+  return c->adsrRelease();
+}
+void ClipAudioSource_setADSRRelease(ClipAudioSource *c, float newValue)
+{
+  c->setADSRRelease(newValue);
+}
+
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////

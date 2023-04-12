@@ -50,6 +50,15 @@ int ClipAudioSource_rootNote(ClipAudioSource *c);
 void ClipAudioSource_setRootNote(ClipAudioSource *c, int rootNote);
 void ClipAudioSource_destroy(ClipAudioSource *c);
 int ClipAudioSource_id(ClipAudioSource *c);
+
+float ClipAudioSource_adsrAttack(ClipAudioSource *c);
+void ClipAudioSource_setADSRAttack(ClipAudioSource *c, float newValue);
+float ClipAudioSource_adsrDecay(ClipAudioSource *c);
+void ClipAudioSource_setADSRDecay(ClipAudioSource *c, float newValue);
+float ClipAudioSource_adsrSustain(ClipAudioSource *c);
+void ClipAudioSource_setADSRSustain(ClipAudioSource *c, float newValue);
+float ClipAudioSource_adsrRelease(ClipAudioSource *c);
+void ClipAudioSource_setADSRRelease(ClipAudioSource *c, float newValue);
 //////////////
 /// END ClipAudioSource API Bridge
 //////////////
