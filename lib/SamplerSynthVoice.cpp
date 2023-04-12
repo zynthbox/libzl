@@ -131,9 +131,9 @@ void SamplerSynthVoice::startNote (int midiNoteNumber, float velocity, Synthesis
             d->lgain = velocityToGain(velocity);
             d->rgain = velocityToGain(velocity);
 
-            d->adsr.setSampleRate (sound->sourceSampleRate());
-            d->adsr.setParameters (sound->params());
-
+            d->adsr.reset();
+            d->adsr.setSampleRate(sound->sourceSampleRate());
+            d->adsr.setParameters(d->clip->adsrParameters());
             d->adsr.noteOn();
         }
     }
